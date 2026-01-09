@@ -491,6 +491,9 @@
               <button class="btn btn--ghost btn--icon" id="addRoadmapItemBtn" title="Add Item" onclick="openRoadmapItemModal()" style="display: none;">
                 <svg width="16" height="16" viewBox="0 0 32 32"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
               </button>
+              <button class="btn btn--ghost btn--icon" id="pushToTPBtn" title="Push to TargetProcess" onclick="openPushToTPModal()" style="display: none;">
+                <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 10H6v2h6v6h2v-6h6v-2h-6V4h-2v6z"/><path d="M28 18v8H4V6h10V4H4a2 2 0 00-2 2v20a2 2 0 002 2h24a2 2 0 002-2v-8z"/></svg>
+              </button>
               <button class="btn btn--ghost btn--icon" id="roadmapSettingsBtn" title="Roadmap Settings" onclick="openCreateRoadmapModal()">
                 <svg width="16" height="16" viewBox="0 0 32 32"><path d="M27 16.76V16v-.77l1.92-1.68a2 2 0 00.4-2.4l-2-3.46a2 2 0 00-1.94-1 2 2 0 00-.64.1l-2.43.82a11.35 11.35 0 00-1.31-.75l-.51-2.52a2 2 0 00-2-1.61h-4a2 2 0 00-2 1.61l-.51 2.52a11.48 11.48 0 00-1.32.75l-2.38-.86a2 2 0 00-.68-.09 2 2 0 00-1.72 1l-2 3.46a2 2 0 00.4 2.4l1.92 1.68V16v.77l-1.92 1.68a2 2 0 00-.4 2.4l2 3.46a2 2 0 00 1.72 1 2 2 0 00.68-.09l2.42-.82a11.35 11.35 0 001.31.75l.51 2.52a2 2 0 002 1.61h4a2 2 0 002-1.61l.51-2.52a11.48 11.48 0 001.32-.75l2.42.82a2 2 0 00.64.09 2 2 0 001.72-1l2-3.46a2 2 0 00-.4-2.4zM16 22a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
               </button>
@@ -678,6 +681,68 @@
           </div>
         </div>
       </div>
+
+      <!-- Push to TargetProcess Modal -->
+      <div class="modal" id="pushToTPModal">
+        <div class="modal__overlay" onclick="closePushToTPModal()"></div>
+        <div class="modal__container" style="max-width: 600px;">
+          <div class="modal__header">
+            <h2 class="modal__title">Push Roadmap to TargetProcess</h2>
+            <button class="modal__close" onclick="closePushToTPModal()">&times;</button>
+          </div>
+          <div class="modal__body">
+            <p style="margin-bottom: 16px; color: var(--cds-text-secondary);">
+              The following roadmap items will be created as Features in TargetProcess:
+            </p>
+
+            <!-- Items to Push -->
+            <div id="tpPushItemsList" style="max-height: 300px; overflow-y: auto; margin-bottom: 16px;">
+              <!-- Items will be populated by JS -->
+            </div>
+
+            <!-- Project Selection -->
+            <div class="form-group">
+              <label class="form-label" for="tpProjectSelect">Target Project *</label>
+              <select id="tpProjectSelect" class="select-input" required>
+                <option value="">Select a project...</option>
+                <option value="roadmap">Product Roadmap</option>
+                <option value="customer-features">Customer Features</option>
+                <option value="platform">Platform Development</option>
+              </select>
+            </div>
+
+            <!-- Options -->
+            <div class="form-group">
+              <label class="form-label">Options</label>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="tpLinkToCustomer" checked>
+                  <span>Link features to customer</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="tpIncludeDates" checked>
+                  <span>Include planned dates</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="tpSkipExisting">
+                  <span>Skip items already in TargetProcess</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Status Message -->
+            <div id="tpPushStatus" style="display: none; padding: 12px; border-radius: 4px; margin-top: 16px;">
+            </div>
+          </div>
+          <div class="modal__footer">
+            <button type="button" class="btn btn--secondary" onclick="closePushToTPModal()">Cancel</button>
+            <button type="button" class="btn btn--primary" id="tpPushBtn" onclick="handlePushToTP()">
+              <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right: 8px;"><path d="M12 10H6v2h6v6h2v-6h6v-2h-6V4h-2v6z"/><path d="M28 18v8H4V6h10V4H4a2 2 0 00-2 2v20a2 2 0 002 2h24a2 2 0 002-2v-8z"/></svg>
+              Push to TargetProcess
+            </button>
+          </div>
+        </div>
+      </div>
     </main>
 
     <!-- Mobile Bottom Navigation -->
@@ -717,6 +782,6 @@
     </nav>
   </div>
 
-  <script src="js/customer-detail.js?v=7"></script>
+  <script src="js/customer-detail.js?v=8"></script>
 </body>
 </html>

@@ -661,6 +661,7 @@ function showNoRoadmapState() {
     document.getElementById('roadmapContent').style.display = 'none';
     document.getElementById('roadmapTimeframe').style.display = 'none';
     document.getElementById('addRoadmapItemBtn').style.display = 'none';
+    document.getElementById('pushToTPBtn').style.display = 'none';
 }
 
 // Display roadmap timeline
@@ -669,6 +670,7 @@ function displayRoadmap(roadmap) {
     document.getElementById('roadmapContent').style.display = 'block';
     document.getElementById('roadmapTimeframe').style.display = 'inline-block';
     document.getElementById('addRoadmapItemBtn').style.display = 'inline-flex';
+    document.getElementById('pushToTPBtn').style.display = 'inline-flex';
 
     // Calculate quarters to display based on roadmap dates
     roadmapQuarters = generateQuarters(roadmap.start_date, roadmap.end_date);
@@ -1074,6 +1076,192 @@ async function handleCreateRoadmap(event) {
     }
 }
 
+// ==========================================
+// Push to TargetProcess Functions
+// ==========================================
+
+function openPushToTPModal() {
+    const modal = document.getElementById('pushToTPModal');
+    modal.classList.add('open');
+
+    // Reset status
+    const statusEl = document.getElementById('tpPushStatus');
+    statusEl.style.display = 'none';
+    statusEl.textContent = '';
+
+    // Enable the push button
+    const pushBtn = document.getElementById('tpPushBtn');
+    pushBtn.disabled = false;
+    pushBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right: 8px;"><path d="M12 10H6v2h6v6h2v-6h6v-2h-6V4h-2v6z"/><path d="M28 18v8H4V6h10V4H4a2 2 0 00-2 2v20a2 2 0 002 2h24a2 2 0 002-2v-8z"/></svg>
+        Push to TargetProcess
+    `;
+
+    // Populate the items list
+    populatePushItemsList();
+}
+
+function closePushToTPModal() {
+    const modal = document.getElementById('pushToTPModal');
+    modal.classList.remove('open');
+}
+
+function populatePushItemsList() {
+    const container = document.getElementById('tpPushItemsList');
+
+    if (!currentRoadmap || !currentRoadmap.items || currentRoadmap.items.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 24px; text-align: center; color: var(--cds-text-secondary);">
+                No roadmap items to push.
+            </div>
+        `;
+        return;
+    }
+
+    const itemsHtml = currentRoadmap.items.map(item => {
+        const statusColors = {
+            'planned': '#0043ce',
+            'in_progress': '#f1c21b',
+            'completed': '#24a148',
+            'delayed': '#ff832b',
+            'cancelled': '#697077'
+        };
+        const statusColor = statusColors[item.status] || '#697077';
+
+        const dateRange = item.planned_start_date && item.planned_end_date
+            ? `${formatDate(item.planned_start_date)} - ${formatDate(item.planned_end_date)}`
+            : item.target_quarter || 'No date';
+
+        return `
+            <div style="display: flex; align-items: center; padding: 12px; border: 1px solid var(--cds-border-subtle-01); border-radius: 4px; margin-bottom: 8px;">
+                <input type="checkbox" class="tp-push-item-checkbox" data-item-id="${item.id}" checked style="margin-right: 12px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 500;">${item.title}</div>
+                    <div style="font-size: 12px; color: var(--cds-text-secondary);">
+                        ${item.category || 'Feature'} • ${dateRange}
+                    </div>
+                </div>
+                <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; background: ${statusColor}20; color: ${statusColor}; text-transform: capitalize;">
+                    ${item.status.replace('_', ' ')}
+                </span>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <span style="font-size: 12px; color: var(--cds-text-secondary);">${currentRoadmap.items.length} items</span>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px;">
+                <input type="checkbox" id="tpSelectAll" checked onchange="toggleAllPushItems(this.checked)">
+                <span>Select all</span>
+            </label>
+        </div>
+        ${itemsHtml}
+    `;
+}
+
+function toggleAllPushItems(checked) {
+    const checkboxes = document.querySelectorAll('.tp-push-item-checkbox');
+    checkboxes.forEach(cb => cb.checked = checked);
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
+}
+
+async function handlePushToTP() {
+    const projectSelect = document.getElementById('tpProjectSelect');
+    const statusEl = document.getElementById('tpPushStatus');
+    const pushBtn = document.getElementById('tpPushBtn');
+
+    // Validate project selection
+    if (!projectSelect.value) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#fff1f1';
+        statusEl.style.color = '#da1e28';
+        statusEl.textContent = 'Please select a target project.';
+        return;
+    }
+
+    // Get selected items
+    const selectedItems = [];
+    document.querySelectorAll('.tp-push-item-checkbox:checked').forEach(cb => {
+        selectedItems.push(cb.dataset.itemId);
+    });
+
+    if (selectedItems.length === 0) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#fff1f1';
+        statusEl.style.color = '#da1e28';
+        statusEl.textContent = 'Please select at least one item to push.';
+        return;
+    }
+
+    // Get options
+    const options = {
+        project: projectSelect.value,
+        linkToCustomer: document.getElementById('tpLinkToCustomer').checked,
+        includeDates: document.getElementById('tpIncludeDates').checked,
+        skipExisting: document.getElementById('tpSkipExisting').checked,
+        itemIds: selectedItems
+    };
+
+    // Show loading state
+    pushBtn.disabled = true;
+    pushBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 32 32" class="spin" style="margin-right: 8px; animation: spin 1s linear infinite;">
+            <path d="M16 4v4a8 8 0 018 8h4a12 12 0 00-12-12z"/>
+        </svg>
+        Pushing...
+    `;
+
+    statusEl.style.display = 'block';
+    statusEl.style.background = '#e5f6ff';
+    statusEl.style.color = '#0043ce';
+    statusEl.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 32 32" style="animation: spin 1s linear infinite;"><path d="M16 4v4a8 8 0 018 8h4a12 12 0 00-12-12z"/></svg>
+            Pushing ${selectedItems.length} items to TargetProcess...
+        </div>
+    `;
+
+    // Simulate API call delay (since backend not implemented yet)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Show success (simulated)
+    statusEl.style.background = '#defbe6';
+    statusEl.style.color = '#24a148';
+    statusEl.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M14 21.414l-5-5L10.414 15 14 18.586 21.586 11 23 12.414l-9 9z"/><path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 26a12 12 0 1112-12 12 12 0 01-12 12z"/></svg>
+            Successfully pushed ${selectedItems.length} items to TargetProcess!
+        </div>
+        <div style="margin-top: 8px; font-size: 12px;">
+            Items have been created in the "${projectSelect.options[projectSelect.selectedIndex].text}" project.
+            <br><em style="opacity: 0.8;">(Note: Backend integration not yet implemented)</em>
+        </div>
+    `;
+
+    pushBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 32 32" style="margin-right: 8px;"><path d="M14 21.414l-5-5L10.414 15 14 18.586 21.586 11 23 12.414l-9 9z"/><path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 26a12 12 0 1112-12 12 12 0 01-12 12z"/></svg>
+        Done
+    `;
+
+    // Log what would be sent to the API
+    console.log('Push to TargetProcess payload:', {
+        customerId: customerId,
+        roadmapId: currentRoadmap.id,
+        options: options,
+        items: currentRoadmap.items.filter(item => selectedItems.includes(String(item.id)))
+    });
+}
+
 // Expose functions to window for onclick handlers
 window.openRoadmapItemModal = openRoadmapItemModal;
 window.closeRoadmapItemModal = closeRoadmapItemModal;
@@ -1084,6 +1272,10 @@ window.openCreateRoadmapModal = openCreateRoadmapModal;
 window.closeCreateRoadmapModal = closeCreateRoadmapModal;
 window.handleCreateRoadmap = handleCreateRoadmap;
 window.updateEndDateFromDuration = updateEndDateFromDuration;
+window.openPushToTPModal = openPushToTPModal;
+window.closePushToTPModal = closePushToTPModal;
+window.handlePushToTP = handlePushToTP;
+window.toggleAllPushItems = toggleAllPushItems;
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
