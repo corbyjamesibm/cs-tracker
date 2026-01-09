@@ -619,9 +619,418 @@ function truncateText(text, maxLength) {
     return text.substring(0, maxLength) + '...';
 }
 
+// ==========================================
+// ROADMAP MANAGEMENT
+// ==========================================
+
+let currentRoadmap = null;
+let roadmapQuarters = [];
+
+// Load and display roadmap for this customer
+async function loadRoadmap(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps/customer/${customerId}`);
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                showNoRoadmapState();
+                return;
+            }
+            throw new Error('Failed to load roadmap');
+        }
+
+        const roadmap = await response.json();
+
+        if (!roadmap) {
+            showNoRoadmapState();
+            return;
+        }
+
+        currentRoadmap = roadmap;
+        displayRoadmap(roadmap);
+
+    } catch (error) {
+        console.error('Failed to load roadmap:', error);
+        showNoRoadmapState();
+    }
+}
+
+// Show the "no roadmap" state
+function showNoRoadmapState() {
+    document.getElementById('noRoadmapState').style.display = 'block';
+    document.getElementById('roadmapContent').style.display = 'none';
+    document.getElementById('roadmapActions').style.display = 'none';
+}
+
+// Display roadmap timeline
+function displayRoadmap(roadmap) {
+    document.getElementById('noRoadmapState').style.display = 'none';
+    document.getElementById('roadmapContent').style.display = 'block';
+    document.getElementById('roadmapActions').style.display = 'flex';
+
+    // Calculate quarters to display based on roadmap dates
+    roadmapQuarters = generateQuarters(roadmap.start_date, roadmap.end_date);
+
+    // Update timeframe tag
+    const startYear = new Date(roadmap.start_date).getFullYear();
+    const endYear = new Date(roadmap.end_date).getFullYear();
+    document.getElementById('roadmapTimeframe').textContent = startYear === endYear ? startYear : `${startYear}-${endYear}`;
+
+    // Render quarter headers
+    renderQuarterHeaders(roadmapQuarters);
+
+    // Render roadmap items by category
+    renderRoadmapItems(roadmap.items, roadmapQuarters);
+
+    // Update last updated text
+    if (roadmap.updated_at) {
+        document.getElementById('roadmapLastUpdated').textContent = `Last updated: ${formatDate(roadmap.updated_at)}`;
+    }
+}
+
+// Generate quarters array between two dates
+function generateQuarters(startDate, endDate) {
+    const quarters = [];
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    let year = start.getFullYear();
+    let quarter = Math.floor(start.getMonth() / 3) + 1;
+
+    while (year < end.getFullYear() || (year === end.getFullYear() && quarter <= Math.floor(end.getMonth() / 3) + 1)) {
+        quarters.push(`Q${quarter} ${year}`);
+        quarter++;
+        if (quarter > 4) {
+            quarter = 1;
+            year++;
+        }
+        // Limit to 8 quarters max for display
+        if (quarters.length >= 8) break;
+    }
+
+    return quarters;
+}
+
+// Render quarter headers
+function renderQuarterHeaders(quarters) {
+    const container = document.getElementById('quarterHeaders');
+    container.innerHTML = `
+        <div style="font-weight: 600; font-size: 12px; color: var(--cds-text-secondary);">Category</div>
+        ${quarters.map(q => `
+            <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">${q}</div>
+        `).join('')}
+    `;
+}
+
+// Get color for roadmap item based on status
+function getRoadmapItemColor(status) {
+    const colors = {
+        'in_progress': 'linear-gradient(90deg, var(--cds-interactive) 0%, #4589ff 100%)',
+        'planned': 'linear-gradient(90deg, #8a3ffc 0%, #a56eff 100%)',
+        'completed': 'linear-gradient(90deg, var(--cds-support-success) 0%, #42be65 100%)',
+        'delayed': 'linear-gradient(90deg, var(--cds-support-warning) 0%, #fdd13a 100%)',
+        'cancelled': 'linear-gradient(90deg, #da1e28 0%, #fa4d56 100%)'
+    };
+    return colors[status] || colors.planned;
+}
+
+// Get display label for status
+function getRoadmapStatusLabel(status) {
+    const labels = {
+        'planned': 'Planned',
+        'in_progress': 'In Progress',
+        'completed': 'Completed',
+        'delayed': 'Delayed',
+        'cancelled': 'Cancelled'
+    };
+    return labels[status] || status;
+}
+
+// Render roadmap items grouped by category
+function renderRoadmapItems(items, quarters) {
+    const container = document.getElementById('roadmapItemsContainer');
+
+    if (!items || items.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 32px; color: var(--cds-text-secondary);">
+                No items yet. Click the + button to add roadmap items.
+            </div>
+        `;
+        return;
+    }
+
+    // Group items by category
+    const categories = {};
+    items.forEach(item => {
+        const cat = item.category || 'other';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push(item);
+    });
+
+    // Category display order and labels
+    const categoryOrder = ['feature', 'enhancement', 'integration', 'migration', 'optimization', 'other'];
+    const categoryLabels = {
+        'feature': 'Features',
+        'enhancement': 'Enhancements',
+        'integration': 'Integrations',
+        'migration': 'Migration',
+        'optimization': 'Optimization',
+        'other': 'Other'
+    };
+
+    let html = '';
+    const gridCols = quarters.length;
+
+    categoryOrder.forEach(cat => {
+        if (!categories[cat]) return;
+
+        html += `
+            <div style="display: grid; grid-template-columns: 150px repeat(${gridCols}, 1fr); gap: 4px; margin-bottom: 8px; align-items: center;">
+                <div style="font-weight: 500; font-size: 13px; padding: 8px 0;">${categoryLabels[cat]}</div>
+        `;
+
+        // Create a map of quarter to items for this category
+        const quarterItems = {};
+        categories[cat].forEach(item => {
+            const q = item.target_quarter;
+            if (!quarterItems[q]) quarterItems[q] = [];
+            quarterItems[q].push(item);
+        });
+
+        // Render items in their quarters
+        quarters.forEach((quarter, index) => {
+            const qItems = quarterItems[quarter] || [];
+            if (qItems.length > 0) {
+                qItems.forEach(item => {
+                    const colStart = index + 2; // +2 because col 1 is category label
+                    const bgColor = getRoadmapItemColor(item.status);
+                    const textColor = item.status === 'delayed' ? '#161616' : 'white';
+
+                    html += `
+                        <div style="grid-column: ${colStart} / ${colStart + 1}; background: ${bgColor}; color: ${textColor}; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;"
+                             onclick="editRoadmapItem(${item.id})"
+                             title="${item.title} - ${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' (' + item.progress_percent + '%)' : ''}">
+                            <div style="font-weight: 500;">${truncateText(item.title, 25)}</div>
+                            <div style="opacity: 0.8; font-size: 10px;">${getRoadmapStatusLabel(item.status)}</div>
+                        </div>
+                    `;
+                });
+            }
+        });
+
+        html += '</div>';
+    });
+
+    container.innerHTML = html;
+}
+
+// Open roadmap item modal for creating
+function openRoadmapItemModal() {
+    if (!currentRoadmap) {
+        alert('Please create a roadmap first');
+        return;
+    }
+
+    document.getElementById('roadmapItemModalTitle').textContent = 'Add Roadmap Item';
+    document.getElementById('roadmapItemSubmitBtn').textContent = 'Add Item';
+    document.getElementById('roadmapItemId').value = '';
+    document.getElementById('roadmapItemForm').reset();
+    document.getElementById('roadmapItemStatus').value = 'planned';
+    document.getElementById('roadmapItemProgress').value = '0';
+
+    // Hide delete button for new items
+    document.getElementById('roadmapItemDeleteBtn').style.display = 'none';
+
+    // Update quarter options based on current roadmap
+    updateQuarterOptions();
+
+    document.getElementById('roadmapItemModal').classList.add('open');
+}
+
+// Close roadmap item modal
+function closeRoadmapItemModal() {
+    document.getElementById('roadmapItemModal').classList.remove('open');
+}
+
+// Update quarter dropdown options based on roadmap dates
+function updateQuarterOptions() {
+    const select = document.getElementById('roadmapItemQuarter');
+    select.innerHTML = roadmapQuarters.map(q => `<option value="${q}">${q}</option>`).join('');
+}
+
+// Edit existing roadmap item
+function editRoadmapItem(itemId) {
+    const item = currentRoadmap.items.find(i => i.id === itemId);
+    if (!item) return;
+
+    document.getElementById('roadmapItemModalTitle').textContent = 'Edit Roadmap Item';
+    document.getElementById('roadmapItemSubmitBtn').textContent = 'Update Item';
+    document.getElementById('roadmapItemId').value = itemId;
+
+    document.getElementById('roadmapItemTitle').value = item.title;
+    document.getElementById('roadmapItemDescription').value = item.description || '';
+    document.getElementById('roadmapItemCategory').value = item.category;
+    document.getElementById('roadmapItemStatus').value = item.status;
+    document.getElementById('roadmapItemProgress').value = item.progress_percent || 0;
+    document.getElementById('roadmapItemNotes').value = item.notes || '';
+
+    // Show delete button for existing items
+    document.getElementById('roadmapItemDeleteBtn').style.display = 'block';
+
+    // Update quarter options and select current quarter
+    updateQuarterOptions();
+    document.getElementById('roadmapItemQuarter').value = item.target_quarter;
+
+    document.getElementById('roadmapItemModal').classList.add('open');
+}
+
+// Handle roadmap item form submit
+async function handleRoadmapItemSubmit(event) {
+    event.preventDefault();
+
+    const itemId = document.getElementById('roadmapItemId').value;
+    const isEdit = !!itemId;
+
+    const quarter = document.getElementById('roadmapItemQuarter').value;
+    const yearMatch = quarter.match(/\d{4}/);
+    const targetYear = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear();
+
+    const data = {
+        title: document.getElementById('roadmapItemTitle').value,
+        description: document.getElementById('roadmapItemDescription').value || null,
+        category: document.getElementById('roadmapItemCategory').value,
+        status: document.getElementById('roadmapItemStatus').value,
+        target_quarter: quarter,
+        target_year: targetYear,
+        progress_percent: parseInt(document.getElementById('roadmapItemProgress').value) || 0,
+        notes: document.getElementById('roadmapItemNotes').value || null
+    };
+
+    try {
+        let response;
+        if (isEdit) {
+            response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        } else {
+            response = await fetch(`${API_BASE_URL}/roadmaps/${currentRoadmap.id}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        }
+
+        if (!response.ok) throw new Error('Failed to save roadmap item');
+
+        closeRoadmapItemModal();
+
+        // Reload roadmap to refresh display
+        const customerId = getCustomerId();
+        await loadRoadmap(customerId);
+
+    } catch (error) {
+        console.error('Failed to save roadmap item:', error);
+        alert('Failed to save roadmap item. Please try again.');
+    }
+}
+
+// Delete roadmap item
+async function deleteRoadmapItem(itemId) {
+    if (!confirm('Are you sure you want to delete this roadmap item?')) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) throw new Error('Failed to delete roadmap item');
+
+        closeRoadmapItemModal();
+
+        // Reload roadmap to refresh display
+        const customerId = getCustomerId();
+        await loadRoadmap(customerId);
+
+    } catch (error) {
+        console.error('Failed to delete roadmap item:', error);
+        alert('Failed to delete roadmap item. Please try again.');
+    }
+}
+
+// Open create roadmap modal
+function openCreateRoadmapModal() {
+    // Set default dates (current quarter start to 2 years out)
+    const today = new Date();
+    const startDate = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+    const endDate = new Date(today.getFullYear() + 2, Math.floor(today.getMonth() / 3) * 3, 0);
+
+    document.getElementById('roadmapStartDate').value = startDate.toISOString().split('T')[0];
+    document.getElementById('roadmapEndDate').value = endDate.toISOString().split('T')[0];
+    document.getElementById('roadmapName').value = 'Product Roadmap';
+    document.getElementById('roadmapDescription').value = '';
+
+    document.getElementById('createRoadmapModal').classList.add('open');
+}
+
+// Close create roadmap modal
+function closeCreateRoadmapModal() {
+    document.getElementById('createRoadmapModal').classList.remove('open');
+}
+
+// Handle create roadmap form submit
+async function handleCreateRoadmap(event) {
+    event.preventDefault();
+
+    const customerId = getCustomerId();
+
+    const data = {
+        customer_id: parseInt(customerId),
+        name: document.getElementById('roadmapName').value || 'Product Roadmap',
+        description: document.getElementById('roadmapDescription').value || null,
+        start_date: document.getElementById('roadmapStartDate').value,
+        end_date: document.getElementById('roadmapEndDate').value
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) throw new Error('Failed to create roadmap');
+
+        closeCreateRoadmapModal();
+        await loadRoadmap(customerId);
+
+    } catch (error) {
+        console.error('Failed to create roadmap:', error);
+        alert('Failed to create roadmap. Please try again.');
+    }
+}
+
+// Expose functions to window for onclick handlers
+window.openRoadmapItemModal = openRoadmapItemModal;
+window.closeRoadmapItemModal = closeRoadmapItemModal;
+window.editRoadmapItem = editRoadmapItem;
+window.handleRoadmapItemSubmit = handleRoadmapItemSubmit;
+window.deleteRoadmapItem = deleteRoadmapItem;
+window.openCreateRoadmapModal = openCreateRoadmapModal;
+window.closeCreateRoadmapModal = closeCreateRoadmapModal;
+window.handleCreateRoadmap = handleCreateRoadmap;
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     loadCustomerDetail();
+
+    // Load roadmap after customer loads
+    const customerId = getCustomerId();
+    if (customerId) {
+        loadRoadmap(customerId);
+    }
 });
 
 // Nav toggle function

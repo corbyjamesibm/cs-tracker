@@ -145,6 +145,52 @@ const RoadmapAPI = {
     async getById(id) {
         return apiRequest(`/roadmaps/${id}`);
     },
+
+    async create(data) {
+        return apiRequest('/roadmaps', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    // Roadmap Items
+    async addItem(roadmapId, data) {
+        return apiRequest(`/roadmaps/${roadmapId}/items`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async updateItem(itemId, data) {
+        return apiRequest(`/roadmaps/items/${itemId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async deleteItem(itemId) {
+        const url = `${API_BASE_URL}/roadmaps/items/${itemId}`;
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return true;
+    },
+
+    // Quarterly Updates
+    async addItemUpdate(itemId, data) {
+        return apiRequest(`/roadmaps/items/${itemId}/updates`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async getItemUpdates(itemId) {
+        return apiRequest(`/roadmaps/items/${itemId}/updates`);
+    },
 };
 
 // Utility functions

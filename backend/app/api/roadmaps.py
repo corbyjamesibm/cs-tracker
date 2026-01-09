@@ -48,7 +48,13 @@ async def create_roadmap(roadmap_in: RoadmapCreate, db: AsyncSession = Depends(g
     roadmap = Roadmap(**roadmap_in.model_dump())
     db.add(roadmap)
     await db.flush()
-    await db.refresh(roadmap)
+
+    # Fetch with items loaded
+    query = select(Roadmap).where(Roadmap.id == roadmap.id).options(
+        selectinload(Roadmap.items)
+    )
+    result = await db.execute(query)
+    roadmap = result.scalar_one()
 
     return RoadmapResponse.model_validate(roadmap)
 
