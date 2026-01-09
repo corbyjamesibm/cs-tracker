@@ -659,14 +659,16 @@ async function loadRoadmap(customerId) {
 function showNoRoadmapState() {
     document.getElementById('noRoadmapState').style.display = 'block';
     document.getElementById('roadmapContent').style.display = 'none';
-    document.getElementById('roadmapActions').style.display = 'none';
+    document.getElementById('roadmapTimeframe').style.display = 'none';
+    document.getElementById('addRoadmapItemBtn').style.display = 'none';
 }
 
 // Display roadmap timeline
 function displayRoadmap(roadmap) {
     document.getElementById('noRoadmapState').style.display = 'none';
     document.getElementById('roadmapContent').style.display = 'block';
-    document.getElementById('roadmapActions').style.display = 'flex';
+    document.getElementById('roadmapTimeframe').style.display = 'inline-block';
+    document.getElementById('addRoadmapItemBtn').style.display = 'inline-flex';
 
     // Calculate quarters to display based on roadmap dates
     roadmapQuarters = generateQuarters(roadmap.start_date, roadmap.end_date);
