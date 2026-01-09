@@ -597,17 +597,27 @@
 
                 <div class="form-row">
                   <div class="form-group">
-                    <label class="form-label" for="roadmapItemQuarter">Target Quarter *</label>
-                    <select id="roadmapItemQuarter" class="select-input" required>
-                      <option value="Q1 2026">Q1 2026</option>
-                      <option value="Q2 2026">Q2 2026</option>
-                      <option value="Q3 2026">Q3 2026</option>
-                      <option value="Q4 2026">Q4 2026</option>
-                      <option value="Q1 2027">Q1 2027</option>
-                      <option value="Q2 2027">Q2 2027</option>
-                      <option value="Q3 2027">Q3 2027</option>
-                      <option value="Q4 2027">Q4 2027</option>
+                    <label class="form-label" for="roadmapItemStartDate">Start Date *</label>
+                    <input type="date" id="roadmapItemStartDate" class="text-input" required>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="roadmapItemDuration">Duration</label>
+                    <select id="roadmapItemDuration" class="select-input" onchange="updateEndDateFromDuration()">
+                      <option value="">Custom end date</option>
+                      <option value="1">1 month</option>
+                      <option value="2">2 months</option>
+                      <option value="3">3 months (1 quarter)</option>
+                      <option value="6">6 months (2 quarters)</option>
+                      <option value="9">9 months (3 quarters)</option>
+                      <option value="12">12 months (1 year)</option>
                     </select>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label" for="roadmapItemEndDate">End Date *</label>
+                    <input type="date" id="roadmapItemEndDate" class="text-input" required>
                   </div>
                   <div class="form-group">
                     <label class="form-label" for="roadmapItemProgress">Progress (%)</label>
@@ -707,6 +717,6 @@
     </nav>
   </div>
 
-  <script src="js/customer-detail.js?v=6"></script>
+  <script src="js/customer-detail.js?v=7"></script>
 </body>
 </html>

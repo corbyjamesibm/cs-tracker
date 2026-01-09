@@ -748,6 +748,15 @@ function getRoadmapStatusLabel(status) {
     return labels[status] || status;
 }
 
+// Get quarter index from date within the quarters array
+function getQuarterIndex(date, quarters) {
+    if (!date) return -1;
+    const d = new Date(date);
+    const quarter = Math.floor(d.getMonth() / 3) + 1;
+    const quarterStr = `Q${quarter} ${d.getFullYear()}`;
+    return quarters.indexOf(quarterStr);
+}
+
 // Render roadmap items grouped by category
 function renderRoadmapItems(items, quarters) {
     const container = document.getElementById('roadmapItemsContainer');
@@ -787,43 +796,76 @@ function renderRoadmapItems(items, quarters) {
         if (!categories[cat]) return;
 
         html += `
-            <div style="display: grid; grid-template-columns: 150px repeat(${gridCols}, 1fr); gap: 4px; margin-bottom: 8px; align-items: center;">
+            <div style="display: grid; grid-template-columns: 150px repeat(${gridCols}, 1fr); gap: 4px; margin-bottom: 8px; align-items: start;">
                 <div style="font-weight: 500; font-size: 13px; padding: 8px 0;">${categoryLabels[cat]}</div>
         `;
 
-        // Create a map of quarter to items for this category
-        const quarterItems = {};
+        // Render each item with proper column span based on dates
         categories[cat].forEach(item => {
-            const q = item.target_quarter;
-            if (!quarterItems[q]) quarterItems[q] = [];
-            quarterItems[q].push(item);
-        });
+            let colStart, colEnd;
 
-        // Render items in their quarters
-        quarters.forEach((quarter, index) => {
-            const qItems = quarterItems[quarter] || [];
-            if (qItems.length > 0) {
-                qItems.forEach(item => {
-                    const colStart = index + 2; // +2 because col 1 is category label
-                    const bgColor = getRoadmapItemColor(item.status);
-                    const textColor = item.status === 'delayed' ? '#161616' : 'white';
+            if (item.planned_start_date && item.planned_end_date) {
+                // Calculate column span from dates
+                const startIdx = getQuarterIndex(item.planned_start_date, quarters);
+                const endIdx = getQuarterIndex(item.planned_end_date, quarters);
 
-                    html += `
-                        <div style="grid-column: ${colStart} / ${colStart + 1}; background: ${bgColor}; color: ${textColor}; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;"
-                             onclick="editRoadmapItem(${item.id})"
-                             title="${item.title} - ${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' (' + item.progress_percent + '%)' : ''}">
-                            <div style="font-weight: 500;">${truncateText(item.title, 25)}</div>
-                            <div style="opacity: 0.8; font-size: 10px;">${getRoadmapStatusLabel(item.status)}</div>
-                        </div>
-                    `;
-                });
+                // If start is before our range, start at first quarter
+                colStart = (startIdx >= 0 ? startIdx : 0) + 2; // +2 for category column
+                // If end is after our range or not found, end at last quarter
+                colEnd = (endIdx >= 0 ? endIdx : quarters.length - 1) + 3; // +3 because grid-column end is exclusive
+
+                // Ensure minimum span of 1
+                if (colEnd <= colStart) colEnd = colStart + 1;
+            } else {
+                // Fallback to target_quarter for single quarter span
+                const quarterIdx = quarters.indexOf(item.target_quarter);
+                colStart = (quarterIdx >= 0 ? quarterIdx : 0) + 2;
+                colEnd = colStart + 1;
             }
+
+            const bgColor = getRoadmapItemColor(item.status);
+            const textColor = item.status === 'delayed' ? '#161616' : 'white';
+
+            // Format date range for tooltip
+            const dateRange = item.planned_start_date && item.planned_end_date
+                ? `${formatDate(item.planned_start_date)} - ${formatDate(item.planned_end_date)}`
+                : item.target_quarter;
+
+            html += `
+                <div style="grid-column: ${colStart} / ${colEnd}; background: ${bgColor}; color: ${textColor}; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;"
+                     onclick="editRoadmapItem(${item.id})"
+                     title="${item.title}\n${dateRange}\n${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' (' + item.progress_percent + '%)' : ''}">
+                    <div style="font-weight: 500;">${truncateText(item.title, 30)}</div>
+                    <div style="opacity: 0.8; font-size: 10px;">${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' - ' + item.progress_percent + '%' : ''}</div>
+                </div>
+            `;
         });
 
         html += '</div>';
     });
 
     container.innerHTML = html;
+}
+
+// Calculate end date from duration
+function updateEndDateFromDuration() {
+    const startDateStr = document.getElementById('roadmapItemStartDate').value;
+    const duration = document.getElementById('roadmapItemDuration').value;
+
+    if (startDateStr && duration) {
+        const startDate = new Date(startDateStr);
+        const endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + parseInt(duration));
+        endDate.setDate(endDate.getDate() - 1); // End on last day of period
+        document.getElementById('roadmapItemEndDate').value = endDate.toISOString().split('T')[0];
+    }
+}
+
+// Get quarter string from date
+function getQuarterFromDate(date) {
+    const d = new Date(date);
+    const quarter = Math.floor(d.getMonth() / 3) + 1;
+    return `Q${quarter} ${d.getFullYear()}`;
 }
 
 // Open roadmap item modal for creating
@@ -840,11 +882,19 @@ function openRoadmapItemModal() {
     document.getElementById('roadmapItemStatus').value = 'planned';
     document.getElementById('roadmapItemProgress').value = '0';
 
+    // Set default dates (start of next month, 3 months duration)
+    const today = new Date();
+    const startDate = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 3);
+    endDate.setDate(endDate.getDate() - 1);
+
+    document.getElementById('roadmapItemStartDate').value = startDate.toISOString().split('T')[0];
+    document.getElementById('roadmapItemEndDate').value = endDate.toISOString().split('T')[0];
+    document.getElementById('roadmapItemDuration').value = '3';
+
     // Hide delete button for new items
     document.getElementById('roadmapItemDeleteBtn').style.display = 'none';
-
-    // Update quarter options based on current roadmap
-    updateQuarterOptions();
 
     document.getElementById('roadmapItemModal').classList.add('open');
 }
@@ -876,12 +926,17 @@ function editRoadmapItem(itemId) {
     document.getElementById('roadmapItemProgress').value = item.progress_percent || 0;
     document.getElementById('roadmapItemNotes').value = item.notes || '';
 
+    // Set dates
+    if (item.planned_start_date) {
+        document.getElementById('roadmapItemStartDate').value = item.planned_start_date;
+    }
+    if (item.planned_end_date) {
+        document.getElementById('roadmapItemEndDate').value = item.planned_end_date;
+    }
+    document.getElementById('roadmapItemDuration').value = ''; // Custom
+
     // Show delete button for existing items
     document.getElementById('roadmapItemDeleteBtn').style.display = 'block';
-
-    // Update quarter options and select current quarter
-    updateQuarterOptions();
-    document.getElementById('roadmapItemQuarter').value = item.target_quarter;
 
     document.getElementById('roadmapItemModal').classList.add('open');
 }
@@ -893,9 +948,12 @@ async function handleRoadmapItemSubmit(event) {
     const itemId = document.getElementById('roadmapItemId').value;
     const isEdit = !!itemId;
 
-    const quarter = document.getElementById('roadmapItemQuarter').value;
-    const yearMatch = quarter.match(/\d{4}/);
-    const targetYear = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear();
+    const startDate = document.getElementById('roadmapItemStartDate').value;
+    const endDate = document.getElementById('roadmapItemEndDate').value;
+
+    // Calculate target quarter from start date
+    const quarter = getQuarterFromDate(startDate);
+    const targetYear = new Date(startDate).getFullYear();
 
     const data = {
         title: document.getElementById('roadmapItemTitle').value,
@@ -904,6 +962,8 @@ async function handleRoadmapItemSubmit(event) {
         status: document.getElementById('roadmapItemStatus').value,
         target_quarter: quarter,
         target_year: targetYear,
+        planned_start_date: startDate,
+        planned_end_date: endDate,
         progress_percent: parseInt(document.getElementById('roadmapItemProgress').value) || 0,
         notes: document.getElementById('roadmapItemNotes').value || null
     };
@@ -1023,6 +1083,7 @@ window.deleteRoadmapItem = deleteRoadmapItem;
 window.openCreateRoadmapModal = openCreateRoadmapModal;
 window.closeCreateRoadmapModal = closeCreateRoadmapModal;
 window.handleCreateRoadmap = handleCreateRoadmap;
+window.updateEndDateFromDuration = updateEndDateFromDuration;
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
