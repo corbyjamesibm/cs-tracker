@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acme Corporation - Customer Status Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .customer-header {
+      background: linear-gradient(135deg, #161616 0%, #393939 100%);
+      color: white;
+      padding: var(--cds-spacing-06);
+      margin: calc(-1 * var(--cds-spacing-06));
+      margin-bottom: var(--cds-spacing-05);
+    }
+    .customer-header__top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--cds-spacing-05);
+    }
+    .customer-header__name {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: var(--cds-spacing-02);
+    }
+    .customer-header__meta {
+      display: flex;
+      gap: var(--cds-spacing-05);
+      font-size: 0.875rem;
+      opacity: 0.8;
+    }
+    .customer-header__stats {
+      display: flex;
+      gap: var(--cds-spacing-07);
+    }
+    .customer-header__stat {
+      text-align: center;
+    }
+    .customer-header__stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    .customer-header__stat-label {
+      font-size: 0.75rem;
+      opacity: 0.7;
+      text-transform: uppercase;
+    }
+    .section-title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: var(--cds-spacing-04);
+      display: flex;
+      align-items: center;
+      gap: var(--cds-spacing-03);
+    }
+    .adoption-stage {
+      display: flex;
+      gap: var(--cds-spacing-02);
+      margin-bottom: var(--cds-spacing-05);
+    }
+    .adoption-stage__step {
+      flex: 1;
+      text-align: center;
+      padding: var(--cds-spacing-03);
+      background: var(--cds-layer-02);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      position: relative;
+    }
+    .adoption-stage__step::after {
+      content: '';
+      position: absolute;
+      right: -8px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 6px solid transparent;
+      border-left-color: var(--cds-layer-02);
+      z-index: 1;
+    }
+    .adoption-stage__step:last-child::after {
+      display: none;
+    }
+    .adoption-stage__step.completed {
+      background: var(--cds-support-success);
+      color: white;
+    }
+    .adoption-stage__step.completed::after {
+      border-left-color: var(--cds-support-success);
+    }
+    .adoption-stage__step.current {
+      background: var(--cds-interactive);
+      color: white;
+    }
+    .adoption-stage__step.current::after {
+      border-left-color: var(--cds-interactive);
+    }
+    .checklist {
+      list-style: none;
+    }
+    .checklist__item {
+      display: flex;
+      align-items: center;
+      gap: var(--cds-spacing-03);
+      padding: var(--cds-spacing-03) 0;
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+    }
+    .checklist__checkbox {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--cds-border-strong-01);
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .checklist__checkbox.checked {
+      background: var(--cds-support-success);
+      border-color: var(--cds-support-success);
+      color: white;
+    }
+    .checklist__checkbox.in-progress {
+      background: var(--cds-support-warning);
+      border-color: var(--cds-support-warning);
+    }
+    .contact-card {
+      display: flex;
+      align-items: center;
+      gap: var(--cds-spacing-04);
+      padding: var(--cds-spacing-04);
+      background: var(--cds-layer-02);
+      border-radius: 4px;
+      margin-bottom: var(--cds-spacing-03);
+    }
+    .contact-card__info {
+      flex: 1;
+    }
+    .contact-card__name {
+      font-weight: 500;
+    }
+    .contact-card__role {
+      font-size: 0.75rem;
+      color: var(--cds-text-secondary);
+    }
+    .contact-card__actions {
+      display: flex;
+      gap: var(--cds-spacing-02);
+    }
+    @media (max-width: 768px) {
+      .customer-header {
+        padding: var(--cds-spacing-05);
+        margin: calc(-1 * var(--cds-spacing-05));
+        margin-bottom: var(--cds-spacing-04);
+      }
+      .customer-header__top {
+        flex-direction: column;
+        gap: var(--cds-spacing-04);
+      }
+      .customer-header__name {
+        font-size: 1.5rem;
+      }
+      .customer-header__stats {
+        gap: var(--cds-spacing-05);
+        flex-wrap: wrap;
+      }
+      .adoption-stage {
+        flex-direction: column;
+      }
+      .adoption-stage__step::after {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Side Navigation -->
+    <nav class="side-nav" id="sideNav">
+      <div class="side-nav__header">
+        <div class="side-nav__logo">CS</div>
+        <span class="side-nav__title">CS Tracker</span>
+      </div>
+      <ul class="side-nav__items">
+        <li class="side-nav__item">
+          <a href="index.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2zm12 26h-6V16H10v12H4V13.21l12-9 12 9V28z"/></svg>
+            Dashboard
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="customers.html" class="side-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zM12 6h8v4h-8V6zm16 20H4V12h24v14z"/></svg>
+            Customers
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="tasks.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            Tasks
+          </a>
+        </li>
+        <li class="side-nav__divider"></li>
+        <li class="side-nav__item">
+          <a href="reports.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+            Reports
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="admin.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M27 16.76V16v-.77l1.92-1.68a2 2 0 00.4-2.4l-2-3.46a2 2 0 00-1.94-1 2 2 0 00-.64.1l-2.43.82a11.35 11.35 0 00-1.31-.75l-.51-2.52a2 2 0 00-2-1.61h-4a2 2 0 00-2 1.61l-.51 2.52a11.48 11.48 0 00-1.32.75l-2.38-.86a2 2 0 00-.68-.09 2 2 0 00-1.72 1l-2 3.46a2 2 0 00.4 2.4l1.92 1.68V16v.77l-1.92 1.68a2 2 0 00-.4 2.4l2 3.46a2 2 0 00 1.72 1 2 2 0 00.68-.09l2.42-.82a11.35 11.35 0 001.31.75l.51 2.52a2 2 0 002 1.61h4a2 2 0 002-1.61l.51-2.52a11.48 11.48 0 001.32-.75l2.42.82a2 2 0 00.64.09 2 2 0 001.72-1l2-3.46a2 2 0 00-.4-2.4zM16 22a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
+            Admin
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="header__left">
+          <button class="hamburger" onclick="toggleNav()">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <a href="customers.html" style="color: var(--cds-text-secondary); text-decoration: none; display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M10 16L20 6l1.4 1.4-8.6 8.6 8.6 8.6L20 26z"/></svg>
+            Back to Customers
+          </a>
+        </div>
+        <div class="header__right">
+          <button class="btn btn--tertiary">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M4 4v2h2.586L2 10.586 3.414 12 8 7.414V10h2V4H4zm18 0v6h2V7.414L28.586 12 30 10.586 25.414 6H28V4H22z"/></svg>
+            Export to PPT
+          </button>
+          <button class="btn btn--primary">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+            Add Task
+          </button>
+          <div class="user-menu">
+            <div class="avatar">SJ</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <div class="page-content">
+        <!-- Customer Header -->
+        <div class="customer-header">
+          <div class="customer-header__top">
+            <div>
+              <h1 class="customer-header__name" id="customerName">Loading...</h1>
+              <div class="customer-header__meta">
+                <span id="customerSfId">-</span>
+                <span>|</span>
+                <span id="customerProducts">-</span>
+                <span>|</span>
+                <span id="customerSince"></span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <span class="health-badge health-badge--gray" id="healthBadge" style="font-size: 14px; padding: 8px 16px;">-</span>
+              <span class="tag tag--blue" id="partnerBadge" style="font-size: 14px; padding: 8px 16px; display: none;"></span>
+            </div>
+          </div>
+          <div class="customer-header__stats">
+            <div class="customer-header__stat">
+              <div class="customer-header__stat-value" id="statArr">-</div>
+              <div class="customer-header__stat-label">ARR</div>
+            </div>
+            <div class="customer-header__stat">
+              <div class="customer-header__stat-value" id="statRenewal">-</div>
+              <div class="customer-header__stat-label">Renewal</div>
+            </div>
+            <div class="customer-header__stat">
+              <div class="customer-header__stat-value" id="statAdoption">-</div>
+              <div class="customer-header__stat-label">Adoption</div>
+            </div>
+            <div class="customer-header__stat">
+              <div class="customer-header__stat-value" id="statDaysToRenewal">-</div>
+              <div class="customer-header__stat-label">Days to Renewal</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <nav class="tabs">
+          <ul class="tabs__list">
+            <li><a href="#" class="tabs__tab active">Overview</a></li>
+            <li><a href="#" class="tabs__tab">Usage Framework</a></li>
+            <li><a href="#" class="tabs__tab">Engagements</a></li>
+            <li><a href="#" class="tabs__tab">Tasks</a></li>
+            <li><a href="#" class="tabs__tab">TargetProcess</a></li>
+            <li><a href="#" class="tabs__tab">Roadmap</a></li>
+            <li><a href="#" class="tabs__tab">Documents</a></li>
+          </ul>
+        </nav>
+
+        <div class="grid grid--2">
+          <!-- Left Column -->
+          <div>
+            <!-- Account Details -->
+            <div class="card">
+              <h2 class="section-title">
+                <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2z"/></svg>
+                Account Details
+              </h2>
+              <div class="grid grid--2" style="gap: 16px;">
+                <div>
+                  <div class="form-label">Account Manager</div>
+                  <div style="font-weight: 500;" id="accountManager">-</div>
+                </div>
+                <div>
+                  <div class="form-label">CSM Owner</div>
+                  <div style="font-weight: 500;" id="csmOwner">-</div>
+                </div>
+                <div>
+                  <div class="form-label">Industry</div>
+                  <div id="customerIndustry">-</div>
+                </div>
+                <div>
+                  <div class="form-label">Employees</div>
+                  <div id="customerEmployees">-</div>
+                </div>
+                <div>
+                  <div class="form-label">Contract Start</div>
+                  <div id="contractStart">-</div>
+                </div>
+                <div>
+                  <div class="form-label">Contract End</div>
+                  <div id="contractEnd">-</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Adoption Journey -->
+            <div class="card">
+              <h2 class="section-title">
+                <svg width="20" height="20" viewBox="0 0 32 32"><path d="M12 29a1 1 0 01-.92-.62L6.33 17H2v-2h5a1 1 0 01.92.62L12 25.28l8.06-21.63A1 1 0 0121 3a1 1 0 01.93.68L25.74 15H30v2h-5a1 1 0 01-.95-.68L21 7.04l-8.05 21.34A1 1 0 0112 29z"/></svg>
+                Adoption Journey
+              </h2>
+              <div class="adoption-stage">
+                <div class="adoption-stage__step" id="stage-onboarding">
+                  <strong>Onboarding</strong>
+                  <div>-</div>
+                </div>
+                <div class="adoption-stage__step" id="stage-adoption">
+                  <strong>Adoption</strong>
+                  <div>-</div>
+                </div>
+                <div class="adoption-stage__step" id="stage-value_realization">
+                  <strong>Value Realization</strong>
+                  <div>-</div>
+                </div>
+                <div class="adoption-stage__step" id="stage-expansion">
+                  <strong>Expansion</strong>
+                  <div>-</div>
+                </div>
+                <div class="adoption-stage__step" id="stage-renewal">
+                  <strong>Renewal</strong>
+                  <div>-</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Use Case Tracker -->
+            <div class="card">
+              <div class="card__header">
+                <h2 class="section-title" style="margin-bottom: 0;">
+                  <svg width="20" height="20" viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/></svg>
+                  Use Case Tracker
+                </h2>
+                <span id="useCaseProgress" class="tag tag--blue">Loading...</span>
+              </div>
+              <div class="progress mb-4" style="height: 12px;">
+                <div id="useCaseProgressBar" class="progress__bar progress__bar--success" style="width: 0%;"></div>
+              </div>
+
+              <!-- Solution Area Tabs -->
+              <div id="solutionAreaTabs" class="tabs mb-4" style="border-bottom: 1px solid var(--cds-border-subtle); display: flex; gap: 0;">
+                <button class="tab-btn active" data-area="WFM" style="padding: 8px 16px; border: none; background: none; cursor: pointer; border-bottom: 2px solid var(--cds-interactive); font-weight: 500;">WFM</button>
+                <button class="tab-btn" data-area="HPM" style="padding: 8px 16px; border: none; background: none; cursor: pointer; color: var(--cds-text-secondary);">HPM</button>
+                <button class="tab-btn" data-area="EAP" style="padding: 8px 16px; border: none; background: none; cursor: pointer; color: var(--cds-text-secondary);">EAP</button>
+                <button class="tab-btn" data-area="POM" style="padding: 8px 16px; border: none; background: none; cursor: pointer; color: var(--cds-text-secondary);">POM</button>
+                <button class="tab-btn" data-area="FPM" style="padding: 8px 16px; border: none; background: none; cursor: pointer; color: var(--cds-text-secondary);">FPM</button>
+              </div>
+
+              <!-- Use Cases Container -->
+              <div id="useCasesContainer">
+                <div class="text-secondary text-center" style="padding: 24px;">Loading use cases...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column -->
+          <div>
+            <!-- Health Score -->
+            <div class="card">
+              <h2 class="section-title">
+                <svg width="20" height="20" viewBox="0 0 32 32"><path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 26a12 12 0 1112-12 12 12 0 01-12 12z"/><path d="M16 8a8 8 0 108 8 8 8 0 00-8-8zm0 14a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
+                Health Score
+                <span style="margin-left: auto; font-size: 12px; color: var(--cds-text-secondary);">from Gainsight</span>
+              </h2>
+              <div id="healthScoreContainer" class="flex gap-5 flex-center">
+                <div style="text-align: center;">
+                  <div id="healthScoreCircle" style="width: 100px; height: 100px; border-radius: 50%; background: conic-gradient(var(--health-green) 0deg 306deg, var(--cds-background-hover) 306deg 360deg); display: flex; align-items: center; justify-content: center;">
+                    <div id="healthScoreValue" style="width: 70px; height: 70px; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; color: var(--health-green);">-</div>
+                  </div>
+                  <div class="text-secondary mt-2" style="font-size: 12px;">Score</div>
+                </div>
+                <div style="flex: 1;">
+                  <div class="flex flex-between mb-2">
+                    <span class="text-secondary">30-day trend</span>
+                    <span id="healthTrend" class="text-success">-</span>
+                  </div>
+                  <div class="flex flex-between mb-2">
+                    <span class="text-secondary">Product Usage</span>
+                    <span id="productUsage">-</span>
+                  </div>
+                  <div class="flex flex-between mb-2">
+                    <span class="text-secondary">Engagement</span>
+                    <span id="engagementLevel">-</span>
+                  </div>
+                  <div class="flex flex-between">
+                    <span class="text-secondary">Support Tickets</span>
+                    <span id="supportTickets">-</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Key Contacts -->
+            <div class="card">
+              <div class="card__header">
+                <h2 class="section-title" style="margin-bottom: 0;">
+                  <svg width="20" height="20" viewBox="0 0 32 32"><path d="M16 4a5 5 0 11-5 5 5 5 0 015-5m0-2a7 7 0 107 7 7 7 0 00-7-7zM26 30h-2v-5a5 5 0 00-5-5h-6a5 5 0 00-5 5v5H6v-5a7 7 0 017-7h6a7 7 0 017 7z"/></svg>
+                  Key Contacts
+                </h2>
+                <button class="btn btn--ghost btn--icon">
+                  <svg width="16" height="16" viewBox="0 0 32 32"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+                </button>
+              </div>
+              <div id="keyContactsContainer">
+                <div class="text-secondary text-center" style="padding: 16px;">Loading contacts...</div>
+              </div>
+            </div>
+
+            <!-- Open Tasks -->
+            <div class="card">
+              <div class="card__header">
+                <h2 class="section-title" style="margin-bottom: 0;">
+                  <svg width="20" height="20" viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/></svg>
+                  Open Tasks
+                </h2>
+                <span id="openTasksCount" class="tag">- Tasks</span>
+              </div>
+              <div id="openTasksContainer">
+                <div class="text-secondary text-center" style="padding: 16px;">Loading tasks...</div>
+              </div>
+            </div>
+
+            <!-- Recent Engagements -->
+            <div class="card">
+              <div class="card__header">
+                <h2 class="section-title" style="margin-bottom: 0;">
+                  <svg width="20" height="20" viewBox="0 0 32 32"><path d="M17.74 30L16 29l4-7h6a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h9v2H6a4 4 0 01-4-4V8a4 4 0 014-4h20a4 4 0 014 4v12a4 4 0 01-4 4h-4.84z"/></svg>
+                  Recent Engagements
+                </h2>
+                <button class="btn btn--ghost">View All</button>
+              </div>
+              <div id="recentEngagementsContainer" class="timeline">
+                <div class="text-secondary text-center" style="padding: 16px;">Loading engagements...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Product Roadmap Section -->
+        <div class="card mt-5">
+          <div class="card__header">
+            <h2 class="section-title" style="margin-bottom: 0;">
+              <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 4H4a2 2 0 00-2 2v20a2 2 0 002 2h24a2 2 0 002-2V6a2 2 0 00-2-2zM4 26V6h24v20z"/><path d="M6 12h4v2H6zm0 5h4v2H6zm0 5h4v2H6zm6-10h14v2H12zm0 5h14v2H12zm0 5h14v2H12z"/></svg>
+              Product Roadmap
+            </h2>
+            <div class="flex gap-3">
+              <span class="tag">2026-2027</span>
+              <button class="btn btn--ghost btn--icon" title="Edit Roadmap">
+                <svg width="16" height="16" viewBox="0 0 32 32"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Roadmap Timeline -->
+          <div style="overflow-x: auto; padding: 16px 0;">
+            <div style="min-width: 900px;">
+              <!-- Quarter Headers -->
+              <div style="display: grid; grid-template-columns: 150px repeat(8, 1fr); gap: 4px; margin-bottom: 16px;">
+                <div style="font-weight: 600; font-size: 12px; color: var(--cds-text-secondary);">Category</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q1 2026</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q2 2026</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q3 2026</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q4 2026</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q1 2027</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q2 2027</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q3 2027</div>
+                <div style="text-align: center; padding: 8px; background: var(--cds-layer-02); font-weight: 600; font-size: 12px;">Q4 2027</div>
+              </div>
+
+              <!-- Features Row -->
+              <div style="display: grid; grid-template-columns: 150px repeat(8, 1fr); gap: 4px; margin-bottom: 8px; align-items: center;">
+                <div style="font-weight: 500; font-size: 13px; padding: 8px 0;">Features</div>
+                <!-- Executive Dashboard - Q1 2026 -->
+                <div style="grid-column: 2 / 3; background: linear-gradient(90deg, var(--cds-interactive) 0%, #4589ff 100%); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="In Progress - 65% complete">
+                  <div style="font-weight: 500;">Executive Dashboard</div>
+                  <div style="opacity: 0.8; font-size: 10px;">In Progress</div>
+                </div>
+                <!-- Advanced Analytics - Q2-Q3 2026 -->
+                <div style="grid-column: 3 / 5; background: linear-gradient(90deg, #8a3ffc 0%, #a56eff 100%); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="Planned">
+                  <div style="font-weight: 500;">Advanced Analytics Suite</div>
+                  <div style="opacity: 0.8; font-size: 10px;">Planned</div>
+                </div>
+                <!-- AI Insights - Q4 2026 - Q1 2027 -->
+                <div style="grid-column: 5 / 7; background: linear-gradient(90deg, #007d79 0%, #009d9a 100%); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="Planned">
+                  <div style="font-weight: 500;">AI-Powered Insights</div>
+                  <div style="opacity: 0.8; font-size: 10px;">Planned</div>
+                </div>
+                <div></div>
+                <div></div>
+              </div>
+
+              <!-- Integrations Row -->
+              <div style="display: grid; grid-template-columns: 150px repeat(8, 1fr); gap: 4px; margin-bottom: 8px; align-items: center;">
+                <div style="font-weight: 500; font-size: 13px; padding: 8px 0;">Integrations</div>
+                <!-- ServiceNow - Q1-Q2 2026 -->
+                <div style="grid-column: 2 / 4; background: linear-gradient(90deg, #da1e28 0%, #fa4d56 100%); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="Planned">
+                  <div style="font-weight: 500;">ServiceNow Integration</div>
+                  <div style="opacity: 0.8; font-size: 10px;">Planned</div>
+                </div>
+                <!-- SAP - Q3 2026 -->
+                <div style="grid-column: 4 / 5; background: linear-gradient(90deg, #f1c21b 0%, #fdd13a 100%); color: #161616; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="Planned">
+                  <div style="font-weight: 500;">SAP Connector</div>
+                  <div style="opacity: 0.7; font-size: 10px;">Planned</div>
+                </div>
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+              </div>
+
+              <!-- Optimization Row -->
+              <div style="display: grid; grid-template-columns: 150px repeat(8, 1fr); gap: 4px; margin-bottom: 8px; align-items: center;">
+                <div style="font-weight: 500; font-size: 13px; padding: 8px 0;">Optimization</div>
+                <div></div>
+                <!-- Performance Tuning - Q2 2026 -->
+                <div style="grid-column: 3 / 4; background: linear-gradient(90deg, var(--cds-support-success) 0%, #42be65 100%); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="Planned">
+                  <div style="font-weight: 500;">Performance Tuning</div>
+                  <div style="opacity: 0.8; font-size: 10px;">Planned</div>
+                </div>
+                <div></div>
+                <!-- Scale Testing - Q4 2026 -->
+                <div style="grid-column: 5 / 6; background: linear-gradient(90deg, #6929c4 0%, #8a3ffc 100%); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="Planned">
+                  <div style="font-weight: 500;">Scale Testing</div>
+                  <div style="opacity: 0.8; font-size: 10px;">Planned</div>
+                </div>
+                <div></div>
+                <div></div>
+                <div></div>
+              </div>
+
+              <!-- Migration Row -->
+              <div style="display: grid; grid-template-columns: 150px repeat(8, 1fr); gap: 4px; align-items: center;">
+                <div style="font-weight: 500; font-size: 13px; padding: 8px 0;">Migration</div>
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+                <!-- Cloud Migration - Q2-Q4 2027 -->
+                <div style="grid-column: 7 / 10; background: linear-gradient(90deg, #0043ce 0%, #4589ff 100%); color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;" title="Planned">
+                  <div style="font-weight: 500;">Cloud Migration Phase 2</div>
+                  <div style="opacity: 0.8; font-size: 10px;">Planned</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Legend -->
+          <div style="display: flex; gap: 24px; padding-top: 16px; border-top: 1px solid var(--cds-border-subtle-01); flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+              <div style="width: 12px; height: 12px; background: var(--cds-interactive); border-radius: 2px;"></div>
+              <span>In Progress</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+              <div style="width: 12px; height: 12px; background: #8a3ffc; border-radius: 2px;"></div>
+              <span>Planned</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+              <div style="width: 12px; height: 12px; background: var(--cds-support-success); border-radius: 2px;"></div>
+              <span>Completed</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+              <div style="width: 12px; height: 12px; background: var(--cds-support-warning); border-radius: 2px;"></div>
+              <span>At Risk</span>
+            </div>
+          </div>
+
+          <!-- Last Updated -->
+          <div style="margin-top: 16px; font-size: 12px; color: var(--cds-text-secondary);">
+            Last quarterly update: <strong>Q4 2025</strong> - Dec 15, 2025 by Sarah Johnson
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="bottom-nav">
+      <ul class="bottom-nav__items">
+        <li>
+          <a href="index.html" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2z"/></svg>
+            Home
+          </a>
+        </li>
+        <li>
+          <a href="customers.html" class="bottom-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2z"/></svg>
+            Customers
+          </a>
+        </li>
+        <li>
+          <a href="#" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+            Add
+          </a>
+        </li>
+        <li>
+          <a href="tasks.html" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/></svg>
+            Tasks
+          </a>
+        </li>
+        <li>
+          <a href="#" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M4 6h24v2H4zm0 9h24v2H4zm0 9h24v2H4z"/></svg>
+            More
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+
+  <script src="js/customer-detail.js?v=4"></script>
+</body>
+</html>

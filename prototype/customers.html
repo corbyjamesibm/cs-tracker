@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customers - Customer Status Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Side Navigation -->
+    <nav class="side-nav" id="sideNav">
+      <div class="side-nav__header">
+        <div class="side-nav__logo">CS</div>
+        <span class="side-nav__title">CS Tracker</span>
+      </div>
+      <ul class="side-nav__items">
+        <li class="side-nav__item">
+          <a href="index.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2zm12 26h-6V16H10v12H4V13.21l12-9 12 9V28z"/></svg>
+            Dashboard
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="customers.html" class="side-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zM12 6h8v4h-8V6zm16 20H4V12h24v14z"/></svg>
+            Customers
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="tasks.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            Tasks
+          </a>
+        </li>
+        <li class="side-nav__divider"></li>
+        <li class="side-nav__item">
+          <a href="reports.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+            Reports
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="admin.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M27 16.76V16v-.77l1.92-1.68a2 2 0 00.4-2.4l-2-3.46a2 2 0 00-1.94-1 2 2 0 00-.64.1l-2.43.82a11.35 11.35 0 00-1.31-.75l-.51-2.52a2 2 0 00-2-1.61h-4a2 2 0 00-2 1.61l-.51 2.52a11.48 11.48 0 00-1.32.75l-2.38-.86a2 2 0 00-.68-.09 2 2 0 00-1.72 1l-2 3.46a2 2 0 00.4 2.4l1.92 1.68V16v.77l-1.92 1.68a2 2 0 00-.4 2.4l2 3.46a2 2 0 00 1.72 1 2 2 0 00.68-.09l2.42-.82a11.35 11.35 0 001.31.75l.51 2.52a2 2 0 002 1.61h4a2 2 0 002-1.61l.51-2.52a11.48 11.48 0 001.32-.75l2.42.82a2 2 0 00.64.09 2 2 0 001.72-1l2-3.46a2 2 0 00-.4-2.4zM16 22a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
+            Admin
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="header__left">
+          <button class="hamburger" onclick="toggleNav()">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <div>
+            <h1 class="header__title">Customers</h1>
+            <p class="header__subtitle">18 customers in your portfolio</p>
+          </div>
+        </div>
+        <div class="header__right">
+          <div class="search">
+            <svg class="search__icon" width="16" height="16" viewBox="0 0 32 32"><path d="M29 27.59l-7.55-7.55A11 11 0 1020 21.46L27.59 29zM4 13a9 9 0 119 9 9 9 0 01-9-9z"/></svg>
+            <input type="text" class="search__input" placeholder="Search customers..." id="searchInput" onkeyup="filterTable()">
+          </div>
+          <button class="btn btn--primary" onclick="openAddCustomerModal()">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+            Add Customer
+          </button>
+          <div class="user-menu">
+            <div class="avatar">SJ</div>
+            <span class="user-menu__name">Sarah Johnson</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <div class="page-content">
+        <!-- Filters -->
+        <div class="card mb-5">
+          <div class="flex gap-4 flex-center" style="flex-wrap: wrap;">
+            <div>
+              <label class="form-label">Health Status</label>
+              <select class="form-select" style="width: 150px;" onchange="filterTable()">
+                <option value="all">All</option>
+                <option value="green">Healthy</option>
+                <option value="yellow">At Risk</option>
+                <option value="red">Critical</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">CSM Owner</label>
+              <select class="form-select" style="width: 180px;">
+                <option value="all">All CSMs</option>
+                <option value="sarah" selected>Sarah Johnson</option>
+                <option value="mike">Mike Peters</option>
+                <option value="lisa">Lisa Chen</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Renewal Period</label>
+              <select class="form-select" style="width: 150px;">
+                <option value="all">All</option>
+                <option value="30">Next 30 days</option>
+                <option value="60">Next 60 days</option>
+                <option value="90">Next 90 days</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Product</label>
+              <select class="form-select" style="width: 180px;">
+                <option value="all">All Products</option>
+                <option value="enterprise">Enterprise Suite</option>
+                <option value="professional">Professional</option>
+                <option value="starter">Starter</option>
+              </select>
+            </div>
+            <div style="margin-left: auto;">
+              <label class="form-label">&nbsp;</label>
+              <button class="btn btn--tertiary">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M4 4v2h2.586L2 10.586 3.414 12 8 7.414V10h2V4H4zm18 0v6h2V7.414L28.586 12 30 10.586 25.414 6H28V4H22zM3.414 20L2 21.414 6.586 26H4v2h6v-6H8v2.586L3.414 20zM22 22v6h6v-2h-2.586L30 21.414 28.586 20 24 24.586V22h-2z"/></svg>
+                Export to Excel
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Customer Table -->
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <table class="data-table data-table--responsive" id="customerTable">
+            <thead>
+              <tr>
+                <th style="cursor: pointer;" onclick="sortTable(0)">Customer Name <svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align: middle;"><path d="M16 4L6 14h20L16 4zm0 24l10-10H6l10 10z"/></svg></th>
+                <th>Health</th>
+                <th style="cursor: pointer;" onclick="sortTable(2)">ARR <svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align: middle;"><path d="M16 4L6 14h20L16 4zm0 24l10-10H6l10 10z"/></svg></th>
+                <th style="cursor: pointer;" onclick="sortTable(3)">Renewal Date <svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align: middle;"><path d="M16 4L6 14h20L16 4zm0 24l10-10H6l10 10z"/></svg></th>
+                <th>Adoption</th>
+                <th>CSM</th>
+                <th>Partner</th>
+                <th>Last Contact</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr onclick="window.location='customer-detail.html?id=1'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=1" class="data-table__link" style="font-weight: 500;">Acme Corporation</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-001234</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--green">Healthy</span></td>
+                <td data-label="ARR">$450,000</td>
+                <td data-label="Renewal">
+                  Jan 23, 2026
+                  <div class="text-secondary" style="font-size: 12px;">15 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar progress__bar--success" style="width: 85%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">85%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner"><span class="tag tag--blue">Cprime</span></td>
+                <td data-label="Last Contact">Jan 5, 2026</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr onclick="window.location='customer-detail.html?id=2'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=2" class="data-table__link" style="font-weight: 500;">TechStart Inc</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-001456</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--red">Critical</span></td>
+                <td data-label="ARR">$180,000</td>
+                <td data-label="Renewal">
+                  Feb 5, 2026
+                  <div class="text-secondary" style="font-size: 12px;">28 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar" style="width: 35%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">35%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner"><span class="tag tag--purple">Rego</span></td>
+                <td data-label="Last Contact">Dec 28, 2025</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr onclick="window.location='customer-detail.html?id=3'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=3" class="data-table__link" style="font-weight: 500;">Global Systems</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-001789</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--green">Healthy</span></td>
+                <td data-label="ARR">$320,000</td>
+                <td data-label="Renewal">
+                  Feb 22, 2026
+                  <div class="text-secondary" style="font-size: 12px;">45 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar progress__bar--success" style="width: 92%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">92%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner"><span class="tag tag--blue">Cprime</span></td>
+                <td data-label="Last Contact">Jan 6, 2026</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr onclick="window.location='customer-detail.html?id=4'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=4" class="data-table__link" style="font-weight: 500;">Nexus Corp</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-002012</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--red">Critical</span></td>
+                <td data-label="ARR">$210,000</td>
+                <td data-label="Renewal">
+                  May 15, 2026
+                  <div class="text-secondary" style="font-size: 12px;">127 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar" style="width: 28%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">28%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner"><span class="tag tag--teal">Merryville</span></td>
+                <td data-label="Last Contact">Jan 2, 2026</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr onclick="window.location='customer-detail.html?id=5'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=5" class="data-table__link" style="font-weight: 500;">DataFlow Analytics</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-002345</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--yellow">At Risk</span></td>
+                <td data-label="ARR">$275,000</td>
+                <td data-label="Renewal">
+                  Aug 10, 2026
+                  <div class="text-secondary" style="font-size: 12px;">214 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar" style="width: 55%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">55%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner">-</td>
+                <td data-label="Last Contact">Dec 8, 2025</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr onclick="window.location='customer-detail.html?id=6'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=6" class="data-table__link" style="font-weight: 500;">Apex Ltd</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-002567</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--yellow">At Risk</span></td>
+                <td data-label="ARR">$165,000</td>
+                <td data-label="Renewal">
+                  Jun 30, 2026
+                  <div class="text-secondary" style="font-size: 12px;">173 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar" style="width: 48%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">48%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner"><span class="tag tag--purple">Rego</span></td>
+                <td data-label="Last Contact">Jan 3, 2026</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr onclick="window.location='customer-detail.html?id=7'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=7" class="data-table__link" style="font-weight: 500;">Quantum Solutions</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-002890</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--green">Healthy</span></td>
+                <td data-label="ARR">$520,000</td>
+                <td data-label="Renewal">
+                  Sep 15, 2026
+                  <div class="text-secondary" style="font-size: 12px;">250 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar progress__bar--success" style="width: 88%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">88%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner"><span class="tag tag--blue">Cprime</span></td>
+                <td data-label="Last Contact">Jan 7, 2026</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+              <tr onclick="window.location='customer-detail.html?id=8'" style="cursor: pointer;">
+                <td data-label="Customer">
+                  <a href="customer-detail.html?id=8" class="data-table__link" style="font-weight: 500;">Innovate Partners</a>
+                  <div class="text-secondary" style="font-size: 12px;">SF-003123</div>
+                </td>
+                <td data-label="Health"><span class="health-badge health-badge--green">Healthy</span></td>
+                <td data-label="ARR">$380,000</td>
+                <td data-label="Renewal">
+                  Nov 20, 2026
+                  <div class="text-secondary" style="font-size: 12px;">316 days</div>
+                </td>
+                <td data-label="Adoption">
+                  <div class="progress" style="width: 100px;">
+                    <div class="progress__bar progress__bar--success" style="width: 78%;"></div>
+                  </div>
+                  <div class="text-secondary" style="font-size: 12px;">78%</div>
+                </td>
+                <td data-label="CSM">Sarah Johnson</td>
+                <td data-label="Partner">-</td>
+                <td data-label="Last Contact">Jan 4, 2026</td>
+                <td>
+                  <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation();">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path d="M8 16a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex flex-between flex-center mt-4">
+          <div class="text-secondary">Showing 1-8 of 18 customers</div>
+          <div class="flex gap-3">
+            <button class="btn btn--ghost" disabled>Previous</button>
+            <button class="btn btn--ghost">1</button>
+            <button class="btn btn--primary">2</button>
+            <button class="btn btn--ghost">3</button>
+            <button class="btn btn--ghost">Next</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="bottom-nav">
+      <ul class="bottom-nav__items">
+        <li>
+          <a href="index.html" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2z"/></svg>
+            Home
+          </a>
+        </li>
+        <li>
+          <a href="customers.html" class="bottom-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2z"/></svg>
+            Customers
+          </a>
+        </li>
+        <li>
+          <a href="#" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+            Add
+          </a>
+        </li>
+        <li>
+          <a href="tasks.html" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            Tasks
+          </a>
+        </li>
+        <li>
+          <a href="#" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M4 6h24v2H4zm0 9h24v2H4zm0 9h24v2H4z"/></svg>
+            More
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- FAB for mobile -->
+    <button class="fab" onclick="openAddCustomerModal()">
+      <svg width="24" height="24" viewBox="0 0 32 32" fill="white"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+    </button>
+  </div>
+
+  <!-- Add Customer Modal -->
+  <div class="modal-overlay" id="addCustomerModal">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Add New Customer</h2>
+        <button class="modal__close" onclick="closeAddCustomerModal()">
+          <svg width="20" height="20" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4l6.6 6.6L8 22.6 9.4 24l6.6-6.6 6.6 6.6 1.4-1.4-6.6-6.6L24 9.4z"/></svg>
+        </button>
+      </div>
+      <form id="addCustomerForm" onsubmit="handleAddCustomer(event)">
+        <div class="modal__body">
+          <div class="form-grid">
+            <div class="form-group form-group--full">
+              <label class="form-label" for="customerName">Customer Name *</label>
+              <input type="text" class="form-input" id="customerName" name="name" required placeholder="Enter company name">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerIndustry">Industry</label>
+              <select class="form-select" id="customerIndustry" name="industry">
+                <option value="">Select industry</option>
+                <option value="Technology">Technology</option>
+                <option value="Financial Services">Financial Services</option>
+                <option value="Healthcare">Healthcare</option>
+                <option value="Retail">Retail</option>
+                <option value="Manufacturing">Manufacturing</option>
+                <option value="SaaS">SaaS</option>
+                <option value="Education">Education</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerARR">Annual Revenue (ARR)</label>
+              <input type="number" class="form-input" id="customerARR" name="arr" placeholder="e.g., 150000" min="0" step="1000">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerHealth">Health Status</label>
+              <select class="form-select" id="customerHealth" name="health_status">
+                <option value="green">Healthy</option>
+                <option value="yellow">At Risk</option>
+                <option value="red">Critical</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerHealthScore">Health Score (0-100)</label>
+              <input type="number" class="form-input" id="customerHealthScore" name="health_score" placeholder="e.g., 85" min="0" max="100">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerAdoption">Adoption Stage</label>
+              <select class="form-select" id="customerAdoption" name="adoption_stage">
+                <option value="onboarding">Onboarding</option>
+                <option value="initial_setup">Initial Setup</option>
+                <option value="adoption">Adoption</option>
+                <option value="expansion">Expansion</option>
+                <option value="optimization">Optimization</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerRenewal">Renewal Date</label>
+              <input type="date" class="form-input" id="customerRenewal" name="renewal_date">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerCSM">CSM Owner</label>
+              <select class="form-select" id="customerCSM" name="csm_owner_id">
+                <option value="">Select CSM</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerEmployees">Employee Count</label>
+              <select class="form-select" id="customerEmployees" name="employee_count">
+                <option value="">Select range</option>
+                <option value="1-50">1-50</option>
+                <option value="50-100">50-100</option>
+                <option value="100-200">100-200</option>
+                <option value="200-500">200-500</option>
+                <option value="500-1000">500-1000</option>
+                <option value="1000-5000">1000-5000</option>
+                <option value="5000+">5000+</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="customerWebsite">Website</label>
+              <input type="url" class="form-input" id="customerWebsite" name="website" placeholder="https://example.com">
+            </div>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--secondary" onclick="closeAddCustomerModal()">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="submitBtn">Add Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Customer Modal -->
+  <div class="modal-overlay" id="editCustomerModal">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Edit Customer</h2>
+        <button class="modal__close" onclick="closeEditCustomerModal()">
+          <svg width="20" height="20" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4l6.6 6.6L8 22.6 9.4 24l6.6-6.6 6.6 6.6 1.4-1.4-6.6-6.6L24 9.4z"/></svg>
+        </button>
+      </div>
+      <form id="editCustomerForm" onsubmit="handleEditCustomer(event)">
+        <input type="hidden" id="editCustomerId" name="id">
+        <div class="modal__body">
+          <div class="form-grid">
+            <div class="form-group form-group--full">
+              <label class="form-label" for="editCustomerName">Customer Name *</label>
+              <input type="text" class="form-input" id="editCustomerName" name="name" required placeholder="Enter company name">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerIndustry">Industry</label>
+              <select class="form-select" id="editCustomerIndustry" name="industry">
+                <option value="">Select industry</option>
+                <option value="Technology">Technology</option>
+                <option value="Financial Services">Financial Services</option>
+                <option value="Healthcare">Healthcare</option>
+                <option value="Retail">Retail</option>
+                <option value="Manufacturing">Manufacturing</option>
+                <option value="SaaS">SaaS</option>
+                <option value="Education">Education</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerARR">Annual Revenue (ARR)</label>
+              <input type="number" class="form-input" id="editCustomerARR" name="arr" placeholder="e.g., 150000" min="0" step="1000">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerHealth">Health Status</label>
+              <select class="form-select" id="editCustomerHealth" name="health_status">
+                <option value="green">Healthy</option>
+                <option value="yellow">At Risk</option>
+                <option value="red">Critical</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerHealthScore">Health Score (0-100)</label>
+              <input type="number" class="form-input" id="editCustomerHealthScore" name="health_score" placeholder="e.g., 85" min="0" max="100">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerAdoption">Adoption Stage</label>
+              <select class="form-select" id="editCustomerAdoption" name="adoption_stage">
+                <option value="onboarding">Onboarding</option>
+                <option value="initial_setup">Initial Setup</option>
+                <option value="adoption">Adoption</option>
+                <option value="expansion">Expansion</option>
+                <option value="optimization">Optimization</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerRenewal">Renewal Date</label>
+              <input type="date" class="form-input" id="editCustomerRenewal" name="renewal_date">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerCSM">CSM Owner</label>
+              <select class="form-select" id="editCustomerCSM" name="csm_owner_id">
+                <option value="">Select CSM</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerEmployees">Employee Count</label>
+              <select class="form-select" id="editCustomerEmployees" name="employee_count">
+                <option value="">Select range</option>
+                <option value="1-50">1-50</option>
+                <option value="50-100">50-100</option>
+                <option value="100-200">100-200</option>
+                <option value="200-500">200-500</option>
+                <option value="500-1000">500-1000</option>
+                <option value="1000-5000">1000-5000</option>
+                <option value="5000+">5000+</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="editCustomerWebsite">Website</label>
+              <input type="url" class="form-input" id="editCustomerWebsite" name="website" placeholder="https://example.com">
+            </div>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--secondary" onclick="closeEditCustomerModal()">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="editSubmitBtn">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- API and Customers Scripts -->
+  <script src="js/api.js?v=4"></script>
+  <script src="js/customers.js?v=4"></script>
+  <script>
+    function toggleNav() {
+      document.getElementById('sideNav').classList.toggle('open');
+    }
+
+    function filterTable() {
+      const input = document.getElementById('searchInput');
+      const filter = input.value.toUpperCase();
+      const table = document.getElementById('customerTable');
+      const tr = table.getElementsByTagName('tr');
+
+      for (let i = 1; i < tr.length; i++) {
+        const td = tr[i].getElementsByTagName('td')[0];
+        if (td) {
+          const txtValue = td.textContent || td.innerText;
+          if (txtValue.toUpperCase().indexOf(filter) > -1) {
+            tr[i].style.display = '';
+          } else {
+            tr[i].style.display = 'none';
+          }
+        }
+      }
+    }
+
+    function sortTable(n) {
+      const table = document.getElementById('customerTable');
+      let switching = true;
+      let dir = 'asc';
+      let switchcount = 0;
+
+      while (switching) {
+        switching = false;
+        const rows = table.rows;
+
+        for (let i = 1; i < (rows.length - 1); i++) {
+          let shouldSwitch = false;
+          const x = rows[i].getElementsByTagName('td')[n];
+          const y = rows[i + 1].getElementsByTagName('td')[n];
+
+          let xContent = x.textContent || x.innerText;
+          let yContent = y.textContent || y.innerText;
+
+          // Handle currency
+          if (xContent.includes('$')) {
+            xContent = parseFloat(xContent.replace(/[$,]/g, ''));
+            yContent = parseFloat(yContent.replace(/[$,]/g, ''));
+          }
+
+          if (dir === 'asc') {
+            if (xContent > yContent) {
+              shouldSwitch = true;
+              break;
+            }
+          } else if (dir === 'desc') {
+            if (xContent < yContent) {
+              shouldSwitch = true;
+              break;
+            }
+          }
+        }
+
+        if (shouldSwitch) {
+          rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+          switching = true;
+          switchcount++;
+        } else {
+          if (switchcount === 0 && dir === 'asc') {
+            dir = 'desc';
+            switching = true;
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>
