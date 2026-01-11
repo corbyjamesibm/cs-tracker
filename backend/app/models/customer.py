@@ -91,6 +91,7 @@ class Customer(Base):
     use_cases: Mapped[List["CustomerUseCase"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     custom_field_values: Mapped[List["CustomFieldValue"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     adoption_history: Mapped[List["AdoptionHistory"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
+    risks: Mapped[List["Risk"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
 
     @property
     def days_to_renewal(self) -> Optional[int]:

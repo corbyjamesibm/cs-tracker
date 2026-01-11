@@ -15,6 +15,7 @@ from app.models.engagement import Engagement, EngagementType
 from app.models.partner import Partner, PartnerUser
 from app.models.use_case import UseCase, CustomerUseCase
 from app.models.roadmap import Roadmap, RoadmapItem, RoadmapItemCategory, RoadmapItemStatus
+from app.models.settings import AppSetting, SettingValueType
 
 
 async def init_db():
@@ -36,6 +37,25 @@ async def seed_data():
         if count > 0:
             print("Database already has data, skipping seed.")
             return
+
+        # Create App Settings (auth configuration)
+        app_settings = [
+            AppSetting(
+                key="auth_enabled",
+                value="false",
+                value_type=SettingValueType.BOOLEAN,
+                description="Enable authentication requirement for the application"
+            ),
+            AppSetting(
+                key="auth_default_method",
+                value="w3id",
+                value_type=SettingValueType.STRING,
+                description="Default authentication method (w3id or password)"
+            ),
+        ]
+        session.add_all(app_settings)
+        await session.flush()
+        print(f"  - {len(app_settings)} app settings")
 
         # Create Users
         users = [

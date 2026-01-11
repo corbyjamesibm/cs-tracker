@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     await loadPartners();
     await loadUsers();
     await loadUseCases();
+    await loadAuthSettings();
 });
 
 /**
@@ -1021,6 +1022,101 @@ async function runMigrations() {
     }
 }
 
+// =====================
+// Authentication Settings
+// =====================
+
+/**
+ * Load authentication settings
+ */
+async function loadAuthSettings() {
+    const toggle = document.getElementById('authEnabledToggle');
+    const badge = document.getElementById('authStatusBadge');
+
+    if (!toggle || !badge) return;
+
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/admin/settings/auth_enabled`);
+        if (!response.ok) {
+            if (response.status === 404) {
+                // Setting doesn't exist yet - run migrations
+                badge.textContent = 'Not configured';
+                badge.className = 'tag tag--yellow';
+                toggle.checked = false;
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const setting = await response.json();
+        const isEnabled = setting.value === 'true';
+
+        toggle.checked = isEnabled;
+        updateAuthStatusDisplay(isEnabled);
+
+    } catch (error) {
+        console.error('Failed to load auth settings:', error);
+        badge.textContent = 'Error';
+        badge.className = 'tag tag--red';
+    }
+}
+
+/**
+ * Update auth status badge display
+ */
+function updateAuthStatusDisplay(isEnabled) {
+    const badge = document.getElementById('authStatusBadge');
+    if (!badge) return;
+
+    if (isEnabled) {
+        badge.textContent = 'Enabled';
+        badge.className = 'tag tag--green';
+    } else {
+        badge.textContent = 'Disabled';
+        badge.className = 'tag tag--gray';
+    }
+}
+
+/**
+ * Toggle authentication enabled/disabled
+ */
+async function toggleAuthEnabled() {
+    const toggle = document.getElementById('authEnabledToggle');
+    const newValue = toggle.checked;
+
+    // Confirm before enabling
+    if (newValue) {
+        if (!confirm('Are you sure you want to enable authentication?\n\nUsers will need to log in to access the application.')) {
+            toggle.checked = false;
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/admin/settings/auth_enabled`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ value: newValue ? 'true' : 'false' }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update auth setting');
+        }
+
+        updateAuthStatusDisplay(newValue);
+        showToast(`Authentication ${newValue ? 'enabled' : 'disabled'} successfully`, 'success');
+
+    } catch (error) {
+        console.error('Failed to toggle auth:', error);
+        showToast(error.message || 'Failed to update auth setting', 'error');
+        // Revert toggle
+        toggle.checked = !newValue;
+    }
+}
+
 // Make functions available globally
 window.refreshStats = refreshStats;
 window.clearTestData = clearTestData;
@@ -1048,3 +1144,5 @@ window.handleUseCaseSubmit = handleUseCaseSubmit;
 window.toggleUseCaseStatus = toggleUseCaseStatus;
 window.deleteUseCase = deleteUseCase;
 window.runMigrations = runMigrations;
+window.loadAuthSettings = loadAuthSettings;
+window.toggleAuthEnabled = toggleAuthEnabled;

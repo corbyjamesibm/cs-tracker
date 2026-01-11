@@ -5,6 +5,8 @@ from .engagement import Engagement, EngagementType
 from .partner import Partner, PartnerUser
 from .use_case import UseCase, CustomerUseCase, UseCaseStatus
 from .custom_field import CustomField, CustomFieldValue, FieldType
+from .settings import AppSetting, SettingValueType
+from .risk import Risk, RiskSeverity, RiskStatus, RiskCategory
 
 __all__ = [
     "User", "UserRole",
@@ -14,4 +16,6 @@ __all__ = [
     "Partner", "PartnerUser",
     "UseCase", "CustomerUseCase", "UseCaseStatus",
     "CustomField", "CustomFieldValue", "FieldType",
+    "AppSetting", "SettingValueType",
+    "Risk", "RiskSeverity", "RiskStatus", "RiskCategory",
 ]

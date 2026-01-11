@@ -6,8 +6,11 @@ let allCustomers = [];
 let filteredCustomers = [];
 
 document.addEventListener('DOMContentLoaded', async function() {
-    await loadCustomersData();
-    setupFilters();
+    if (await Auth.checkAuthAndRedirect()) {
+        Auth.updateUserDisplay();
+        await loadCustomersData();
+        setupFilters();
+    }
 });
 
 async function loadCustomersData() {

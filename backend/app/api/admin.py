@@ -15,6 +15,9 @@ from app.models.user import User
 from app.models.partner import Partner, PartnerUser
 from app.models.use_case import UseCase, CustomerUseCase
 from app.models.roadmap import Roadmap, RoadmapItem
+from app.models.settings import AppSetting, SettingValueType
+from sqlalchemy import select
+from typing import List
 
 router = APIRouter()
 
@@ -213,6 +216,45 @@ async def run_migrations(db: AsyncSession = Depends(get_db)):
             """))
             migrations_run.append("Added partner_id column to users table")
 
+        # Check if password_hash column exists in users table
+        result = await db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'password_hash'
+        """))
+        if not result.scalar():
+            await db.execute(text("""
+                ALTER TABLE users
+                ADD COLUMN password_hash VARCHAR(255)
+            """))
+            migrations_run.append("Added password_hash column to users table")
+
+        # Check if app_settings table exists
+        result = await db.execute(text("""
+            SELECT table_name FROM information_schema.tables
+            WHERE table_name = 'app_settings'
+        """))
+        if not result.scalar():
+            await db.execute(text("""
+                CREATE TABLE app_settings (
+                    id SERIAL PRIMARY KEY,
+                    key VARCHAR(100) UNIQUE NOT NULL,
+                    value TEXT NOT NULL,
+                    value_type VARCHAR(20) DEFAULT 'string',
+                    description TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """))
+            migrations_run.append("Created app_settings table")
+
+            # Seed default settings
+            await db.execute(text("""
+                INSERT INTO app_settings (key, value, value_type, description) VALUES
+                ('auth_enabled', 'false', 'boolean', 'Enable authentication requirement for the application'),
+                ('auth_default_method', 'w3id', 'string', 'Default authentication method (w3id or password)')
+            """))
+            migrations_run.append("Seeded default auth settings")
+
         await db.commit()
 
         if migrations_run:
@@ -226,3 +268,82 @@ async def run_migrations(db: AsyncSession = Depends(get_db)):
             status_code=500,
             detail=f"Migration failed: {str(e)}"
         )
+
+
+# Settings schemas
+class SettingResponse(BaseModel):
+    """Response model for a setting."""
+    id: int
+    key: str
+    value: str
+    value_type: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SettingUpdate(BaseModel):
+    """Request model for updating a setting."""
+    value: str
+
+
+# Settings endpoints
+@router.get("/settings", response_model=List[SettingResponse])
+async def list_settings(db: AsyncSession = Depends(get_db)):
+    """List all application settings."""
+    query = select(AppSetting).order_by(AppSetting.key)
+    result = await db.execute(query)
+    settings = result.scalars().all()
+    return [SettingResponse.model_validate(s) for s in settings]
+
+
+@router.get("/settings/{key}", response_model=SettingResponse)
+async def get_setting(key: str, db: AsyncSession = Depends(get_db)):
+    """Get a specific setting by key."""
+    query = select(AppSetting).where(AppSetting.key == key)
+    result = await db.execute(query)
+    setting = result.scalar_one_or_none()
+
+    if not setting:
+        raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
+
+    return SettingResponse.model_validate(setting)
+
+
+@router.put("/settings/{key}", response_model=SettingResponse)
+async def update_setting(
+    key: str,
+    update_data: SettingUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a setting value."""
+    query = select(AppSetting).where(AppSetting.key == key)
+    result = await db.execute(query)
+    setting = result.scalar_one_or_none()
+
+    if not setting:
+        raise HTTPException(status_code=404, detail=f"Setting '{key}' not found")
+
+    # Validate boolean values
+    if setting.value_type == SettingValueType.BOOLEAN.value:
+        if update_data.value.lower() not in ('true', 'false', '1', '0', 'yes', 'no'):
+            raise HTTPException(
+                status_code=400,
+                detail="Boolean setting must be 'true' or 'false'"
+            )
+        # Normalize to 'true' or 'false'
+        update_data.value = 'true' if update_data.value.lower() in ('true', '1', 'yes') else 'false'
+
+    # Validate integer values
+    if setting.value_type == SettingValueType.INTEGER.value:
+        try:
+            int(update_data.value)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Integer setting must be a valid number")
+
+    setting.value = update_data.value
+    await db.flush()
+    await db.refresh(setting)
+
+    return SettingResponse.model_validate(setting)

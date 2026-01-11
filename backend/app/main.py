@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.api import customers, tasks, engagements, users, partners, use_cases, health, roadmaps, admin
+from app.api import customers, tasks, engagements, users, partners, use_cases, health, roadmaps, admin, auth, risks
 
 
 @asynccontextmanager
@@ -49,6 +49,8 @@ app.include_router(partners.router, prefix="/api/v1/partners", tags=["Partners"]
 app.include_router(use_cases.router, prefix="/api/v1/use-cases", tags=["Use Cases"])
 app.include_router(roadmaps.router, prefix="/api/v1/roadmaps", tags=["Roadmaps"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(risks.router, prefix="/api/v1/risks", tags=["Risks"])
 
 
 if __name__ == "__main__":

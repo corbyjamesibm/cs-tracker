@@ -5,17 +5,42 @@
 
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
-// Generic fetch wrapper with error handling
+// Generic fetch wrapper with error handling and auth support
 async function apiRequest(endpoint, options = {}) {
     const url = `${API_BASE_URL}${endpoint}`;
-    const defaultOptions = {
-        headers: {
-            'Content-Type': 'application/json',
-        },
+
+    // Build headers with auth token if available
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+    };
+
+    // Add auth token if available
+    if (window.Auth && window.Auth.getToken()) {
+        headers['Authorization'] = `Bearer ${window.Auth.getToken()}`;
+    }
+
+    const requestOptions = {
+        ...options,
+        headers,
     };
 
     try {
-        const response = await fetch(url, { ...defaultOptions, ...options });
+        const response = await fetch(url, requestOptions);
+
+        // Handle 401 Unauthorized - redirect to login
+        if (response.status === 401) {
+            if (window.Auth) {
+                window.Auth.clearAuth();
+            }
+            // Don't redirect if we're already on the login page
+            if (!window.location.pathname.includes('login.html')) {
+                const returnUrl = encodeURIComponent(window.location.href);
+                window.location.href = `login.html?return=${returnUrl}`;
+            }
+            throw new Error('Authentication required');
+        }
+
         if (!response.ok) {
             throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
@@ -261,6 +286,101 @@ function calculateDaysUntil(dateString) {
     return diffDays;
 }
 
+function getRiskSeverityClass(severity) {
+    const severityMap = {
+        'critical': 'tag--red',
+        'high': 'tag--orange',
+        'medium': 'tag--yellow',
+        'low': 'tag--gray',
+    };
+    return severityMap[severity] || '';
+}
+
+function getRiskSeverityLabel(severity) {
+    const labelMap = {
+        'critical': 'Critical',
+        'high': 'High',
+        'medium': 'Medium',
+        'low': 'Low',
+    };
+    return labelMap[severity] || severity;
+}
+
+function getRiskStatusClass(status) {
+    const statusMap = {
+        'open': 'tag--red',
+        'mitigating': 'tag--yellow',
+        'resolved': 'tag--green',
+        'accepted': 'tag--blue',
+    };
+    return statusMap[status] || '';
+}
+
+function getRiskCategoryLabel(category) {
+    const labelMap = {
+        'adoption': 'Adoption',
+        'renewal': 'Renewal',
+        'technical': 'Technical',
+        'relationship': 'Relationship',
+        'financial': 'Financial',
+        'other': 'Other',
+    };
+    return labelMap[category] || category || 'Uncategorized';
+}
+
+// Risk API
+const RiskAPI = {
+    async getAll(params = {}) {
+        const queryString = new URLSearchParams(params).toString();
+        return apiRequest(`/risks${queryString ? '?' + queryString : ''}`);
+    },
+
+    async getById(id) {
+        return apiRequest(`/risks/${id}`);
+    },
+
+    async getByCustomer(customerId) {
+        return apiRequest(`/risks?customer_id=${customerId}`);
+    },
+
+    async create(data) {
+        return apiRequest('/risks', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async update(id, data) {
+        return apiRequest(`/risks/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async delete(id) {
+        const url = `${API_BASE_URL}/risks/${id}`;
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return true;
+    },
+
+    async resolve(id, notes = '') {
+        return apiRequest(`/risks/${id}/resolve`, {
+            method: 'POST',
+            body: JSON.stringify({ resolution_notes: notes }),
+        });
+    },
+
+    async getSummary() {
+        return apiRequest('/risks/summary');
+    },
+};
+
 // Export for use in other files
 window.API = {
     CustomerAPI,
@@ -268,6 +388,7 @@ window.API = {
     EngagementAPI,
     UserAPI,
     RoadmapAPI,
+    RiskAPI,
 };
 
 window.Utils = {
@@ -278,4 +399,8 @@ window.Utils = {
     getPriorityClass,
     getStatusClass,
     calculateDaysUntil,
+    getRiskSeverityClass,
+    getRiskSeverityLabel,
+    getRiskStatusClass,
+    getRiskCategoryLabel,
 };

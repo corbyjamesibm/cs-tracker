@@ -62,7 +62,7 @@
           </button>
           <div>
             <h1 class="header__title">Portfolio Dashboard</h1>
-            <p class="header__subtitle">Welcome back, Sarah</p>
+            <p class="header__subtitle">Welcome back, <span class="user-first-name">Corby</span></p>
           </div>
         </div>
         <div class="header__right">
@@ -74,8 +74,8 @@
             <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28.7 20.3L26 17.6V13a10 10 0 00-9-9.95V1h-2v2.05A10 10 0 006 13v4.6l-2.7 2.7a1 1 0 00-.3.7v3a1 1 0 001 1h7a5 5 0 0010 0h7a1 1 0 001-1v-3a1 1 0 00-.3-.7zM16 28a3 3 0 01-3-3h6a3 3 0 01-3 3zm11-5H5v-1.59l2.7-2.7A1 1 0 008 18v-5a8 8 0 0116 0v5a1 1 0 00.3.7l2.7 2.7z"/></svg>
           </button>
           <div class="user-menu">
-            <div class="avatar">SJ</div>
-            <span class="user-menu__name">Sarah Johnson</span>
+            <div class="avatar user-avatar">CJ</div>
+            <span class="user-menu__name user-name">Corby James</span>
           </div>
         </div>
       </header>
@@ -182,27 +182,8 @@
               <h2 class="card__title">My Tasks</h2>
               <a href="tasks.html" class="btn btn--ghost">View All</a>
             </div>
-            <div class="flex flex-column gap-3">
-              <div class="notification notification--error" style="padding: 12px;">
-                <div style="flex: 1;">
-                  <div style="font-weight: 500;">QBR with TechStart</div>
-                  <div class="text-secondary" style="font-size: 12px;">Overdue by 2 days</div>
-                </div>
-              </div>
-              <div class="notification notification--warning" style="padding: 12px;">
-                <div style="flex: 1;">
-                  <div style="font-weight: 500;">Follow up with Apex Ltd</div>
-                  <div class="text-secondary" style="font-size: 12px;">Due today</div>
-                </div>
-              </div>
-              <div style="padding: 12px; background: var(--cds-layer-02);">
-                <div style="font-weight: 500;">Renewal prep for Acme</div>
-                <div class="text-secondary" style="font-size: 12px;">Due in 3 days</div>
-              </div>
-              <div style="padding: 12px; background: var(--cds-layer-02);">
-                <div style="font-weight: 500;">Check-in call with DataFlow</div>
-                <div class="text-secondary" style="font-size: 12px;">Due in 5 days</div>
-              </div>
+            <div class="flex flex-column gap-3" id="tasks-list">
+              <div class="text-secondary" style="padding: 16px; text-align: center;">Loading tasks...</div>
             </div>
           </div>
         </div>
@@ -210,32 +191,13 @@
         <!-- Risk Alerts & Recent Activity -->
         <div class="grid grid--2 mt-5">
           <!-- Risk Alerts -->
-          <div class="card">
+          <div class="card" id="risk-alerts-card">
             <div class="card__header">
               <h2 class="card__title">Risk Alerts</h2>
+              <span class="tag tag--red" id="risk-alerts-count" style="display: none;">0</span>
             </div>
-            <div class="flex flex-column gap-3">
-              <div class="notification notification--error">
-                <svg width="20" height="20" viewBox="0 0 32 32" fill="var(--cds-support-error)"><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-1 7h2v10h-2V9zm1 16c-.8 0-1.5-.7-1.5-1.5S15.2 22 16 22s1.5.7 1.5 1.5S16.8 25 16 25z"/></svg>
-                <div>
-                  <div style="font-weight: 500;">TechStart Inc - Health declined</div>
-                  <div class="text-secondary" style="font-size: 12px;">Health changed from Yellow to Red 2 days ago</div>
-                </div>
-              </div>
-              <div class="notification notification--error">
-                <svg width="20" height="20" viewBox="0 0 32 32" fill="var(--cds-support-error)"><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-1 7h2v10h-2V9zm1 16c-.8 0-1.5-.7-1.5-1.5S15.2 22 16 22s1.5.7 1.5 1.5S16.8 25 16 25z"/></svg>
-                <div>
-                  <div style="font-weight: 500;">Nexus Corp - Escalation raised</div>
-                  <div class="text-secondary" style="font-size: 12px;">Partner reported implementation blocker</div>
-                </div>
-              </div>
-              <div class="notification notification--warning">
-                <svg width="20" height="20" viewBox="0 0 32 32" fill="#8e6a00"><path d="M16 2L1 29h30L16 2zm-1 10h2v8h-2v-8zm1 14c-.8 0-1.5-.7-1.5-1.5S15.2 23 16 23s1.5.7 1.5 1.5S16.8 26 16 26z"/></svg>
-                <div>
-                  <div style="font-weight: 500;">DataFlow - No contact in 30 days</div>
-                  <div class="text-secondary" style="font-size: 12px;">Last engagement was on Dec 8, 2025</div>
-                </div>
-              </div>
+            <div class="flex flex-column gap-3" id="risk-alerts-list">
+              <div class="text-secondary" style="padding: 16px; text-align: center;">Loading risks...</div>
             </div>
           </div>
 
@@ -318,8 +280,9 @@
   </div>
 
   <!-- API and Dashboard Scripts -->
-  <script src="js/api.js?v=2"></script>
-  <script src="js/dashboard.js?v=2"></script>
+  <script src="js/auth.js?v=2"></script>
+  <script src="js/api.js?v=11"></script>
+  <script src="js/dashboard.js?v=5"></script>
   <script>
     function toggleNav() {
       document.getElementById('sideNav').classList.toggle('open');
