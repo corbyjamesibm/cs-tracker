@@ -3,6 +3,9 @@
  * Uses API_BASE_URL from api.js
  */
 
+// Global customer data storage
+let currentCustomer = null;
+
 // Get customer ID from URL
 function getCustomerId() {
     const params = new URLSearchParams(window.location.search);
@@ -95,6 +98,7 @@ async function loadCustomerDetail() {
         }
 
         const customer = await response.json();
+        currentCustomer = customer; // Store globally for modal access
         populateCustomerData(customer);
 
         // Also load CSM owner info if available
@@ -115,6 +119,9 @@ async function loadCustomerDetail() {
 
         // Load use cases for this customer
         loadUseCases(customerId);
+
+        // Load SPM assessments for summary display
+        loadAssessments(customerId);
 
     } catch (error) {
         console.error('Failed to load customer:', error);
@@ -572,7 +579,7 @@ function displayUseCasesForArea(solutionArea) {
         domains[uc.domain].push(uc);
     });
 
-    // Render grouped use cases
+    // Render grouped use cases with full descriptions
     let html = '';
     const domainOrder = ['Strategic Planning', 'Portfolio Management', 'Resource Management', 'Financial Management'];
 
@@ -580,29 +587,35 @@ function displayUseCasesForArea(solutionArea) {
         if (!domains[domain]) return;
 
         html += `
-            <div style="margin-bottom: 16px;">
+            <div style="margin-bottom: 12px;">
                 <strong style="font-size: 12px; color: var(--cds-text-secondary); text-transform: uppercase;">${domain}</strong>
             </div>
-            <ul class="checklist" style="margin-bottom: 24px;">
+            <div style="margin-bottom: 24px;">
         `;
 
         domains[domain].forEach(uc => {
             const checkboxClass = getCheckboxClass(uc.status);
             const statusTag = getStatusTag(uc.status);
+            const description = uc.description || '';
 
             html += `
-                <li class="checklist__item">
-                    <div class="checklist__checkbox ${checkboxClass}">
+                <div class="use-case-item" onclick="openUseCaseStatusModal(${uc.id})">
+                    <div class="use-case-item__checkbox ${checkboxClass}">
                         ${(uc.status === 'implemented' || uc.status === 'optimized') ?
                             '<svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M13 24l-9-9 1.41-1.41L13 21.17 26.59 7.58 28 9 13 24z"/></svg>' : ''}
                     </div>
-                    <span title="${uc.name}">${truncateText(uc.name, 50)}</span>
-                    ${statusTag}
-                </li>
+                    <div class="use-case-item__content">
+                        <div class="use-case-item__name">${uc.name}</div>
+                        ${description ? `<div class="use-case-item__description">${description}</div>` : ''}
+                    </div>
+                    <div class="use-case-item__status">
+                        ${statusTag}
+                    </div>
+                </div>
             `;
         });
 
-        html += '</ul>';
+        html += '</div>';
     });
 
     container.innerHTML = html;
@@ -640,6 +653,197 @@ function truncateText(text, maxLength) {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
 }
+
+// ==========================================
+// USE CASE STATUS UPDATE FUNCTIONS
+// ==========================================
+
+let currentUseCaseId = null;
+let useCaseAdoptionChart = null;
+
+// Open use case status modal
+function openUseCaseStatusModal(useCaseId) {
+    currentUseCaseId = useCaseId;
+    const useCase = customerUseCases.find(uc => uc.use_case_id === useCaseId || uc.id === useCaseId);
+
+    if (!useCase) {
+        console.error('Use case not found:', useCaseId);
+        return;
+    }
+
+    // Update modal content
+    document.getElementById('useCaseModalName').textContent = useCase.name;
+    document.getElementById('useCaseModalDescription').textContent = useCase.description || 'No description available';
+    document.getElementById('useCaseNotes').value = useCase.notes || '';
+
+    // Update status options
+    const currentStatus = useCase.status || 'not_started';
+    document.querySelectorAll('.status-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.dataset.status === currentStatus) {
+            opt.classList.add('selected');
+        }
+    });
+
+    // Load history chart
+    loadUseCaseHistory();
+
+    document.getElementById('useCaseStatusModal').classList.add('open');
+}
+
+// Close use case status modal
+function closeUseCaseStatusModal() {
+    document.getElementById('useCaseStatusModal').classList.remove('open');
+    currentUseCaseId = null;
+}
+
+// Select use case status
+function selectUseCaseStatus(status) {
+    document.querySelectorAll('.status-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.dataset.status === status) {
+            opt.classList.add('selected');
+        }
+    });
+}
+
+// Get selected use case status
+function getSelectedUseCaseStatus() {
+    const selected = document.querySelector('.status-option.selected');
+    return selected ? selected.dataset.status : 'not_started';
+}
+
+// Save use case status
+async function saveUseCaseStatus() {
+    if (!currentUseCaseId) return;
+
+    const customerId = getCustomerId();
+    const status = getSelectedUseCaseStatus();
+    const notes = document.getElementById('useCaseNotes').value;
+
+    const saveBtn = document.getElementById('saveUseCaseStatusBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/use-cases/customer/${customerId}/${currentUseCaseId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status, notes })
+        });
+
+        if (!response.ok) throw new Error('Failed to save status');
+
+        closeUseCaseStatusModal();
+
+        // Reload use cases
+        await loadUseCases(customerId);
+
+    } catch (error) {
+        console.error('Failed to save use case status:', error);
+        alert('Failed to save status. Please try again.');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Status';
+    }
+}
+
+// Load use case adoption history for visualization
+async function loadUseCaseHistory() {
+    const chartContainer = document.getElementById('useCaseHistoryChart');
+    if (!chartContainer) return;
+
+    const customerId = getCustomerId();
+
+    try {
+        // Get use case history/adoption over time
+        // For now, simulate with current data since history API doesn't exist yet
+        const history = generateUseCaseAdoptionHistory();
+        renderUseCaseAdoptionChart(history);
+    } catch (error) {
+        console.error('Failed to load use case history:', error);
+    }
+}
+
+// Generate simulated adoption history (placeholder until backend API exists)
+function generateUseCaseAdoptionHistory() {
+    // Generate mock history data based on current use cases
+    const now = new Date();
+    const months = [];
+    const adoptionData = [];
+    const totalUseCases = customerUseCases.length || 1;
+
+    for (let i = 5; i >= 0; i--) {
+        const date = new Date(now);
+        date.setMonth(date.getMonth() - i);
+        months.push(date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+
+        // Simulate increasing adoption over time
+        const implementedCount = customerUseCases.filter(uc =>
+            uc.status === 'implemented' || uc.status === 'optimized'
+        ).length;
+        const baseAdoption = Math.max(0, implementedCount - (5 - i) * 2);
+        adoptionData.push(Math.round((baseAdoption / totalUseCases) * 100));
+    }
+
+    return { months, adoptionData };
+}
+
+// Render use case adoption chart
+function renderUseCaseAdoptionChart(history) {
+    const ctx = document.getElementById('useCaseHistoryChart');
+    if (!ctx) return;
+
+    // Destroy existing chart
+    if (useCaseAdoptionChart) {
+        useCaseAdoptionChart.destroy();
+    }
+
+    useCaseAdoptionChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: history.months,
+            datasets: [{
+                label: 'Adoption %',
+                data: history.adoptionData,
+                borderColor: 'rgba(15, 98, 254, 1)',
+                backgroundColor: 'rgba(15, 98, 254, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointBackgroundColor: 'rgba(15, 98, 254, 1)'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        callback: value => value + '%',
+                        color: '#697077'
+                    },
+                    grid: { color: 'rgba(255,255,255,0.1)' }
+                },
+                x: {
+                    ticks: { color: '#697077' },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+// Expose use case functions to window
+window.openUseCaseStatusModal = openUseCaseStatusModal;
+window.closeUseCaseStatusModal = closeUseCaseStatusModal;
+window.selectUseCaseStatus = selectUseCaseStatus;
+window.saveUseCaseStatus = saveUseCaseStatus;
 
 // ==========================================
 // ROADMAP MANAGEMENT
@@ -2480,6 +2684,1142 @@ window.deleteDocument = deleteDocument;
 window.loadUsageFramework = loadUsageFramework;
 window.updateUsageTimeframe = updateUsageTimeframe;
 
+// ==================== ADOPTION STAGE MANAGEMENT ====================
+
+// Selected adoption stage in modal
+let selectedAdoptionStage = null;
+
+// Stage name mappings
+const ADOPTION_STAGES = {
+    'onboarding': 'Onboarding',
+    'adoption': 'Adoption',
+    'value_realization': 'Value Realization',
+    'expansion': 'Expansion',
+    'renewal': 'Renewal'
+};
+
+// Open adoption stage modal
+function openAdoptionStageModal() {
+    if (!currentCustomer) {
+        console.error('No customer data available');
+        return;
+    }
+
+    const currentStage = currentCustomer.adoption_stage || 'onboarding';
+    selectedAdoptionStage = currentStage;
+
+    // Update current stage display
+    const currentStageDisplay = document.getElementById('currentStageDisplay');
+    if (currentStageDisplay) {
+        currentStageDisplay.textContent = ADOPTION_STAGES[currentStage] || currentStage;
+    }
+
+    // Clear notes
+    const notesField = document.getElementById('adoptionStageNotes');
+    if (notesField) notesField.value = '';
+
+    // Update selected state for all options
+    updateStageSelectionUI(currentStage);
+
+    // Open modal
+    document.getElementById('adoptionStageModal').classList.add('open');
+}
+
+// Close adoption stage modal
+function closeAdoptionStageModal() {
+    document.getElementById('adoptionStageModal').classList.remove('open');
+    selectedAdoptionStage = null;
+}
+
+// Select a stage in the modal
+function selectAdoptionStage(stage) {
+    selectedAdoptionStage = stage;
+    updateStageSelectionUI(stage);
+}
+
+// Update the UI to show selected stage
+function updateStageSelectionUI(stage) {
+    const options = document.querySelectorAll('.stage-selector__option');
+    options.forEach(option => {
+        if (option.dataset.stage === stage) {
+            option.classList.add('selected');
+        } else {
+            option.classList.remove('selected');
+        }
+    });
+}
+
+// Handle adoption stage form submit
+async function handleAdoptionStageSubmit(event) {
+    event.preventDefault();
+
+    if (!currentCustomer || !selectedAdoptionStage) {
+        console.error('Missing customer or stage data');
+        return;
+    }
+
+    const customerId = currentCustomer.id;
+    const notes = document.getElementById('adoptionStageNotes')?.value || '';
+
+    // If stage hasn't changed, just close
+    if (selectedAdoptionStage === currentCustomer.adoption_stage) {
+        closeAdoptionStageModal();
+        return;
+    }
+
+    const submitBtn = document.getElementById('adoptionStageSubmitBtn');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Updating...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                adoption_stage: selectedAdoptionStage
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to update adoption stage');
+        }
+
+        const updatedCustomer = await response.json();
+        currentCustomer = updatedCustomer;
+
+        // Update the UI
+        updateAdoptionStages(selectedAdoptionStage);
+
+        // Update the stat display
+        const statAdoption = document.getElementById('statAdoption');
+        if (statAdoption) {
+            statAdoption.textContent = ADOPTION_STAGES[selectedAdoptionStage] || selectedAdoptionStage;
+        }
+
+        closeAdoptionStageModal();
+
+        // Log the change (notes would typically be sent to a history endpoint)
+        if (notes) {
+            console.log('Stage change notes:', notes);
+        }
+
+    } catch (error) {
+        console.error('Failed to update adoption stage:', error);
+        alert('Failed to update adoption stage. Please try again.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+// Expose adoption stage functions to window
+window.openAdoptionStageModal = openAdoptionStageModal;
+window.closeAdoptionStageModal = closeAdoptionStageModal;
+window.selectAdoptionStage = selectAdoptionStage;
+window.handleAdoptionStageSubmit = handleAdoptionStageSubmit;
+
+// ==========================================
+// SPM MATURITY ASSESSMENT FUNCTIONS
+// ==========================================
+
+let currentAssessment = null;
+let customerAssessments = [];
+let assessmentTemplate = null;
+let assessmentResponses = {};
+let currentQuestionIndex = 0;
+let assessmentQuestions = [];
+let spmRadarChart = null;
+let currentEditingAssessmentId = null; // Track if we're editing an existing assessment
+
+// Load assessments for the customer
+async function loadAssessments(customerId) {
+    try {
+        // Get all assessments (including drafts and in-progress)
+        const allAssessments = await API.AssessmentAPI.getCustomerAssessments(customerId);
+        customerAssessments = allAssessments.items || [];
+
+        // Also get history for comparison data (only completed)
+        const history = await API.AssessmentAPI.getCustomerHistory(customerId);
+
+        // Find if there's an in-progress assessment
+        const inProgressAssessment = customerAssessments.find(a =>
+            a.status === 'draft' || a.status === 'in_progress'
+        );
+
+        if (customerAssessments.length === 0) {
+            showNoAssessmentState();
+        } else if (inProgressAssessment) {
+            // Show in-progress state with option to continue
+            showInProgressAssessmentState(inProgressAssessment);
+            // Also display the most recent completed assessment if any
+            const completedAssessments = customerAssessments.filter(a => a.status === 'completed');
+            if (completedAssessments.length > 0) {
+                // Sort by id descending to get most recent, prefer ones with scores
+                const sorted = [...completedAssessments].sort((a, b) => {
+                    const aHasScores = a.dimension_scores && Object.keys(a.dimension_scores).length > 0;
+                    const bHasScores = b.dimension_scores && Object.keys(b.dimension_scores).length > 0;
+                    if (aHasScores && !bHasScores) return -1;
+                    if (!aHasScores && bHasScores) return 1;
+                    return b.id - a.id; // Most recent first
+                });
+                currentAssessment = sorted[0];
+                displayAssessment(currentAssessment, history.comparison);
+            }
+        } else {
+            // Sort by id descending to get most recent
+            const sorted = [...customerAssessments].sort((a, b) => b.id - a.id);
+            currentAssessment = sorted[0];
+            displayAssessment(currentAssessment, history.comparison);
+        }
+
+        // Always render history table with all assessments
+        renderAssessmentHistory(customerAssessments);
+        // Update the overview summary card
+        renderAssessmentSummary(customerAssessments);
+    } catch (error) {
+        console.error('Failed to load assessments:', error);
+        showNoAssessmentState();
+        renderAssessmentSummary([]); // Clear summary on error
+    }
+}
+
+// Render SPM Assessment summary on Overview section
+function renderAssessmentSummary(assessments) {
+    const container = document.getElementById('spmAssessmentSummaryContainer');
+    if (!container) return;
+
+    // Find the most recent completed assessment with scores
+    const completedAssessments = assessments.filter(a => a.status === 'completed');
+    // Sort by: has scores first, then by id descending
+    completedAssessments.sort((a, b) => {
+        const aHasScores = a.dimension_scores && Object.keys(a.dimension_scores).length > 0;
+        const bHasScores = b.dimension_scores && Object.keys(b.dimension_scores).length > 0;
+        if (aHasScores && !bHasScores) return -1;
+        if (!aHasScores && bHasScores) return 1;
+        return b.id - a.id;
+    });
+    const completedAssessment = completedAssessments[0] || null;
+    const inProgressAssessment = assessments.find(a => a.status === 'draft' || a.status === 'in_progress');
+
+    if (!completedAssessment && !inProgressAssessment) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 16px;">
+                <div class="text-secondary" style="font-size: 13px;">No assessment completed</div>
+                <button class="btn btn--primary btn--sm mt-3" onclick="showSection('spmAssessment'); openNewAssessmentModal();">
+                    Start Assessment
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    if (completedAssessment) {
+        const score = completedAssessment.overall_score || 0;
+        const maxScore = 5;
+        const percentage = (score / maxScore) * 100;
+        const assessmentDate = new Date(completedAssessment.assessment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+        // Determine color based on score
+        let scoreColor = 'var(--cds-support-error)'; // Red for low
+        if (score >= 4) scoreColor = 'var(--cds-support-success)'; // Green for high
+        else if (score >= 3) scoreColor = 'var(--cds-support-warning)'; // Yellow for medium
+        else if (score >= 2) scoreColor = '#f57c00'; // Orange for low-medium
+
+        // Get dimension scores for mini display
+        const dimensionScores = completedAssessment.dimension_scores || {};
+        const dimensions = Object.entries(dimensionScores);
+
+        container.innerHTML = `
+            <div class="flex gap-4" style="align-items: center;">
+                <div style="text-align: center; min-width: 80px;">
+                    <div style="position: relative; width: 70px; height: 70px; margin: 0 auto;">
+                        <svg width="70" height="70" viewBox="0 0 70 70">
+                            <circle cx="35" cy="35" r="30" fill="none" stroke="var(--cds-border-subtle-01)" stroke-width="6"/>
+                            <circle cx="35" cy="35" r="30" fill="none" stroke="${scoreColor}" stroke-width="6"
+                                stroke-dasharray="${percentage * 1.885} 188.5"
+                                stroke-linecap="round"
+                                transform="rotate(-90 35 35)"/>
+                        </svg>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 18px; font-weight: 600; color: ${scoreColor};">
+                            ${score.toFixed(1)}
+                        </div>
+                    </div>
+                    <div class="text-secondary" style="font-size: 11px; margin-top: 4px;">/ 5.0 Maturity</div>
+                </div>
+                <div style="flex: 1; font-size: 13px;">
+                    ${dimensions.slice(0, 3).map(([name, dimScore]) => `
+                        <div class="flex flex-between mb-2">
+                            <span class="text-secondary">${name}</span>
+                            <span style="font-weight: 500;">${dimScore.toFixed(1)}</span>
+                        </div>
+                    `).join('')}
+                    ${dimensions.length > 3 ? `<div class="text-secondary" style="font-size: 11px;">+${dimensions.length - 3} more dimensions</div>` : ''}
+                    <div class="text-secondary" style="font-size: 11px; margin-top: 8px;">Assessed: ${assessmentDate}</div>
+                </div>
+            </div>
+        `;
+    } else if (inProgressAssessment) {
+        // Show in-progress state
+        container.innerHTML = `
+            <div style="text-align: center; padding: 12px;">
+                <div style="display: inline-flex; align-items: center; gap: 8px; color: var(--cds-support-warning);">
+                    <svg width="16" height="16" viewBox="0 0 32 32"><path fill="currentColor" d="M16 4a12 12 0 1012 12A12 12 0 0016 4zm0 22a10 10 0 1110-10 10 10 0 01-10 10z"/><path fill="currentColor" d="M16 10h-2v8h2v-8zm0 10h-2v2h2v-2z"/></svg>
+                    <span style="font-weight: 500;">Assessment In Progress</span>
+                </div>
+                <button class="btn btn--primary btn--sm mt-3" onclick="showSection('spmAssessment'); resumeAssessment(${inProgressAssessment.id});">
+                    Continue Assessment
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Show "no assessment" state
+function showNoAssessmentState() {
+    document.getElementById('noAssessmentState').style.display = 'block';
+    document.getElementById('assessmentContent').style.display = 'none';
+    // Hide in-progress banner
+    const inProgressBanner = document.getElementById('inProgressAssessmentBanner');
+    if (inProgressBanner) inProgressBanner.style.display = 'none';
+}
+
+// Show in-progress assessment banner
+function showInProgressAssessmentState(assessment) {
+    // Create or show the in-progress banner
+    let banner = document.getElementById('inProgressAssessmentBanner');
+    if (!banner) {
+        // Create the banner element
+        banner = document.createElement('div');
+        banner.id = 'inProgressAssessmentBanner';
+        banner.className = 'notification notification--warning mb-4';
+        banner.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 16px;';
+
+        // Insert at the top of SPM Assessment section
+        const spmSection = document.getElementById('spmAssessmentSection');
+        if (spmSection) {
+            const cardBody = spmSection.querySelector('.card__body') || spmSection.firstElementChild;
+            if (cardBody) {
+                cardBody.insertBefore(banner, cardBody.firstChild);
+            }
+        }
+    }
+
+    const answeredCount = assessment.overall_score !== null ? 'some' : '0';
+    banner.innerHTML = `
+        <div class="flex items-center gap-3">
+            <svg width="20" height="20" viewBox="0 0 32 32" fill="var(--cds-support-warning)">
+                <path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-1 7h2v10h-2V9zm1 16c-.8 0-1.5-.7-1.5-1.5S15.2 22 16 22s1.5.7 1.5 1.5S16.8 25 16 25z"/>
+            </svg>
+            <div>
+                <strong>Assessment in Progress</strong>
+                <p class="text-secondary" style="margin: 0; font-size: 12px;">
+                    Started on ${formatDate(assessment.assessment_date)} - ${formatAssessmentStatus(assessment.status)}
+                </p>
+            </div>
+        </div>
+        <button class="btn btn--primary btn--sm" onclick="resumeAssessment(${assessment.id})">
+            Continue Assessment
+        </button>
+    `;
+    banner.style.display = 'flex';
+}
+
+// Display assessment data
+function displayAssessment(assessment, comparison) {
+    document.getElementById('noAssessmentState').style.display = 'none';
+    document.getElementById('assessmentContent').style.display = 'block';
+
+    // Overall score
+    const overallScore = assessment.overall_score ? assessment.overall_score.toFixed(1) : '-';
+    document.getElementById('overallScoreValue').textContent = overallScore;
+
+    // Details
+    document.getElementById('assessmentDate').textContent = formatDate(assessment.assessment_date);
+    document.getElementById('assessmentVersion').textContent = assessment.template?.version || 'v1.0';
+    document.getElementById('assessmentStatus').textContent = formatAssessmentStatus(assessment.status);
+    document.getElementById('assessmentCompletedBy').textContent = assessment.completed_by
+        ? `${assessment.completed_by.first_name} ${assessment.completed_by.last_name}`
+        : '-';
+
+    // Dimension scores
+    renderDimensionScores(assessment.dimension_scores);
+
+    // Radar chart
+    renderRadarChart(assessment.dimension_scores);
+
+    // Trend comparison
+    if (comparison && comparison.previous) {
+        renderTrendComparison(comparison);
+    } else {
+        document.getElementById('assessmentTrendSection').style.display = 'none';
+    }
+
+    // History table
+    renderAssessmentHistory(customerAssessments);
+}
+
+// Format assessment status
+function formatAssessmentStatus(status) {
+    const labels = {
+        'draft': 'Draft',
+        'in_progress': 'In Progress',
+        'completed': 'Completed'
+    };
+    return labels[status] || status;
+}
+
+// Render dimension score cards
+function renderDimensionScores(dimensionScores) {
+    const container = document.getElementById('dimensionScoreCards');
+    if (!dimensionScores || Object.keys(dimensionScores).length === 0) {
+        container.innerHTML = '<p class="text-secondary">No dimension scores available</p>';
+        return;
+    }
+
+    let html = '';
+    for (const [dimension, score] of Object.entries(dimensionScores)) {
+        const scoreNum = typeof score === 'number' ? score.toFixed(1) : '-';
+        const percentage = typeof score === 'number' ? (score / 5) * 100 : 0;
+
+        html += `
+            <div class="dimension-score-card">
+                <div class="dimension-score-card__name">${dimension}</div>
+                <div class="dimension-score-card__score">${scoreNum}</div>
+                <div class="dimension-score-card__bar">
+                    <div class="dimension-score-card__fill" style="width: ${percentage}%;"></div>
+                </div>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+}
+
+// State for assessment comparison
+let selectedAssessmentsForComparison = [];
+
+// Color palette for comparison chart
+const comparisonColors = [
+    { bg: 'rgba(15, 98, 254, 0.2)', border: 'rgba(15, 98, 254, 1)', point: 'rgba(15, 98, 254, 1)' },       // Blue
+    { bg: 'rgba(255, 131, 0, 0.2)', border: 'rgba(255, 131, 0, 1)', point: 'rgba(255, 131, 0, 1)' },       // Orange
+    { bg: 'rgba(36, 161, 72, 0.2)', border: 'rgba(36, 161, 72, 1)', point: 'rgba(36, 161, 72, 1)' },       // Green
+    { bg: 'rgba(162, 25, 255, 0.2)', border: 'rgba(162, 25, 255, 1)', point: 'rgba(162, 25, 255, 1)' },    // Purple
+    { bg: 'rgba(218, 30, 40, 0.2)', border: 'rgba(218, 30, 40, 1)', point: 'rgba(218, 30, 40, 1)' }        // Red
+];
+
+// Render radar/spider chart with optional comparison datasets
+function renderRadarChart(dimensionScores, comparisonAssessments = []) {
+    const ctx = document.getElementById('spmRadarChart');
+    if (!ctx) return;
+
+    // Destroy existing chart if any
+    if (spmRadarChart) {
+        spmRadarChart.destroy();
+    }
+
+    if (!dimensionScores || Object.keys(dimensionScores).length === 0) {
+        return;
+    }
+
+    const labels = Object.keys(dimensionScores);
+    const data = Object.values(dimensionScores);
+
+    // Build datasets array - primary assessment first
+    const datasets = [{
+        label: 'Current Assessment',
+        data: data,
+        backgroundColor: comparisonColors[0].bg,
+        borderColor: comparisonColors[0].border,
+        borderWidth: 2,
+        pointBackgroundColor: comparisonColors[0].point,
+        pointRadius: 4
+    }];
+
+    // Add comparison datasets
+    comparisonAssessments.forEach((assessment, index) => {
+        if (assessment.dimension_scores && Object.keys(assessment.dimension_scores).length > 0) {
+            const colorIndex = (index + 1) % comparisonColors.length;
+            const comparisonData = labels.map(label => assessment.dimension_scores[label] || 0);
+            const assessmentDate = new Date(assessment.assessment_date).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+
+            datasets.push({
+                label: assessmentDate,
+                data: comparisonData,
+                backgroundColor: comparisonColors[colorIndex].bg,
+                borderColor: comparisonColors[colorIndex].border,
+                borderWidth: 2,
+                borderDash: [5, 5],  // Dashed line for comparison
+                pointBackgroundColor: comparisonColors[colorIndex].point,
+                pointRadius: 3
+            });
+        }
+    });
+
+    spmRadarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                r: {
+                    min: 0,
+                    max: 5,
+                    ticks: {
+                        stepSize: 1,
+                        color: '#525252',
+                        backdropColor: 'transparent',
+                        font: { size: 10 },
+                        showLabelBackdrop: false
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    angleLines: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    pointLabels: {
+                        color: '#161616',
+                        font: {
+                            size: 13,
+                            weight: 'bold'
+                        },
+                        padding: 20
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: datasets.length > 1,
+                    position: 'bottom',
+                    labels: {
+                        color: '#161616',
+                        usePointStyle: true,
+                        padding: 16,
+                        font: { size: 12 }
+                    }
+                }
+            }
+        }
+    });
+
+    // Update comparison legend UI
+    updateComparisonLegend(datasets);
+}
+
+// Update the comparison legend below the chart
+function updateComparisonLegend(datasets) {
+    const legendContainer = document.getElementById('comparisonLegend');
+    if (!legendContainer) return;
+
+    if (datasets.length <= 1) {
+        legendContainer.innerHTML = '';
+        legendContainer.style.display = 'none';
+        return;
+    }
+
+    legendContainer.style.display = 'flex';
+    let html = '';
+    datasets.forEach((ds, index) => {
+        const isDashed = ds.borderDash && ds.borderDash.length > 0;
+        html += `
+            <div class="comparison-legend-item">
+                <span class="comparison-legend-color" style="background-color: ${ds.borderColor}; ${isDashed ? 'border: 2px dashed ' + ds.borderColor + '; background: transparent;' : ''}"></span>
+                <span class="comparison-legend-label">${ds.label}</span>
+            </div>
+        `;
+    });
+    legendContainer.innerHTML = html;
+}
+
+// Toggle assessment selection for comparison
+function toggleAssessmentComparison(assessmentId, checkbox) {
+    const assessment = customerAssessments.find(a => a.id === assessmentId);
+    if (!assessment) return;
+
+    if (checkbox.checked) {
+        // Max 4 comparisons (including current)
+        if (selectedAssessmentsForComparison.length >= 4) {
+            checkbox.checked = false;
+            alert('You can compare up to 4 assessments at a time');
+            return;
+        }
+        selectedAssessmentsForComparison.push(assessment);
+    } else {
+        selectedAssessmentsForComparison = selectedAssessmentsForComparison.filter(a => a.id !== assessmentId);
+    }
+
+    // Re-render chart with comparisons
+    if (currentAssessment) {
+        const comparisons = selectedAssessmentsForComparison.filter(a => a.id !== currentAssessment.id);
+        renderRadarChart(currentAssessment.dimension_scores, comparisons);
+    }
+}
+
+// Clear all comparison selections
+function clearComparisonSelections() {
+    selectedAssessmentsForComparison = [];
+    // Uncheck all checkboxes
+    document.querySelectorAll('.compare-checkbox').forEach(cb => cb.checked = false);
+    // Re-render chart without comparisons
+    if (currentAssessment) {
+        renderRadarChart(currentAssessment.dimension_scores);
+    }
+}
+
+// Render trend comparison indicators
+function renderTrendComparison(comparison) {
+    const container = document.getElementById('trendIndicators');
+    const section = document.getElementById('assessmentTrendSection');
+
+    if (!comparison || !comparison.dimension_changes) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+
+    let html = '';
+    for (const [dimension, change] of Object.entries(comparison.dimension_changes)) {
+        const changeNum = typeof change === 'number' ? change : 0;
+        const isUp = changeNum > 0;
+        const isDown = changeNum < 0;
+        const arrow = isUp ? '&#x2191;' : isDown ? '&#x2193;' : '&#x2194;';
+        const colorClass = isUp ? 'trend-up' : isDown ? 'trend-down' : 'trend-same';
+
+        html += `
+            <div class="trend-indicator">
+                <span class="trend-indicator__name">${dimension}</span>
+                <span class="trend-indicator__change ${colorClass}">
+                    ${arrow} ${isUp ? '+' : ''}${changeNum.toFixed(1)}
+                </span>
+            </div>
+        `;
+    }
+
+    if (comparison.overall_change !== null && comparison.overall_change !== undefined) {
+        const overallUp = comparison.overall_change > 0;
+        const overallDown = comparison.overall_change < 0;
+        html += `
+            <div class="trend-indicator trend-indicator--overall">
+                <span class="trend-indicator__name">Overall</span>
+                <span class="trend-indicator__change ${overallUp ? 'trend-up' : overallDown ? 'trend-down' : 'trend-same'}">
+                    ${overallUp ? '&#x2191; +' : overallDown ? '&#x2193; ' : '&#x2194; '}${comparison.overall_change.toFixed(1)}
+                </span>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+// Render assessment history table
+function renderAssessmentHistory(assessments) {
+    const tbody = document.getElementById('assessmentHistoryTableBody');
+    const thead = document.getElementById('assessmentHistoryTableHead');
+
+    if (!assessments || assessments.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary">No assessment history</td></tr>';
+        return;
+    }
+
+    // Update table header to include Compare column
+    if (thead) {
+        thead.innerHTML = `
+            <tr>
+                <th style="width: 50px;">Compare</th>
+                <th>Date</th>
+                <th>Version</th>
+                <th>Overall Score</th>
+                <th>Change</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        `;
+    }
+
+    // Separate completed and incomplete assessments for comparison calculation
+    const completedAssessments = assessments.filter(a => a.status === 'completed');
+
+    // Reset comparison selections when re-rendering
+    selectedAssessmentsForComparison = [];
+
+    let html = '';
+    assessments.forEach((assessment, index) => {
+        // Only calculate change against previous completed assessment
+        let changeHtml = '-';
+        if (assessment.status === 'completed') {
+            const currentCompletedIdx = completedAssessments.indexOf(assessment);
+            const prevCompleted = completedAssessments[currentCompletedIdx + 1];
+            if (prevCompleted && assessment.overall_score && prevCompleted.overall_score) {
+                const change = assessment.overall_score - prevCompleted.overall_score;
+                const isUp = change > 0;
+                const isDown = change < 0;
+                changeHtml = `<span class="${isUp ? 'trend-up' : isDown ? 'trend-down' : 'trend-same'}">
+                    ${isUp ? '&#x2191; +' : isDown ? '&#x2193; ' : ''}${change.toFixed(1)}
+                </span>`;
+            }
+        }
+
+        const isIncomplete = assessment.status === 'draft' || assessment.status === 'in_progress';
+        const statusClass = assessment.status === 'completed' ? 'tag--green'
+            : assessment.status === 'in_progress' ? 'tag--yellow'
+            : 'tag--gray';
+
+        // Check if assessment can be compared (completed and has dimension scores)
+        const hasScores = assessment.dimension_scores && Object.keys(assessment.dimension_scores).length > 0;
+        const canCompare = assessment.status === 'completed' && hasScores;
+        const isCurrentAssessment = currentAssessment && assessment.id === currentAssessment.id;
+
+        // Compare checkbox
+        const compareCheckbox = canCompare && !isCurrentAssessment
+            ? `<input type="checkbox" class="compare-checkbox" data-assessment-id="${assessment.id}" onchange="toggleAssessmentComparison(${assessment.id}, this)" title="Add to comparison">`
+            : isCurrentAssessment
+                ? `<span class="tag tag--blue tag--sm">Current</span>`
+                : `<span class="text-secondary">-</span>`;
+
+        // Show different action button based on status
+        const actionButton = isIncomplete
+            ? `<button class="btn btn--primary btn--sm" onclick="resumeAssessment(${assessment.id})">Continue</button>
+               <button class="btn btn--ghost btn--sm" onclick="deleteAssessment(${assessment.id})" title="Delete">
+                   <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 12h2v12h-2zm6 0h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/></svg>
+               </button>`
+            : `<button class="btn btn--ghost btn--sm" onclick="viewAssessmentDetail(${assessment.id})">View</button>`;
+
+        html += `
+            <tr${isIncomplete ? ' class="assessment-row--incomplete"' : ''}>
+                <td class="text-center">${compareCheckbox}</td>
+                <td>${formatDate(assessment.assessment_date)}</td>
+                <td>${assessment.template?.version || 'v1.0'}</td>
+                <td><strong>${assessment.overall_score ? assessment.overall_score.toFixed(1) : '-'}</strong> / 5.0</td>
+                <td>${changeHtml}</td>
+                <td><span class="tag ${statusClass}">${formatAssessmentStatus(assessment.status)}</span></td>
+                <td class="flex gap-2">
+                    ${actionButton}
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+// View assessment detail
+async function viewAssessmentDetail(assessmentId) {
+    try {
+        const assessment = await API.AssessmentAPI.getAssessment(assessmentId);
+        currentAssessment = assessment;
+        displayAssessment(assessment, null);
+    } catch (error) {
+        console.error('Failed to load assessment:', error);
+        alert('Failed to load assessment details.');
+    }
+}
+
+// Resume an in-progress assessment
+async function resumeAssessment(assessmentId) {
+    try {
+        // Get the assessment with its existing responses
+        const assessment = await API.AssessmentAPI.getAssessment(assessmentId);
+
+        if (assessment.status === 'completed') {
+            alert('This assessment is already completed.');
+            return;
+        }
+
+        // Store the assessment ID we're editing
+        currentEditingAssessmentId = assessmentId;
+
+        // Get template details
+        assessmentTemplate = assessment.template;
+        const templateDetail = await API.AssessmentAPI.getTemplate(assessmentTemplate.id);
+        assessmentQuestions = templateDetail.questions || [];
+
+        if (assessmentQuestions.length === 0) {
+            alert('The assessment template has no questions.');
+            return;
+        }
+
+        // Sort questions by display order
+        assessmentQuestions.sort((a, b) => a.display_order - b.display_order);
+
+        // Restore existing responses
+        assessmentResponses = {};
+        if (assessment.responses && assessment.responses.length > 0) {
+            assessment.responses.forEach(response => {
+                assessmentResponses[response.question_id] = {
+                    question_id: response.question_id,
+                    score: response.score,
+                    notes: response.notes
+                };
+            });
+        }
+
+        // Find the first unanswered question to resume from
+        let resumeIndex = 0;
+        for (let i = 0; i < assessmentQuestions.length; i++) {
+            if (!assessmentResponses[assessmentQuestions[i].id]) {
+                resumeIndex = i;
+                break;
+            }
+            // If all questions answered, go to last one
+            if (i === assessmentQuestions.length - 1) {
+                resumeIndex = i;
+            }
+        }
+
+        currentQuestionIndex = resumeIndex;
+        displayQuestion(resumeIndex);
+
+        document.getElementById('newAssessmentModal').classList.add('open');
+    } catch (error) {
+        console.error('Failed to resume assessment:', error);
+        alert('Failed to resume assessment. Please try again.');
+    }
+}
+
+// Save assessment progress and close
+async function saveAndCloseAssessment() {
+    // Save current notes if on a question
+    const currentQuestion = assessmentQuestions[currentQuestionIndex];
+    if (currentQuestion && assessmentResponses[currentQuestion.id]) {
+        assessmentResponses[currentQuestion.id].notes = document.getElementById('questionNotes').value || null;
+    }
+
+    // Check if there are any responses to save
+    const responses = Object.values(assessmentResponses);
+    if (responses.length === 0) {
+        closeNewAssessmentModal();
+        return;
+    }
+
+    const saveBtn = document.getElementById('saveCloseBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+        const customerId = getCustomerId();
+
+        // If we're editing an existing assessment, use that ID
+        let assessmentId = currentEditingAssessmentId;
+
+        // If no existing assessment, create a new one
+        if (!assessmentId) {
+            const assessment = await API.AssessmentAPI.createAssessment(customerId, {
+                template_id: assessmentTemplate.id,
+                assessment_date: new Date().toISOString().split('T')[0]
+            });
+            assessmentId = assessment.id;
+        }
+
+        // Save responses (not complete)
+        await API.AssessmentAPI.saveResponses(assessmentId, responses, false);
+
+        closeNewAssessmentModal();
+
+        // Show confirmation
+        const answered = responses.length;
+        const total = assessmentQuestions.length;
+        alert(`Progress saved! ${answered} of ${total} questions answered.`);
+
+        // Reload assessments to show in-progress state
+        await loadAssessments(customerId);
+
+    } catch (error) {
+        console.error('Failed to save assessment:', error);
+        alert('Failed to save assessment progress. Please try again.');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save & Close';
+    }
+}
+
+// Delete an assessment
+async function deleteAssessment(assessmentId) {
+    if (!confirm('Are you sure you want to delete this assessment? This cannot be undone.')) {
+        return;
+    }
+
+    try {
+        await API.AssessmentAPI.deleteAssessment(assessmentId);
+        const customerId = getCustomerId();
+        await loadAssessments(customerId);
+    } catch (error) {
+        console.error('Failed to delete assessment:', error);
+        alert('Failed to delete assessment. Please try again.');
+    }
+}
+
+// Open new assessment modal
+async function openNewAssessmentModal() {
+    // Reset state
+    currentQuestionIndex = 0;
+    assessmentResponses = {};
+    currentEditingAssessmentId = null; // Clear any existing editing ID
+
+    try {
+        // Get active template
+        assessmentTemplate = await API.AssessmentAPI.getActiveTemplate();
+        if (!assessmentTemplate) {
+            alert('No active assessment template found. Please contact an administrator to set up an assessment template.');
+            return;
+        }
+
+        // Get template with questions
+        const templateDetail = await API.AssessmentAPI.getTemplate(assessmentTemplate.id);
+        assessmentQuestions = templateDetail.questions || [];
+
+        if (assessmentQuestions.length === 0) {
+            alert('The assessment template has no questions. Please contact an administrator.');
+            return;
+        }
+
+        // Sort questions by display order
+        assessmentQuestions.sort((a, b) => a.display_order - b.display_order);
+
+        // Display first question
+        displayQuestion(0);
+
+        document.getElementById('newAssessmentModal').classList.add('open');
+    } catch (error) {
+        console.error('Failed to load assessment template:', error);
+        alert('Failed to load assessment template. Please try again.');
+    }
+}
+
+// Close new assessment modal
+function closeNewAssessmentModal() {
+    document.getElementById('newAssessmentModal').classList.remove('open');
+}
+
+// Display a question in the wizard
+function displayQuestion(index) {
+    if (index < 0 || index >= assessmentQuestions.length) return;
+
+    const question = assessmentQuestions[index];
+    const totalQuestions = assessmentQuestions.length;
+
+    // Update progress
+    const progress = ((index + 1) / totalQuestions) * 100;
+    document.getElementById('wizardProgressBar').style.width = `${progress}%`;
+    document.getElementById('currentDimensionName').textContent = question.dimension?.name || 'Assessment';
+    document.getElementById('questionProgress').textContent = `${index + 1} / ${totalQuestions}`;
+
+    // Update question
+    document.getElementById('currentQuestionNumber').textContent = `Question ${question.question_number}`;
+    document.getElementById('currentQuestionText').textContent = question.question_text;
+
+    // Render rating options
+    const ratingContainer = document.getElementById('ratingOptions');
+    const minScore = question.min_score || 1;
+    const maxScore = question.max_score || 5;
+    const scoreLabels = question.score_labels || {};
+
+    let ratingHtml = '';
+    for (let i = minScore; i <= maxScore; i++) {
+        const label = scoreLabels[String(i)] || `Level ${i}`;
+        const selected = assessmentResponses[question.id]?.score === i ? 'selected' : '';
+
+        ratingHtml += `
+            <div class="rating-option ${selected}" onclick="selectRating(${question.id}, ${i})">
+                <div class="rating-option__score">${i}</div>
+                <div class="rating-option__label">${label}</div>
+            </div>
+        `;
+    }
+    ratingContainer.innerHTML = ratingHtml;
+
+    // Restore notes if any
+    document.getElementById('questionNotes').value = assessmentResponses[question.id]?.notes || '';
+
+    // Update navigation buttons
+    document.getElementById('prevQuestionBtn').disabled = index === 0;
+    document.getElementById('nextQuestionBtn').style.display = index < totalQuestions - 1 ? 'inline-flex' : 'none';
+    document.getElementById('submitAssessmentBtn').style.display = index === totalQuestions - 1 ? 'inline-flex' : 'none';
+
+    currentQuestionIndex = index;
+}
+
+// Select a rating
+function selectRating(questionId, score) {
+    // Save the response
+    assessmentResponses[questionId] = {
+        question_id: questionId,
+        score: score,
+        notes: document.getElementById('questionNotes').value || null
+    };
+
+    // Update UI to show selection
+    document.querySelectorAll('.rating-option').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.rating-option')[score - 1]?.classList.add('selected');
+}
+
+// Go to previous question
+function previousQuestion() {
+    // Save current notes
+    const currentQuestion = assessmentQuestions[currentQuestionIndex];
+    if (assessmentResponses[currentQuestion.id]) {
+        assessmentResponses[currentQuestion.id].notes = document.getElementById('questionNotes').value || null;
+    }
+
+    if (currentQuestionIndex > 0) {
+        displayQuestion(currentQuestionIndex - 1);
+    }
+}
+
+// Go to next question
+function nextQuestion() {
+    // Validate current question is answered
+    const currentQuestion = assessmentQuestions[currentQuestionIndex];
+    if (!assessmentResponses[currentQuestion.id] || !assessmentResponses[currentQuestion.id].score) {
+        alert('Please select a rating before proceeding.');
+        return;
+    }
+
+    // Save notes
+    assessmentResponses[currentQuestion.id].notes = document.getElementById('questionNotes').value || null;
+
+    if (currentQuestionIndex < assessmentQuestions.length - 1) {
+        displayQuestion(currentQuestionIndex + 1);
+    }
+}
+
+// Submit the assessment
+async function submitAssessment() {
+    // Validate last question
+    const lastQuestion = assessmentQuestions[currentQuestionIndex];
+    if (!assessmentResponses[lastQuestion.id] || !assessmentResponses[lastQuestion.id].score) {
+        alert('Please select a rating before submitting.');
+        return;
+    }
+    assessmentResponses[lastQuestion.id].notes = document.getElementById('questionNotes').value || null;
+
+    // Check all required questions are answered
+    const requiredQuestions = assessmentQuestions.filter(q => q.is_required);
+    const unanswered = requiredQuestions.filter(q => !assessmentResponses[q.id]?.score);
+
+    if (unanswered.length > 0) {
+        alert(`Please answer all required questions. ${unanswered.length} question(s) remaining.`);
+        return;
+    }
+
+    const submitBtn = document.getElementById('submitAssessmentBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+
+    try {
+        const customerId = getCustomerId();
+
+        // Use existing assessment ID if resuming, otherwise create new
+        let assessmentId = currentEditingAssessmentId;
+
+        if (!assessmentId) {
+            // Create new assessment
+            const assessment = await API.AssessmentAPI.createAssessment(customerId, {
+                template_id: assessmentTemplate.id,
+                assessment_date: new Date().toISOString().split('T')[0]
+            });
+            assessmentId = assessment.id;
+        }
+
+        // Submit all responses
+        const responses = Object.values(assessmentResponses);
+        await API.AssessmentAPI.saveResponses(assessmentId, responses, true);
+
+        closeNewAssessmentModal();
+        alert('Assessment completed successfully!');
+
+        // Reload assessments
+        await loadAssessments(customerId);
+
+    } catch (error) {
+        console.error('Failed to submit assessment:', error);
+        alert('Failed to submit assessment. Please try again.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Complete Assessment';
+    }
+}
+
+// Open upload assessment modal
+function openUploadAssessmentModal() {
+    document.getElementById('uploadAssessmentForm').reset();
+    document.getElementById('assessmentUploadDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('uploadAssessmentModal').classList.add('open');
+}
+
+// Close upload assessment modal
+function closeUploadAssessmentModal() {
+    document.getElementById('uploadAssessmentModal').classList.remove('open');
+}
+
+// Handle assessment Excel upload
+async function handleAssessmentUpload(event) {
+    event.preventDefault();
+
+    const fileInput = document.getElementById('assessmentUploadFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert('Please select a file.');
+        return;
+    }
+
+    const uploadBtn = document.getElementById('uploadAssessmentBtn');
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+
+    try {
+        const customerId = getCustomerId();
+        const assessmentDate = document.getElementById('assessmentUploadDate').value;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        if (assessmentDate) {
+            formData.append('assessment_date', assessmentDate);
+        }
+
+        const result = await API.AssessmentAPI.uploadResponses(customerId, formData);
+
+        if (result.success) {
+            closeUploadAssessmentModal();
+            alert(`Assessment uploaded successfully! ${result.responses_saved} responses saved.`);
+            await loadAssessments(customerId);
+        } else {
+            alert('Upload failed: ' + (result.errors?.join(', ') || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Failed to upload assessment:', error);
+        alert('Failed to upload assessment. Please check the file format and try again.');
+    } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload';
+    }
+}
+
+// Expose SPM Assessment functions to window
+window.loadAssessments = loadAssessments;
+window.openNewAssessmentModal = openNewAssessmentModal;
+window.closeNewAssessmentModal = closeNewAssessmentModal;
+window.previousQuestion = previousQuestion;
+window.nextQuestion = nextQuestion;
+window.selectRating = selectRating;
+window.submitAssessment = submitAssessment;
+window.saveAndCloseAssessment = saveAndCloseAssessment;
+window.resumeAssessment = resumeAssessment;
+window.deleteAssessment = deleteAssessment;
+window.openUploadAssessmentModal = openUploadAssessmentModal;
+window.closeUploadAssessmentModal = closeUploadAssessmentModal;
+window.handleAssessmentUpload = handleAssessmentUpload;
+window.viewAssessmentDetail = viewAssessmentDetail;
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', async function() {
     if (await Auth.checkAuthAndRedirect()) {
@@ -2509,6 +3849,7 @@ function setupTabSwitching() {
     const targetprocessSection = document.getElementById('targetprocessSection');
     const documentsSection = document.getElementById('documentsSection');
     const usageFrameworkSection = document.getElementById('usageFrameworkSection');
+    const spmAssessmentSection = document.getElementById('spmAssessmentSection');
     const overviewGrid = document.querySelector('.grid.grid--2');
 
     // Helper to hide all tab sections
@@ -2520,6 +3861,7 @@ function setupTabSwitching() {
         if (targetprocessSection) targetprocessSection.style.display = 'none';
         if (documentsSection) documentsSection.style.display = 'none';
         if (usageFrameworkSection) usageFrameworkSection.style.display = 'none';
+        if (spmAssessmentSection) spmAssessmentSection.style.display = 'none';
         if (overviewGrid) overviewGrid.style.display = 'none';
     }
 
@@ -2559,6 +3901,9 @@ function setupTabSwitching() {
             } else if (tabName === 'Documents') {
                 if (documentsSection) documentsSection.style.display = 'block';
                 loadDocuments(customerId);
+            } else if (tabName === 'SPM Assessment') {
+                if (spmAssessmentSection) spmAssessmentSection.style.display = 'block';
+                loadAssessments(customerId);
             } else {
                 // Default to overview
                 if (overviewGrid) overviewGrid.style.display = 'grid';
@@ -2568,7 +3913,48 @@ function setupTabSwitching() {
     });
 }
 
+// Helper function to programmatically show a section by clicking its tab
+function showSection(sectionName) {
+    const tabNameMap = {
+        'overview': 'Overview',
+        'usageFramework': 'Usage Framework',
+        'engagements': 'Engagements',
+        'tasks': 'Tasks',
+        'risks': 'Risks',
+        'spmAssessment': 'SPM Assessment',
+        'targetprocess': 'TargetProcess',
+        'roadmap': 'Roadmap',
+        'documents': 'Documents'
+    };
+
+    const tabText = tabNameMap[sectionName] || sectionName;
+    const tab = Array.from(document.querySelectorAll('.tabs__tab')).find(t => t.textContent.trim() === tabText);
+    if (tab) {
+        tab.click();
+    }
+}
+
+// Make showSection available globally
+window.showSection = showSection;
+
 // Nav toggle function
 function toggleNav() {
     document.getElementById('sideNav').classList.toggle('open');
 }
+
+// Nav collapse functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const sideNav = document.getElementById('sideNav');
+    const toggleBtn = document.getElementById('navToggleBtn');
+
+    if (localStorage.getItem('navCollapsed') === 'true') {
+        sideNav.classList.add('collapsed');
+    }
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            sideNav.classList.toggle('collapsed');
+            localStorage.setItem('navCollapsed', sideNav.classList.contains('collapsed'));
+        });
+    }
+});

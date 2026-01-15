@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     await loadUsers();
     await loadUseCases();
     await loadAuthSettings();
+    await loadAdoptionStats();
 });
 
 /**
@@ -1117,6 +1118,466 @@ async function toggleAuthEnabled() {
     }
 }
 
+// ==================== ADOPTION JOURNEY MANAGEMENT ====================
+
+let allCustomersData = [];
+let currentStageFilter = '';
+
+const ADOPTION_STAGE_NAMES = {
+    'onboarding': 'Onboarding',
+    'adoption': 'Adoption',
+    'value_realization': 'Value Realization',
+    'expansion': 'Expansion',
+    'renewal': 'Renewal'
+};
+
+/**
+ * Load adoption stats and customer data
+ */
+async function loadAdoptionStats() {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/customers`);
+        if (!response.ok) throw new Error('Failed to fetch customers');
+
+        const data = await response.json();
+        allCustomersData = data.items || [];
+
+        // Calculate counts per stage
+        const stageCounts = {
+            onboarding: 0,
+            adoption: 0,
+            value_realization: 0,
+            expansion: 0,
+            renewal: 0
+        };
+
+        allCustomersData.forEach(customer => {
+            const stage = customer.adoption_stage || 'onboarding';
+            if (stageCounts.hasOwnProperty(stage)) {
+                stageCounts[stage]++;
+            }
+        });
+
+        // Update count displays
+        Object.entries(stageCounts).forEach(([stage, count]) => {
+            const countEl = document.getElementById(`adoption-count-${stage}`);
+            if (countEl) {
+                countEl.textContent = count;
+            }
+        });
+
+        // Render initial table (all customers)
+        renderAdoptionCustomersTable(allCustomersData);
+        updateAdoptionFilterCount(allCustomersData.length);
+
+    } catch (error) {
+        console.error('Failed to load adoption stats:', error);
+    }
+}
+
+/**
+ * Refresh adoption stats
+ */
+function refreshAdoptionStats() {
+    loadAdoptionStats();
+}
+
+/**
+ * Filter customers by adoption stage
+ */
+function filterByStage(stage) {
+    currentStageFilter = stage;
+
+    // Update dropdown if called from card click
+    const dropdown = document.getElementById('adoptionStageFilter');
+    if (dropdown && dropdown.value !== stage) {
+        dropdown.value = stage;
+    }
+
+    // Update card selection
+    document.querySelectorAll('.adoption-stat-card').forEach(card => {
+        if (card.dataset.stage === stage) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
+
+    // Filter and render table
+    let filteredCustomers;
+    if (stage) {
+        filteredCustomers = allCustomersData.filter(c => c.adoption_stage === stage);
+    } else {
+        filteredCustomers = allCustomersData;
+        // Remove selection from all cards
+        document.querySelectorAll('.adoption-stat-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+    }
+
+    renderAdoptionCustomersTable(filteredCustomers);
+    updateAdoptionFilterCount(filteredCustomers.length);
+}
+
+/**
+ * Update the filter count display
+ */
+function updateAdoptionFilterCount(count) {
+    const countEl = document.getElementById('adoptionFilterCount');
+    if (countEl) {
+        countEl.textContent = `${count} customer${count !== 1 ? 's' : ''}`;
+    }
+}
+
+/**
+ * Render the customers table for adoption section
+ */
+function renderAdoptionCustomersTable(customers) {
+    const tbody = document.getElementById('adoptionCustomersTableBody');
+    if (!tbody) return;
+
+    if (customers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">No customers found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = customers.map(customer => {
+        const stageName = ADOPTION_STAGE_NAMES[customer.adoption_stage] || customer.adoption_stage || '-';
+        const healthClass = {
+            'green': 'tag--green',
+            'yellow': 'tag--yellow',
+            'red': 'tag--red'
+        }[customer.health_status] || 'tag--gray';
+
+        const arr = customer.arr ? formatCurrency(customer.arr) : '-';
+        const renewalDate = customer.renewal_date ? formatDate(customer.renewal_date) : '-';
+
+        return `
+            <tr style="cursor: pointer;" onclick="window.location.href='customer-detail.html?id=${customer.id}'">
+                <td>
+                    <div style="font-weight: 500;">${customer.name}</div>
+                    <div class="text-secondary" style="font-size: 12px;">${customer.industry || '-'}</div>
+                </td>
+                <td><span class="tag tag--blue">${stageName}</span></td>
+                <td><span class="tag ${healthClass}">${(customer.health_status || '-').toUpperCase()}</span></td>
+                <td>${arr}</td>
+                <td>${renewalDate}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+/**
+ * Format currency for display
+ */
+function formatCurrency(amount) {
+    if (!amount) return '-';
+    const num = parseFloat(amount);
+    if (num >= 1000000) {
+        return `$${(num / 1000000).toFixed(1)}M`;
+    } else if (num >= 1000) {
+        return `$${(num / 1000).toFixed(0)}K`;
+    }
+    return `$${num.toFixed(0)}`;
+}
+
+/**
+ * Format date for display
+ */
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ==================== SPM ASSESSMENT TEMPLATE MANAGEMENT ====================
+
+let assessmentTemplatesCache = [];
+
+/**
+ * Load assessment templates
+ */
+async function loadAssessmentTemplates() {
+    const tableBody = document.getElementById('assessmentTemplatesTableBody');
+    if (!tableBody) return;
+
+    try {
+        const response = await window.API.AssessmentAPI.getTemplates();
+        assessmentTemplatesCache = response.items || [];
+
+        if (assessmentTemplatesCache.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary">No templates found. Upload an Excel file to create one.</td></tr>';
+            return;
+        }
+
+        // For each template, we need to fetch details to get question/dimension counts
+        const templateDetails = await Promise.all(
+            assessmentTemplatesCache.map(async (t) => {
+                try {
+                    const detail = await window.API.AssessmentAPI.getTemplate(t.id);
+                    return {
+                        ...t,
+                        questionCount: detail.questions?.length || 0,
+                        dimensionCount: detail.dimensions?.length || 0
+                    };
+                } catch (e) {
+                    return { ...t, questionCount: 0, dimensionCount: 0 };
+                }
+            })
+        );
+
+        tableBody.innerHTML = templateDetails.map(template => `
+            <tr>
+                <td>
+                    <strong>${template.name}</strong>
+                    ${template.description ? `<div class="text-secondary" style="font-size: 12px;">${truncateText(template.description, 50)}</div>` : ''}
+                </td>
+                <td><code>${template.version}</code></td>
+                <td>${template.questionCount}</td>
+                <td>${template.dimensionCount}</td>
+                <td>
+                    <span class="tag ${template.is_active ? 'tag--green' : 'tag--gray'}">
+                        ${template.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                </td>
+                <td>
+                    <div class="flex gap-2">
+                        ${!template.is_active ? `
+                            <button class="btn btn--ghost btn--small" onclick="activateTemplate(${template.id})" title="Set as Active">
+                                <svg width="16" height="16" viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+                            </button>
+                        ` : ''}
+                        <button class="btn btn--ghost btn--small" onclick="viewTemplateDetails(${template.id})" title="View Details">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M30.94 15.66A16.69 16.69 0 0016 5 16.69 16.69 0 001.06 15.66a1 1 0 000 .68A16.69 16.69 0 0016 27a16.69 16.69 0 0014.94-10.66 1 1 0 000-.68zM16 25c-5.3 0-10.9-3.93-12.93-9C5.1 10.93 10.7 7 16 7s10.9 3.93 12.93 9C26.9 21.07 21.3 25 16 25z"/><path d="M16 10a6 6 0 106 6 6 6 0 00-6-6zm0 10a4 4 0 114-4 4 4 0 01-4 4z"/></svg>
+                        </button>
+                        <button class="btn btn--ghost btn--small btn--danger" onclick="deleteTemplate(${template.id})" title="Delete">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 12h2v12h-2zM18 12h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zM12 2h8v2h-8z"/></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Failed to load assessment templates:', error);
+        tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Failed to load templates</td></tr>';
+    }
+}
+
+/**
+ * Open upload template modal
+ */
+function openUploadTemplateModal() {
+    const modal = document.getElementById('uploadTemplateModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        document.getElementById('uploadTemplateForm').reset();
+    }
+}
+
+/**
+ * Close upload template modal
+ */
+function closeUploadTemplateModal() {
+    const modal = document.getElementById('uploadTemplateModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Handle template Excel upload
+ */
+async function handleTemplateUpload(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('uploadTemplateBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Uploading...';
+
+    try {
+        const name = document.getElementById('templateName').value.trim();
+        const version = document.getElementById('templateVersion').value.trim();
+        const description = document.getElementById('templateDescription').value.trim();
+        const fileInput = document.getElementById('templateFile');
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            throw new Error('Please select a file to upload');
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        const result = await window.API.AssessmentAPI.uploadTemplate(formData, name, version, description);
+
+        if (result.success) {
+            closeUploadTemplateModal();
+            showToast(`Template created with ${result.dimensions_created} dimensions and ${result.questions_created} questions`, 'success');
+            await loadAssessmentTemplates();
+        } else {
+            throw new Error(result.errors.join(', ') || 'Upload failed');
+        }
+
+    } catch (error) {
+        console.error('Failed to upload template:', error);
+        showToast(error.message || 'Failed to upload template', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Open create template modal
+ */
+function openCreateTemplateModal() {
+    const modal = document.getElementById('createTemplateModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        document.getElementById('createTemplateForm').reset();
+        document.getElementById('templateEditId').value = '';
+        document.getElementById('templateModalTitle').textContent = 'Create Template';
+        document.getElementById('createTemplateSubmitBtn').textContent = 'Create Template';
+    }
+}
+
+/**
+ * Close create template modal
+ */
+function closeCreateTemplateModal() {
+    const modal = document.getElementById('createTemplateModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Handle create template form
+ */
+async function handleCreateTemplate(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('createTemplateSubmitBtn');
+    const originalText = btn.innerHTML;
+    const editId = document.getElementById('templateEditId').value;
+    const isEdit = editId && editId !== '';
+
+    btn.disabled = true;
+    btn.innerHTML = `<span class="loading-spinner"></span> ${isEdit ? 'Updating...' : 'Creating...'}`;
+
+    try {
+        const data = {
+            name: document.getElementById('createTemplateName').value.trim(),
+            version: document.getElementById('createTemplateVersion').value.trim(),
+            description: document.getElementById('createTemplateDescription').value.trim() || null,
+        };
+
+        let result;
+        if (isEdit) {
+            result = await window.API.AssessmentAPI.updateTemplate(parseInt(editId), data);
+        } else {
+            result = await window.API.AssessmentAPI.createTemplate(data);
+        }
+
+        closeCreateTemplateModal();
+        showToast(`Template "${result.name}" ${isEdit ? 'updated' : 'created'} successfully`, 'success');
+        await loadAssessmentTemplates();
+
+    } catch (error) {
+        console.error('Failed to save template:', error);
+        showToast(error.message || 'Failed to save template', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Activate a template (set as the current active version)
+ */
+async function activateTemplate(templateId) {
+    if (!confirm('This will set this template as the active version. Any new assessments will use this template.\n\nContinue?')) {
+        return;
+    }
+
+    try {
+        await window.API.AssessmentAPI.activateTemplate(templateId);
+        showToast('Template activated successfully', 'success');
+        await loadAssessmentTemplates();
+    } catch (error) {
+        console.error('Failed to activate template:', error);
+        showToast(error.message || 'Failed to activate template', 'error');
+    }
+}
+
+/**
+ * View template details (shows questions and dimensions)
+ */
+async function viewTemplateDetails(templateId) {
+    try {
+        const template = await window.API.AssessmentAPI.getTemplate(templateId);
+
+        // Build details HTML
+        const dimensionsList = template.dimensions?.map(d => `
+            <li><strong>${d.name}</strong>${d.description ? `: ${d.description}` : ''}</li>
+        `).join('') || '<li>No dimensions</li>';
+
+        const questionsList = template.questions?.map(q => `
+            <li><code>${q.question_number}</code> ${truncateText(q.question_text, 80)} <span class="text-secondary">(${q.min_score}-${q.max_score})</span></li>
+        `).join('') || '<li>No questions</li>';
+
+        // Show in results card
+        const card = document.getElementById('resultsCard');
+        const content = document.getElementById('resultsContent');
+
+        content.innerHTML = `
+            <h3 style="margin-bottom: 8px;">${template.name} v${template.version}</h3>
+            ${template.description ? `<p class="text-secondary mb-4">${template.description}</p>` : ''}
+
+            <h4 style="margin: 16px 0 8px;">Dimensions (${template.dimensions?.length || 0})</h4>
+            <ul class="results-list">${dimensionsList}</ul>
+
+            <h4 style="margin: 16px 0 8px;">Questions (${template.questions?.length || 0})</h4>
+            <ul class="results-list" style="max-height: 300px; overflow-y: auto;">${questionsList}</ul>
+        `;
+
+        card.style.display = 'block';
+        card.scrollIntoView({ behavior: 'smooth' });
+
+    } catch (error) {
+        console.error('Failed to load template details:', error);
+        showToast(error.message || 'Failed to load template details', 'error');
+    }
+}
+
+/**
+ * Delete a template
+ */
+async function deleteTemplate(templateId) {
+    if (!confirm('Are you sure you want to delete this template?\n\nThis cannot be undone. Templates with existing assessments cannot be deleted.')) {
+        return;
+    }
+
+    try {
+        await window.API.AssessmentAPI.deleteTemplate(templateId);
+        showToast('Template deleted successfully', 'success');
+        await loadAssessmentTemplates();
+    } catch (error) {
+        console.error('Failed to delete template:', error);
+        showToast(error.message || 'Failed to delete template', 'error');
+    }
+}
+
+// Load templates on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    // Add to existing DOMContentLoaded or call separately
+    await loadAssessmentTemplates();
+});
+
 // Make functions available globally
 window.refreshStats = refreshStats;
 window.clearTestData = clearTestData;
@@ -1146,3 +1607,16 @@ window.deleteUseCase = deleteUseCase;
 window.runMigrations = runMigrations;
 window.loadAuthSettings = loadAuthSettings;
 window.toggleAuthEnabled = toggleAuthEnabled;
+window.loadAdoptionStats = loadAdoptionStats;
+window.refreshAdoptionStats = refreshAdoptionStats;
+window.filterByStage = filterByStage;
+window.loadAssessmentTemplates = loadAssessmentTemplates;
+window.openUploadTemplateModal = openUploadTemplateModal;
+window.closeUploadTemplateModal = closeUploadTemplateModal;
+window.handleTemplateUpload = handleTemplateUpload;
+window.openCreateTemplateModal = openCreateTemplateModal;
+window.closeCreateTemplateModal = closeCreateTemplateModal;
+window.handleCreateTemplate = handleCreateTemplate;
+window.activateTemplate = activateTemplate;
+window.viewTemplateDetails = viewTemplateDetails;
+window.deleteTemplate = deleteTemplate;

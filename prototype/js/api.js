@@ -381,6 +381,132 @@ const RiskAPI = {
     },
 };
 
+// Assessment API
+const AssessmentAPI = {
+    // Templates
+    async getTemplates(activeOnly = false) {
+        const params = activeOnly ? '?active_only=true' : '';
+        return apiRequest(`/assessments/templates${params}`);
+    },
+
+    async getActiveTemplate() {
+        return apiRequest('/assessments/templates/active');
+    },
+
+    async getTemplate(id) {
+        return apiRequest(`/assessments/templates/${id}`);
+    },
+
+    async createTemplate(data) {
+        return apiRequest('/assessments/templates', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async uploadTemplate(formData, name, version, description = '') {
+        const url = `${API_BASE_URL}/assessments/templates/upload?name=${encodeURIComponent(name)}&version=${encodeURIComponent(version)}${description ? '&description=' + encodeURIComponent(description) : ''}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    },
+
+    async updateTemplate(id, data) {
+        return apiRequest(`/assessments/templates/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async activateTemplate(id) {
+        return apiRequest(`/assessments/templates/${id}/activate`, {
+            method: 'POST',
+        });
+    },
+
+    async deleteTemplate(id) {
+        const url = `${API_BASE_URL}/assessments/templates/${id}`;
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return true;
+    },
+
+    // Customer Assessments
+    async getCustomerAssessments(customerId, status = null) {
+        const params = status ? `?status=${status}` : '';
+        return apiRequest(`/assessments/customer/${customerId}${params}`);
+    },
+
+    async getCustomerHistory(customerId) {
+        return apiRequest(`/assessments/customer/${customerId}/history`);
+    },
+
+    async createAssessment(customerId, data) {
+        return apiRequest(`/assessments/customer/${customerId}`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async getAssessment(id) {
+        return apiRequest(`/assessments/${id}`);
+    },
+
+    async updateAssessment(id, data) {
+        return apiRequest(`/assessments/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async deleteAssessment(id) {
+        const url = `${API_BASE_URL}/assessments/${id}`;
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return true;
+    },
+
+    // Responses
+    async saveResponses(assessmentId, responses, complete = false) {
+        return apiRequest(`/assessments/${assessmentId}/responses`, {
+            method: 'POST',
+            body: JSON.stringify({ responses, complete }),
+        });
+    },
+
+    async uploadResponses(customerId, formData, templateId = null, assessmentDate = null) {
+        let url = `${API_BASE_URL}/assessments/customer/${customerId}/upload`;
+        const params = [];
+        if (templateId) params.push(`template_id=${templateId}`);
+        if (assessmentDate) params.push(`assessment_date=${assessmentDate}`);
+        if (params.length) url += '?' + params.join('&');
+
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    },
+};
+
 // Export for use in other files
 window.API = {
     CustomerAPI,
@@ -389,6 +515,7 @@ window.API = {
     UserAPI,
     RoadmapAPI,
     RiskAPI,
+    AssessmentAPI,
 };
 
 window.Utils = {

@@ -7,6 +7,10 @@ from .use_case import UseCase, CustomerUseCase, UseCaseStatus
 from .custom_field import CustomField, CustomFieldValue, FieldType
 from .settings import AppSetting, SettingValueType
 from .risk import Risk, RiskSeverity, RiskStatus, RiskCategory
+from .assessment import (
+    AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
+    CustomerAssessment, AssessmentResponse, AssessmentStatus
+)
 
 __all__ = [
     "User", "UserRole",
@@ -18,4 +22,6 @@ __all__ = [
     "CustomField", "CustomFieldValue", "FieldType",
     "AppSetting", "SettingValueType",
     "Risk", "RiskSeverity", "RiskStatus", "RiskCategory",
+    "AssessmentTemplate", "AssessmentDimension", "AssessmentQuestion",
+    "CustomerAssessment", "AssessmentResponse", "AssessmentStatus",
 ]

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24  # 24 hours
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8080"]
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8080", "http://localhost:8081"]
 
     # Future integrations
     salesforce_client_id: Optional[str] = None

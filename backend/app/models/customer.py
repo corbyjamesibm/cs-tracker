@@ -18,10 +18,10 @@ class HealthStatus(str, enum.Enum):
 
 class AdoptionStage(str, enum.Enum):
     ONBOARDING = "onboarding"
-    INITIAL_SETUP = "initial_setup"
     ADOPTION = "adoption"
+    VALUE_REALIZATION = "value_realization"
     EXPANSION = "expansion"
-    OPTIMIZATION = "optimization"
+    RENEWAL = "renewal"
 
 
 class Customer(Base):
@@ -92,6 +92,7 @@ class Customer(Base):
     custom_field_values: Mapped[List["CustomFieldValue"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     adoption_history: Mapped[List["AdoptionHistory"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     risks: Mapped[List["Risk"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
+    assessments: Mapped[List["CustomerAssessment"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
 
     @property
     def days_to_renewal(self) -> Optional[int]:
