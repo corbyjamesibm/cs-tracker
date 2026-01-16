@@ -1937,9 +1937,9 @@ body {
 
 /* Assessment Chart Container */
 .assessment-chart-container {
-  max-width: 400px;
+  max-width: 500px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 16px 32px;
 }
 
 /* Comparison Legend */

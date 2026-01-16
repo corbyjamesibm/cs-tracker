@@ -3168,6 +3168,14 @@ function renderRadarChart(dimensionScores, comparisonAssessments = []) {
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            layout: {
+                padding: {
+                    left: 20,
+                    right: 20,
+                    top: 10,
+                    bottom: 10
+                }
+            },
             scales: {
                 r: {
                     min: 0,
