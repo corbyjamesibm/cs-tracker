@@ -356,6 +356,71 @@ W3ID_CLIENT_SECRET=...
 
 ---
 
+## Database Backup & Restore
+
+Two backup methods are available:
+
+### Method 1: SQL Dump (Full Database)
+
+```bash
+cd backend
+
+# Create backup
+./backup.sh
+
+# Restore from backup
+./restore.sh backups/cstracker_backup_YYYYMMDD_HHMMSS.sql
+```
+
+**Features:**
+- Full PostgreSQL dump including schema
+- Uses native pg_dump/psql tools
+- Keeps last 10 backups automatically
+
+### Method 2: JSON Data Export (Data Only)
+
+```bash
+cd backend
+
+# Create backup
+python3 db_backup.py backup
+python3 db_backup.py backup --name pre_migration  # Named backup
+
+# List available backups
+python3 db_backup.py list
+
+# Restore from backup
+python3 db_backup.py restore backups/cstracker_data_YYYYMMDD_HHMMSS.json
+```
+
+**Features:**
+- Human-readable JSON format
+- Data only (schema handled separately)
+- Preserves data across schema migrations
+- Handles datetime, date, and decimal types
+
+### Recommended Workflow for Schema Changes
+
+1. **Before schema change:**
+   ```bash
+   python3 db_backup.py backup --name pre_schema_change
+   ```
+
+2. **Apply schema changes** (migrations, model updates)
+
+3. **If restore needed:**
+   ```bash
+   python3 db_backup.py restore backups/cstracker_data_pre_schema_change.json
+   ```
+
+### Backup Storage
+
+- Backups stored in `backend/backups/`
+- Directory is git-ignored (backups not committed)
+- Recommend copying important backups to external storage
+
+---
+
 ## Future Considerations
 
 1. **Frontend Framework Migration**: Consider React/Vue for complex state management
