@@ -113,15 +113,13 @@ const Auth = {
             const status = await this.getAuthStatus();
 
             if (!status.auth_enabled) {
-                // Auth disabled - set default user if not already set
-                if (!this.getCurrentUser()) {
-                    this.storeAuth({
-                        access_token: 'dev-token',
-                        token_type: 'bearer',
-                        expires_at: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
-                        user: DEFAULT_USER,
-                    });
-                }
+                // Auth disabled - always use default user
+                this.storeAuth({
+                    access_token: 'dev-token',
+                    token_type: 'bearer',
+                    expires_at: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
+                    user: DEFAULT_USER,
+                });
                 return true;
             }
 
@@ -137,14 +135,12 @@ const Auth = {
         } catch (error) {
             console.error('Error checking auth:', error);
             // On error, set default user and allow access (fail open for development)
-            if (!this.getCurrentUser()) {
-                this.storeAuth({
-                    access_token: 'dev-token',
-                    token_type: 'bearer',
-                    expires_at: Date.now() + (24 * 60 * 60 * 1000),
-                    user: DEFAULT_USER,
-                });
-            }
+            this.storeAuth({
+                access_token: 'dev-token',
+                token_type: 'bearer',
+                expires_at: Date.now() + (24 * 60 * 60 * 1000),
+                user: DEFAULT_USER,
+            });
             return true;
         }
     },
