@@ -1239,6 +1239,28 @@ body {
   flex-direction: column;
   animation: modalSlideIn 0.2s ease-out;
   z-index: 1;
+  overflow: hidden;
+}
+
+.modal__container > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal__container .modal__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  padding: var(--cds-spacing-05);
+}
+
+.modal__container .modal__footer {
+  flex-shrink: 0;
+  padding: var(--cds-spacing-05);
+  border-top: 1px solid var(--cds-border-subtle-01);
 }
 
 /* Form Grid */
@@ -1286,6 +1308,28 @@ body {
   color: var(--cds-text-placeholder);
 }
 
+/* File input styling */
+input[type="file"].form-input {
+  padding: 0.5rem;
+  cursor: pointer;
+  background: var(--cds-field-01);
+}
+
+input[type="file"].form-input::file-selector-button {
+  padding: 0.5rem 1rem;
+  margin-right: 1rem;
+  background: var(--cds-interactive);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+input[type="file"].form-input::file-selector-button:hover {
+  background: var(--cds-hover-primary);
+}
+
 .form-select {
   cursor: pointer;
   appearance: none;
@@ -1293,17 +1337,6 @@ body {
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 40px;
-}
-
-/* Secondary button style */
-.btn--secondary {
-  background: var(--cds-layer-01);
-  color: var(--cds-interactive);
-  border: 1px solid var(--cds-interactive);
-}
-
-.btn--secondary:hover {
-  background: var(--cds-background-hover);
 }
 
 /* Toast notification */

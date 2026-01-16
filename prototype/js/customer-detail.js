@@ -581,7 +581,7 @@ function displayUseCasesForArea(solutionArea) {
 
     // Render grouped use cases with full descriptions
     let html = '';
-    const domainOrder = ['Strategic Planning', 'Portfolio Management', 'Resource Management', 'Financial Management'];
+    const domainOrder = ['Strategic Planning', 'Portfolio Management', 'Capacity Management', 'Resource Management', 'Financial Management'];
 
     domainOrder.forEach(domain => {
         if (!domains[domain]) return;
@@ -2773,11 +2773,13 @@ async function handleAdoptionStageSubmit(event) {
     submitBtn.textContent = 'Updating...';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
+        // Use dedicated adoption-stage endpoint that tracks history
+        const response = await fetch(`${API_BASE_URL}/customers/${customerId}/adoption-stage`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                adoption_stage: selectedAdoptionStage
+                adoption_stage: selectedAdoptionStage,
+                notes: notes || null
             })
         });
 
@@ -2798,11 +2800,6 @@ async function handleAdoptionStageSubmit(event) {
         }
 
         closeAdoptionStageModal();
-
-        // Log the change (notes would typically be sent to a history endpoint)
-        if (notes) {
-            console.log('Stage change notes:', notes);
-        }
 
     } catch (error) {
         console.error('Failed to update adoption stage:', error);

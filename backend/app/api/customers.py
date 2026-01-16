@@ -3,13 +3,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 
 from app.core.database import get_db
-from app.models.customer import Customer, HealthStatus, AdoptionStage, Contact
+from app.models.customer import Customer, HealthStatus, AdoptionStage, Contact, AdoptionHistory
 from app.schemas.customer import (
     CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse,
-    CustomerDetailResponse, ContactCreate, ContactResponse
+    CustomerDetailResponse, ContactCreate, ContactResponse,
+    AdoptionStageUpdate, AdoptionHistoryResponse
 )
 
 router = APIRouter()
@@ -160,3 +161,66 @@ async def list_contacts(customer_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(query)
     contacts = result.scalars().all()
     return [ContactResponse.model_validate(c) for c in contacts]
+
+
+# Adoption Stage
+@router.patch("/{customer_id}/adoption-stage", response_model=CustomerResponse)
+async def update_adoption_stage(
+    customer_id: int,
+    stage_update: AdoptionStageUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update customer adoption stage with history tracking."""
+    # Get customer
+    query = select(Customer).where(Customer.id == customer_id)
+    result = await db.execute(query)
+    customer = result.scalar_one_or_none()
+
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Get the previous stage before updating
+    from_stage = customer.adoption_stage
+
+    # Only create history if stage actually changed
+    if stage_update.adoption_stage != from_stage:
+        # Create adoption history record
+        history = AdoptionHistory(
+            customer_id=customer_id,
+            from_stage=from_stage,
+            to_stage=stage_update.adoption_stage,
+            notes=stage_update.notes,
+            # changed_by_id would come from auth context in production
+        )
+        db.add(history)
+
+        # Update customer
+        customer.adoption_stage = stage_update.adoption_stage
+        customer.adoption_stage_entered_at = datetime.utcnow()
+
+    await db.flush()
+    await db.refresh(customer)
+    return CustomerResponse.model_validate(customer)
+
+
+@router.get("/{customer_id}/adoption-history", response_model=List[AdoptionHistoryResponse])
+async def get_adoption_history(
+    customer_id: int,
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(10, ge=1, le=100)
+):
+    """Get adoption stage history for a customer."""
+    # Verify customer exists
+    customer = await db.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    query = (
+        select(AdoptionHistory)
+        .where(AdoptionHistory.customer_id == customer_id)
+        .order_by(AdoptionHistory.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    history = result.scalars().all()
+    return [AdoptionHistoryResponse.model_validate(h) for h in history]

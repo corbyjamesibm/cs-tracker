@@ -980,6 +980,119 @@ async function deleteUseCase(useCaseId) {
     }
 }
 
+/**
+ * Open import use cases modal
+ */
+function openImportUseCasesModal() {
+    const modal = document.getElementById('importUseCasesModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        document.getElementById('importUseCasesForm').reset();
+    }
+}
+
+/**
+ * Close import use cases modal
+ */
+function closeImportUseCasesModal() {
+    const modal = document.getElementById('importUseCasesModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Handle import use cases from Excel
+ */
+async function handleImportUseCases(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('importUseCasesBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Importing...';
+
+    try {
+        const fileInput = document.getElementById('useCaseImportFile');
+        const replaceExisting = document.getElementById('useCaseReplaceExisting').checked;
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            throw new Error('Please select a file to upload');
+        }
+
+        // Confirm if replace is checked
+        if (replaceExisting) {
+            if (!confirm('You have selected to replace ALL existing use cases.\n\nThis will DELETE all current use cases and customer tracking!\n\nAre you sure you want to continue?')) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                return;
+            }
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        const url = `${ADMIN_API_URL}/use-cases/import?replace_existing=${replaceExisting}`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to import use cases');
+        }
+
+        const result = await response.json();
+
+        closeImportUseCasesModal();
+
+        // Build result message
+        let message = `Import complete: ${result.created} created, ${result.updated} updated`;
+        if (result.total_errors > 0) {
+            message += `. ${result.total_errors} error(s)`;
+        }
+        showToast(message, result.total_errors > 0 ? 'warning' : 'success');
+
+        // Show errors in results card if any
+        if (result.errors && result.errors.length > 0) {
+            const card = document.getElementById('resultsCard');
+            const content = document.getElementById('resultsContent');
+
+            content.innerHTML = `
+                <div class="notification notification--warning mb-3">
+                    <svg width="20" height="20" viewBox="0 0 32 32" fill="#8e6a00"><path d="M16 2L1 29h30L16 2zm-1 10h2v8h-2v-8zm1 14c-.8 0-1.5-.7-1.5-1.5S15.2 23 16 23s1.5.7 1.5 1.5S16.8 26 16 26z"/></svg>
+                    <span>Import completed with ${result.total_errors} error(s)</span>
+                </div>
+                <div class="text-secondary mb-2">
+                    <strong>${result.created}</strong> use cases created,
+                    <strong>${result.updated}</strong> updated
+                </div>
+                <h4 style="margin: 16px 0 8px;">Errors (showing first 10):</h4>
+                <ul class="results-list">
+                    ${result.errors.map(err => `<li class="text-danger">${err}</li>`).join('')}
+                </ul>
+            `;
+
+            card.style.display = 'block';
+        }
+
+        // Reload use cases and stats
+        await loadUseCases();
+        await refreshStats();
+
+    } catch (error) {
+        console.error('Failed to import use cases:', error);
+        showToast(error.message || 'Failed to import use cases', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
 // =====================
 // Database Migrations
 // =====================
@@ -1604,6 +1717,9 @@ window.editUseCase = editUseCase;
 window.handleUseCaseSubmit = handleUseCaseSubmit;
 window.toggleUseCaseStatus = toggleUseCaseStatus;
 window.deleteUseCase = deleteUseCase;
+window.openImportUseCasesModal = openImportUseCasesModal;
+window.closeImportUseCasesModal = closeImportUseCasesModal;
+window.handleImportUseCases = handleImportUseCases;
 window.runMigrations = runMigrations;
 window.loadAuthSettings = loadAuthSettings;
 window.toggleAuthEnabled = toggleAuthEnabled;

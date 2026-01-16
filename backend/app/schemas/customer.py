@@ -52,6 +52,20 @@ class CustomerUpdate(BaseModel):
     custom_fields: Optional[dict[str, Any]] = None
 
 
+class UserSummary(BaseModel):
+    """Minimal user info for nested responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
+
+
 class CustomerResponse(CustomerBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -76,6 +90,7 @@ class CustomerListResponse(BaseModel):
 class CustomerDetailResponse(CustomerResponse):
     contacts: List["ContactResponse"] = []
     custom_fields: Optional[dict[str, Any]] = None
+    csm_owner: Optional[UserSummary] = None
 
 
 # Contact schemas
@@ -101,3 +116,21 @@ class ContactResponse(ContactBase):
 
 
 CustomerDetailResponse.model_rebuild()
+
+
+# Adoption Stage schemas
+class AdoptionStageUpdate(BaseModel):
+    adoption_stage: AdoptionStage
+    notes: Optional[str] = None
+
+
+class AdoptionHistoryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    customer_id: int
+    from_stage: Optional[AdoptionStage] = None
+    to_stage: AdoptionStage
+    changed_by_id: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: datetime

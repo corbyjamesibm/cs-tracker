@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin - Customer Status Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=6">
+  <link rel="stylesheet" href="css/styles.css?v=9">
 </head>
 <body>
   <div class="app-container">
@@ -240,6 +240,10 @@
                 <option value="POM">POM</option>
                 <option value="FPM">FPM</option>
               </select>
+              <button class="btn btn--tertiary" onclick="openImportUseCasesModal()">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M6 17l1.41 1.41L15 10.83V30h2V10.83l7.59 7.58L26 17 16 7 6 17z"/><path d="M6 8V4h20v4h2V4a2 2 0 00-2-2H6a2 2 0 00-2 2v4z"/></svg>
+                Import Excel
+              </button>
               <button class="btn btn--primary" onclick="openUseCaseModal()">
                 <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
                 Add Use Case
@@ -583,6 +587,7 @@
                 <option value="">Select...</option>
                 <option value="Strategic Planning">Strategic Planning</option>
                 <option value="Portfolio Management">Portfolio Management</option>
+                <option value="Capacity Management">Capacity Management</option>
                 <option value="Resource Management">Resource Management</option>
                 <option value="Financial Management">Financial Management</option>
               </select>
@@ -607,6 +612,42 @@
         <div class="modal__footer">
           <button type="button" class="btn btn--secondary" onclick="closeUseCaseModal()">Cancel</button>
           <button type="submit" class="btn btn--primary" id="useCaseSubmitBtn">Add Use Case</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Import Use Cases Modal -->
+  <div class="modal-overlay" id="importUseCasesModal">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Import Use Cases from Excel</h2>
+        <button class="modal__close" onclick="closeImportUseCasesModal()">
+          <svg width="20" height="20" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+        </button>
+      </div>
+      <form id="importUseCasesForm" onsubmit="handleImportUseCases(event)">
+        <div class="modal__body">
+          <div class="notification notification--info mb-4">
+            <svg width="20" height="20" viewBox="0 0 32 32" fill="var(--cds-support-info)"><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-1 7h2v2h-2V9zm4 14h-6v-2h2v-5h-2v-2h4v7h2v2z"/></svg>
+            <span>Upload an Excel file (.xlsx) with the following columns: <strong>name</strong> (required), <strong>solution_area</strong> (required: WFM, HPM, EAP, POM, or FPM), <strong>domain</strong> (required), description, category, display_order.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="useCaseImportFile">Excel File *</label>
+            <input type="file" class="form-input" id="useCaseImportFile" name="file" accept=".xlsx,.xls" required>
+            <span class="form-hint">Accepts .xlsx or .xls files</span>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-wrapper">
+              <input type="checkbox" id="useCaseReplaceExisting" name="replace_existing">
+              <span class="checkbox-label">Replace all existing use cases</span>
+            </label>
+            <span class="form-hint text-danger">Warning: This will delete ALL existing use cases and customer tracking before importing!</span>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--secondary" onclick="closeImportUseCasesModal()">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="importUseCasesBtn">Import Use Cases</button>
         </div>
       </form>
     </div>
@@ -692,7 +733,7 @@
   <!-- Scripts -->
   <script src="js/auth.js?v=1"></script>
   <script src="js/api.js?v=10"></script>
-  <script src="js/admin.js?v=8"></script>
+  <script src="js/admin.js?v=10"></script>
   <script>
     function toggleNav() {
       document.getElementById('sideNav').classList.toggle('open');

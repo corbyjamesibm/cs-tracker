@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional, List
+from io import BytesIO
 
 from app.core.database import get_db
 from app.models.use_case import UseCase, CustomerUseCase, UseCaseStatus
@@ -206,3 +207,129 @@ async def update_customer_use_case(
         notes=cuc.notes,
         updated_at=cuc.updated_at
     )
+
+
+@router.post("/import")
+async def import_use_cases(
+    file: UploadFile = File(...),
+    replace_existing: bool = Query(False, description="If true, delete all existing use cases first"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Import use cases from Excel file.
+
+    Expected columns: name, solution_area, domain, description, category, display_order
+    - name (required): Use case name
+    - solution_area (required): WFM, HPM, EAP, POM, or FPM
+    - domain (required): Strategic Planning, Portfolio Management, Resource Management, or Financial Management
+    - description (optional): Description of the use case
+    - category (optional): Additional categorization
+    - display_order (optional): Number for ordering within domain (default: 1)
+    """
+    import openpyxl
+
+    # Validate file type
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="File must be an Excel file (.xlsx or .xls)")
+
+    try:
+        contents = await file.read()
+        workbook = openpyxl.load_workbook(BytesIO(contents))
+        sheet = workbook.active
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read Excel file: {str(e)}")
+
+    # Get headers from first row
+    headers = [cell.value.lower().strip() if cell.value else '' for cell in sheet[1]]
+
+    # Validate required columns
+    required_columns = ['name', 'solution_area', 'domain']
+    missing_columns = [col for col in required_columns if col not in headers]
+    if missing_columns:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {', '.join(missing_columns)}. Found: {', '.join(headers)}"
+        )
+
+    # Get column indices
+    col_map = {header: idx for idx, header in enumerate(headers)}
+
+    # Optionally delete existing use cases
+    if replace_existing:
+        # Delete all customer use cases first (foreign key constraint)
+        await db.execute(CustomerUseCase.__table__.delete())
+        # Delete all use cases
+        await db.execute(UseCase.__table__.delete())
+        await db.flush()
+
+    # Process rows
+    created = 0
+    updated = 0
+    errors = []
+
+    for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+        try:
+            name = row[col_map['name']]
+            if not name:
+                continue  # Skip empty rows
+
+            name = str(name).strip()
+            solution_area = str(row[col_map['solution_area']]).strip() if row[col_map['solution_area']] else None
+            domain = str(row[col_map['domain']]).strip() if row[col_map['domain']] else None
+
+            if not solution_area or not domain:
+                errors.append(f"Row {row_num}: Missing solution_area or domain for '{name}'")
+                continue
+
+            description = str(row[col_map.get('description', -1)]).strip() if col_map.get('description') is not None and row[col_map.get('description')] else None
+            category = str(row[col_map.get('category', -1)]).strip() if col_map.get('category') is not None and row[col_map.get('category')] else None
+
+            display_order = 1
+            if 'display_order' in col_map and row[col_map['display_order']]:
+                try:
+                    display_order = int(row[col_map['display_order']])
+                except (ValueError, TypeError):
+                    display_order = 1
+
+            # Check if use case already exists (by name and solution_area)
+            existing_query = select(UseCase).where(
+                UseCase.name == name,
+                UseCase.solution_area == solution_area
+            )
+            result = await db.execute(existing_query)
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                # Update existing
+                existing.domain = domain
+                existing.description = description
+                existing.category = category
+                existing.display_order = display_order
+                existing.is_active = True
+                updated += 1
+            else:
+                # Create new
+                use_case = UseCase(
+                    name=name,
+                    solution_area=solution_area,
+                    domain=domain,
+                    description=description,
+                    category=category,
+                    display_order=display_order,
+                    is_active=True
+                )
+                db.add(use_case)
+                created += 1
+
+        except Exception as e:
+            errors.append(f"Row {row_num}: {str(e)}")
+
+    await db.flush()
+
+    return {
+        "success": True,
+        "created": created,
+        "updated": updated,
+        "errors": errors[:10] if errors else [],  # Limit errors returned
+        "total_errors": len(errors)
+    }
