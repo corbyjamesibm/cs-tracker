@@ -12,16 +12,18 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 async function loadDashboardData() {
     try {
-        // Load customers, tasks, and risks in parallel
-        const [customersData, tasksData, risksData] = await Promise.all([
+        // Load customers, tasks, risks, and engagements in parallel
+        const [customersData, tasksData, risksData, engagementsData] = await Promise.all([
             API.CustomerAPI.getAll(),
             API.TaskAPI.getAll(),
             API.RiskAPI.getAll({ open_only: true }),
+            API.EngagementAPI.getAll({ limit: 20 }),
         ]);
 
         const customers = customersData.items || [];
         const tasks = tasksData.items || [];
         const risks = risksData.items || [];
+        const engagements = engagementsData.items || engagementsData || [];
 
         // Update KPI cards
         updateKPICards(customers, tasks);
@@ -37,6 +39,9 @@ async function loadDashboardData() {
 
         // Update risk alerts
         updateRiskAlerts(risks, customers);
+
+        // Update recent activity
+        updateRecentActivity(engagements, tasks, customers);
 
     } catch (error) {
         console.error('Failed to load dashboard data:', error);
@@ -327,6 +332,91 @@ async function completeTask(taskId) {
 function showErrorMessage(message) {
     // Could show a toast notification here
     console.error(message);
+}
+
+function updateRecentActivity(engagements, tasks, customers) {
+    const activityTimeline = document.getElementById('activity-timeline');
+    if (!activityTimeline) return;
+
+    // Create customer lookup map
+    const customerMap = {};
+    customers.forEach(c => customerMap[c.id] = c);
+
+    // Build activity items from engagements and completed tasks
+    const activityItems = [];
+
+    // Add engagements
+    engagements.forEach(e => {
+        const customer = customerMap[e.customer_id];
+        const customerName = customer ? customer.name : 'Unknown Customer';
+        const typeLabels = {
+            'call': 'Call',
+            'email': 'Email',
+            'meeting': 'Meeting',
+            'qbr': 'QBR',
+            'onsite': 'Onsite Visit',
+            'support': 'Support',
+            'training': 'Training',
+            'other': 'Engagement'
+        };
+        const typeLabel = typeLabels[e.engagement_type] || 'Engagement';
+
+        activityItems.push({
+            date: new Date(e.engagement_date || e.created_at),
+            type: 'engagement',
+            content: `<strong>${typeLabel}:</strong> ${e.subject || e.notes || 'No subject'} with <a href="customer-detail.html?id=${e.customer_id}" style="color: var(--cds-link-primary);">${customerName}</a>`,
+        });
+    });
+
+    // Add completed tasks
+    tasks.filter(t => t.status === 'completed').forEach(t => {
+        const customer = customerMap[t.customer_id];
+        const customerName = customer ? customer.name : '';
+
+        activityItems.push({
+            date: new Date(t.completed_at || t.updated_at),
+            type: 'task',
+            content: `<strong>Task Completed:</strong> ${t.title}${customerName ? ` for <a href="customer-detail.html?id=${t.customer_id}" style="color: var(--cds-link-primary);">${customerName}</a>` : ''}`,
+        });
+    });
+
+    // Sort by date descending and take top 8
+    activityItems.sort((a, b) => b.date - a.date);
+    const recentActivity = activityItems.slice(0, 8);
+
+    if (recentActivity.length === 0) {
+        activityTimeline.innerHTML = '<div class="text-secondary" style="padding: 16px; text-align: center;">No recent activity</div>';
+        return;
+    }
+
+    activityTimeline.innerHTML = recentActivity.map(item => {
+        const formattedDate = formatActivityDate(item.date);
+        return `
+            <div class="timeline__item">
+                <div class="timeline__date">${formattedDate}</div>
+                <div class="timeline__content">${item.content}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function formatActivityDate(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (diffDays === 0) {
+        return `Today, ${timeStr}`;
+    } else if (diffDays === 1) {
+        return `Yesterday, ${timeStr}`;
+    } else if (diffDays < 7) {
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+        return `${dayName}, ${timeStr}`;
+    } else {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + `, ${timeStr}`;
+    }
 }
 
 // Make completeTask available globally
