@@ -71,6 +71,7 @@ class CustomerResponse(CustomerBase):
 
     id: int
     csm_owner_id: Optional[int] = None
+    csm_owner: Optional[UserSummary] = None
     partner_id: Optional[int] = None
     health_trend: Optional[str] = None
     adoption_percentage: Optional[int] = None
@@ -90,7 +91,6 @@ class CustomerListResponse(BaseModel):
 class CustomerDetailResponse(CustomerResponse):
     contacts: List["ContactResponse"] = []
     custom_fields: Optional[dict[str, Any]] = None
-    csm_owner: Optional[UserSummary] = None
 
 
 # Contact schemas
