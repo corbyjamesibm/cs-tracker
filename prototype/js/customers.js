@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (await Auth.checkAuthAndRedirect()) {
         Auth.updateUserDisplay();
         await loadCustomersData();
+        await loadCSMUsersForFilter();
         setupFilters();
     }
 });
@@ -198,10 +199,28 @@ function showErrorMessage(message) {
 
 let csmUsers = [];
 
+async function loadCSMUsersForFilter() {
+    try {
+        const data = await API.UserAPI.getAll();
+        csmUsers = (data.items || []).filter(u => u.role === 'csm' || u.role === 'admin' || u.role === 'manager');
+        populateCSMFilterDropdown();
+    } catch (error) {
+        console.error('Failed to load CSM users for filter:', error);
+    }
+}
+
+function populateCSMFilterDropdown() {
+    const csmFilterSelect = document.getElementById('csmFilterDropdown');
+    if (!csmFilterSelect) return;
+
+    csmFilterSelect.innerHTML = '<option value="all" selected>All</option>' +
+        csmUsers.map(user => `<option value="${user.id}">${user.full_name || user.first_name}</option>`).join('');
+}
+
 async function loadCSMUsers() {
     try {
         const data = await API.UserAPI.getAll();
-        csmUsers = (data.items || []).filter(u => u.role === 'csm');
+        csmUsers = (data.items || []).filter(u => u.role === 'csm' || u.role === 'admin' || u.role === 'manager');
         populateCSMDropdown();
     } catch (error) {
         console.error('Failed to load CSM users:', error);

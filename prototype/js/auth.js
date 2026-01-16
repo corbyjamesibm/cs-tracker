@@ -290,8 +290,13 @@ const Auth = {
      */
     updateUserDisplay() {
         const user = this.getCurrentUser();
-        const userNameEl = document.querySelector('.user-name');
-        const userAvatarEl = document.querySelector('.user-avatar');
+        // Try multiple selectors for compatibility
+        const userNameEl = document.querySelector('.user-name') ||
+                          document.querySelector('.user-menu__name') ||
+                          document.getElementById('userName');
+        const userAvatarEl = document.querySelector('.user-avatar') ||
+                            document.querySelector('.user-menu .avatar') ||
+                            document.getElementById('userAvatar');
         const userFirstNameEl = document.querySelector('.user-first-name');
         const logoutBtn = document.getElementById('logoutBtn');
 
