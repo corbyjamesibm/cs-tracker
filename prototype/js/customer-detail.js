@@ -2820,6 +2820,210 @@ window.selectAdoptionStage = selectAdoptionStage;
 window.handleAdoptionStageSubmit = handleAdoptionStageSubmit;
 
 // ==========================================
+// EDIT ACCOUNT DETAILS FUNCTIONS
+// ==========================================
+
+// Open the edit account modal and populate with current data
+async function openEditAccountModal() {
+    if (!currentCustomer) {
+        console.error('No customer data available');
+        return;
+    }
+
+    // Populate form with current values
+    document.getElementById('editAccountManager').value = currentCustomer.account_manager || '';
+    document.getElementById('editIndustry').value = currentCustomer.industry || '';
+    document.getElementById('editEmployees').value = currentCustomer.employee_count || '';
+    document.getElementById('editContractStart').value = currentCustomer.contract_start_date || '';
+    document.getElementById('editContractEnd').value = currentCustomer.contract_end_date || '';
+    document.getElementById('editRenewalDate').value = currentCustomer.renewal_date || '';
+    document.getElementById('editArr').value = currentCustomer.arr || '';
+
+    // Load users for CSM Owner dropdown
+    await loadCsmOwnerOptions();
+
+    // Set current CSM owner
+    const csmSelect = document.getElementById('editCsmOwner');
+    if (currentCustomer.csm_owner_id) {
+        csmSelect.value = currentCustomer.csm_owner_id;
+    }
+
+    // Open modal
+    document.getElementById('editAccountModal').classList.add('open');
+}
+
+// Load CSM Owner options from users API
+async function loadCsmOwnerOptions() {
+    const select = document.getElementById('editCsmOwner');
+
+    try {
+        const response = await API.UserAPI.getAll();
+        const users = response.items || [];
+
+        // Clear existing options except the first one
+        select.innerHTML = '<option value="">Select CSM Owner</option>';
+
+        // Add user options
+        users.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.id;
+            option.textContent = user.full_name || `${user.first_name} ${user.last_name}`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load users:', error);
+    }
+}
+
+// Close the edit account modal
+function closeEditAccountModal() {
+    document.getElementById('editAccountModal').classList.remove('open');
+}
+
+// Handle edit account form submit
+async function handleEditAccountSubmit(event) {
+    event.preventDefault();
+
+    if (!currentCustomer) {
+        console.error('No customer data available');
+        return;
+    }
+
+    const submitBtn = document.getElementById('editAccountSubmitBtn');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+
+    try {
+        // Gather form data
+        const updateData = {};
+
+        const accountManager = document.getElementById('editAccountManager').value.trim();
+        if (accountManager !== (currentCustomer.account_manager || '')) {
+            updateData.account_manager = accountManager || null;
+        }
+
+        const csmOwnerId = document.getElementById('editCsmOwner').value;
+        if (csmOwnerId !== String(currentCustomer.csm_owner_id || '')) {
+            updateData.csm_owner_id = csmOwnerId ? parseInt(csmOwnerId) : null;
+        }
+
+        const industry = document.getElementById('editIndustry').value.trim();
+        if (industry !== (currentCustomer.industry || '')) {
+            updateData.industry = industry || null;
+        }
+
+        const employees = document.getElementById('editEmployees').value;
+        if (employees !== (currentCustomer.employee_count || '')) {
+            updateData.employee_count = employees || null;
+        }
+
+        const contractStart = document.getElementById('editContractStart').value;
+        if (contractStart !== (currentCustomer.contract_start_date || '')) {
+            updateData.contract_start_date = contractStart || null;
+        }
+
+        const contractEnd = document.getElementById('editContractEnd').value;
+        if (contractEnd !== (currentCustomer.contract_end_date || '')) {
+            updateData.contract_end_date = contractEnd || null;
+        }
+
+        const renewalDate = document.getElementById('editRenewalDate').value;
+        if (renewalDate !== (currentCustomer.renewal_date || '')) {
+            updateData.renewal_date = renewalDate || null;
+        }
+
+        const arr = document.getElementById('editArr').value;
+        const currentArr = currentCustomer.arr ? String(currentCustomer.arr) : '';
+        if (arr !== currentArr) {
+            updateData.arr = arr ? parseFloat(arr) : null;
+        }
+
+        // Only make API call if there are changes
+        if (Object.keys(updateData).length > 0) {
+            await API.CustomerAPI.update(currentCustomer.id, updateData);
+
+            // Re-fetch customer to get complete data with relationships
+            const refreshedCustomer = await API.CustomerAPI.getById(currentCustomer.id);
+            currentCustomer = refreshedCustomer;
+
+            // Update the UI
+            updateAccountDetailsUI(refreshedCustomer);
+        }
+
+        closeEditAccountModal();
+
+    } catch (error) {
+        console.error('Failed to update account details:', error);
+        alert('Failed to save changes. Please try again.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+// Update the account details UI after save
+function updateAccountDetailsUI(customer) {
+    // Account Manager
+    const accountManagerEl = document.getElementById('accountManager');
+    if (accountManagerEl) {
+        accountManagerEl.textContent = customer.account_manager || '-';
+    }
+
+    // CSM Owner
+    const csmOwnerEl = document.getElementById('csmOwner');
+    if (csmOwnerEl) {
+        csmOwnerEl.textContent = customer.csm_owner?.full_name ||
+                                 (customer.csm_owner ? `${customer.csm_owner.first_name} ${customer.csm_owner.last_name}` : '-');
+    }
+
+    // Industry
+    const industryEl = document.getElementById('customerIndustry');
+    if (industryEl) {
+        industryEl.textContent = customer.industry || '-';
+    }
+
+    // Employees
+    const employeesEl = document.getElementById('customerEmployees');
+    if (employeesEl) {
+        employeesEl.textContent = customer.employee_count || '-';
+    }
+
+    // Contract Start
+    const contractStartEl = document.getElementById('contractStart');
+    if (contractStartEl) {
+        contractStartEl.textContent = customer.contract_start_date ? formatDate(customer.contract_start_date) : '-';
+    }
+
+    // Contract End
+    const contractEndEl = document.getElementById('contractEnd');
+    if (contractEndEl) {
+        contractEndEl.textContent = customer.contract_end_date ? formatDate(customer.contract_end_date) : '-';
+    }
+
+    // Update header stats if needed
+    const statArr = document.getElementById('statArr');
+    if (statArr && customer.arr) {
+        statArr.textContent = formatCurrency(customer.arr);
+    }
+
+    const statRenewal = document.getElementById('statRenewal');
+    if (statRenewal && customer.renewal_date) {
+        statRenewal.textContent = formatShortDate(customer.renewal_date);
+    }
+
+    const statDaysToRenewal = document.getElementById('statDaysToRenewal');
+    if (statDaysToRenewal && customer.days_to_renewal !== undefined) {
+        statDaysToRenewal.textContent = customer.days_to_renewal;
+    }
+}
+
+// Expose edit account functions to window
+window.openEditAccountModal = openEditAccountModal;
+window.closeEditAccountModal = closeEditAccountModal;
+window.handleEditAccountSubmit = handleEditAccountSubmit;
+
+// ==========================================
 // SPM MATURITY ASSESSMENT FUNCTIONS
 // ==========================================
 

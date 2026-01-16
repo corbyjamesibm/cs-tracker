@@ -5,15 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Acme Corporation - Customer Status Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=2">
+  <link rel="stylesheet" href="css/styles.css?v=20">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     .customer-header {
       background: linear-gradient(135deg, #161616 0%, #393939 100%);
       color: white;
       padding: var(--cds-spacing-06);
-      margin: calc(-1 * var(--cds-spacing-06));
-      margin-bottom: var(--cds-spacing-05);
+      margin: 0 calc(-1 * var(--cds-spacing-06)) var(--cds-spacing-05);
     }
     .customer-header__top {
       display: flex;
@@ -315,10 +314,15 @@
           <div>
             <!-- Account Details -->
             <div class="card">
-              <h2 class="section-title">
-                <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2z"/></svg>
-                Account Details
-              </h2>
+              <div class="card__header" style="margin-bottom: 16px;">
+                <h2 class="section-title" style="margin-bottom: 0;">
+                  <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2z"/></svg>
+                  Account Details
+                </h2>
+                <button class="btn btn--ghost btn--icon" onclick="openEditAccountModal()" title="Edit Account Details">
+                  <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                </button>
+              </div>
               <div class="grid grid--2" style="gap: 16px;">
                 <div>
                   <div class="form-label">Account Manager</div>
@@ -1583,6 +1587,69 @@
             <div class="modal__footer">
               <button type="button" class="btn btn--secondary" onclick="closeAdoptionStageModal()">Cancel</button>
               <button type="submit" class="btn btn--primary" id="adoptionStageSubmitBtn">Update Stage</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Edit Account Details Modal -->
+      <div class="modal" id="editAccountModal">
+        <div class="modal__overlay" onclick="closeEditAccountModal()"></div>
+        <div class="modal__container" style="max-width: 600px;">
+          <div class="modal__header">
+            <h2 class="modal__title">Edit Account Details</h2>
+            <button class="modal__close" onclick="closeEditAccountModal()">&times;</button>
+          </div>
+          <form id="editAccountForm" onsubmit="handleEditAccountSubmit(event)">
+            <div class="modal__body">
+              <div class="grid grid--2" style="gap: 16px;">
+                <div class="form-group">
+                  <label class="form-label" for="editAccountManager">Account Manager</label>
+                  <input type="text" id="editAccountManager" class="form-input" placeholder="Account Manager name">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editCsmOwner">CSM Owner</label>
+                  <select id="editCsmOwner" class="form-select">
+                    <option value="">Select CSM Owner</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editIndustry">Industry</label>
+                  <input type="text" id="editIndustry" class="form-input" placeholder="e.g., Financial Services">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editEmployees">Employee Count</label>
+                  <select id="editEmployees" class="form-select">
+                    <option value="">Select range</option>
+                    <option value="1-50">1-50</option>
+                    <option value="51-200">51-200</option>
+                    <option value="201-500">201-500</option>
+                    <option value="501-1000">501-1000</option>
+                    <option value="1000-5000">1000-5000</option>
+                    <option value="5000+">5000+</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editContractStart">Contract Start Date</label>
+                  <input type="date" id="editContractStart" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editContractEnd">Contract End Date</label>
+                  <input type="date" id="editContractEnd" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editRenewalDate">Renewal Date</label>
+                  <input type="date" id="editRenewalDate" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="editArr">ARR ($)</label>
+                  <input type="number" id="editArr" class="form-input" placeholder="e.g., 450000" step="1000">
+                </div>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button type="button" class="btn btn--secondary" onclick="closeEditAccountModal()">Cancel</button>
+              <button type="submit" class="btn btn--primary" id="editAccountSubmitBtn">Save Changes</button>
             </div>
           </form>
         </div>

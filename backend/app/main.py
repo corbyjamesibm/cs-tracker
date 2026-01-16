@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+import os
 
 from app.core.config import settings
 from app.core.database import init_db
@@ -52,6 +54,11 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(risks.router, prefix="/api/v1/risks", tags=["Risks"])
 app.include_router(assessments.router, prefix="/api/v1/assessments", tags=["Assessments"])
+
+# Serve static files (prototype)
+prototype_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "prototype")
+if os.path.exists(prototype_path):
+    app.mount("/prototype", StaticFiles(directory=prototype_path, html=True), name="prototype")
 
 
 if __name__ == "__main__":

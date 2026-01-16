@@ -135,7 +135,7 @@ async def seed_data():
                 industry="Financial Services",
                 health_status=HealthStatus.GREEN,
                 health_score=92,
-                adoption_stage=AdoptionStage.OPTIMIZATION,
+                adoption_stage=AdoptionStage.VALUE_REALIZATION,
                 arr=Decimal("780000.00"),
                 contract_start_date=date(2023, 6, 1),
                 contract_end_date=date(2026, 5, 31),
@@ -332,32 +332,56 @@ async def seed_data():
         ]
         session.add_all(engagements)
 
-        # Create Use Cases
+        # Create Use Cases with solution_area and domain for proper display
         use_cases = [
             UseCase(
                 name="API Integration",
                 description="Connect to external systems via REST API",
-                category="Integration"
+                category="Integration",
+                solution_area="WFM",
+                domain="Strategic Planning"
             ),
             UseCase(
                 name="Real-time Analytics",
                 description="Dashboard with real-time metrics and KPIs",
-                category="Analytics"
+                category="Analytics",
+                solution_area="WFM",
+                domain="Portfolio Management"
             ),
             UseCase(
                 name="Automated Workflows",
                 description="Set up automated business process workflows",
-                category="Automation"
+                category="Automation",
+                solution_area="WFM",
+                domain="Resource Management"
             ),
             UseCase(
                 name="Data Export",
                 description="Export data to external systems and reports",
-                category="Integration"
+                category="Integration",
+                solution_area="WFM",
+                domain="Financial Management"
             ),
             UseCase(
                 name="User Management",
                 description="Manage users, roles, and permissions",
-                category="Administration"
+                category="Administration",
+                solution_area="WFM",
+                domain="Strategic Planning"
+            ),
+            UseCase(
+                name="Demand Planning",
+                description="Forecast and plan resource demand across projects",
+                category="Planning",
+                solution_area="HPM",
+                domain="Strategic Planning"
+            ),
+            UseCase(
+                name="Capacity Management",
+                description="Manage and optimize resource capacity",
+                category="Resources",
+                solution_area="HPM",
+                domain="Resource Management"
             ),
         ]
         session.add_all(use_cases)
