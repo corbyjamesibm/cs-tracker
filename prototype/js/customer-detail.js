@@ -599,7 +599,7 @@ function displayUseCasesForArea(solutionArea) {
             const description = uc.description || '';
 
             html += `
-                <div class="use-case-item" onclick="openUseCaseStatusModal(${uc.id})">
+                <div class="use-case-item" onclick="openUseCaseStatusModal(${uc.use_case_id})">
                     <div class="use-case-item__checkbox ${checkboxClass}">
                         ${(uc.status === 'implemented' || uc.status === 'optimized') ?
                             '<svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M13 24l-9-9 1.41-1.41L13 21.17 26.59 7.58 28 9 13 24z"/></svg>' : ''}
@@ -664,7 +664,7 @@ let useCaseAdoptionChart = null;
 // Open use case status modal
 function openUseCaseStatusModal(useCaseId) {
     currentUseCaseId = useCaseId;
-    const useCase = customerUseCases.find(uc => uc.use_case_id === useCaseId || uc.id === useCaseId);
+    const useCase = customerUseCases.find(uc => uc.use_case_id === useCaseId);
 
     if (!useCase) {
         console.error('Use case not found:', useCaseId);
