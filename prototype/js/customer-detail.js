@@ -86,18 +86,7 @@ async function loadCustomerDetail() {
     }
 
     try {
-        const response = await fetch(`${API_BASE_URL}/customers/${customerId}`);
-
-        if (!response.ok) {
-            if (response.status === 404) {
-                showError('Customer not found');
-            } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return;
-        }
-
-        const customer = await response.json();
+        const customer = await API.CustomerAPI.getById(customerId);
         currentCustomer = customer; // Store globally for modal access
         populateCustomerData(customer);
 
@@ -125,7 +114,11 @@ async function loadCustomerDetail() {
 
     } catch (error) {
         console.error('Failed to load customer:', error);
-        showError('Failed to load customer data');
+        if (error.message && error.message.includes('404')) {
+            showError('Customer not found');
+        } else {
+            showError('Failed to load customer data');
+        }
     }
 }
 
@@ -221,12 +214,9 @@ function populateCustomerData(customer) {
 // Load CSM owner info
 async function loadCsmOwner(userId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/users/${userId}`);
-        if (response.ok) {
-            const user = await response.json();
-            const csmEl = document.getElementById('csmOwner');
-            if (csmEl) csmEl.textContent = user.full_name || `${user.first_name} ${user.last_name}`;
-        }
+        const user = await API.UserAPI.getById(userId);
+        const csmEl = document.getElementById('csmOwner');
+        if (csmEl) csmEl.textContent = user.full_name || `${user.first_name} ${user.last_name}`;
     } catch (error) {
         console.error('Failed to load CSM owner:', error);
     }
@@ -235,14 +225,11 @@ async function loadCsmOwner(userId) {
 // Load partner info
 async function loadPartner(partnerId) {
     try {
-        const response = await fetch(`${API_BASE_URL}/partners/${partnerId}`);
-        if (response.ok) {
-            const partner = await response.json();
-            const partnerBadge = document.getElementById('partnerBadge');
-            if (partnerBadge) {
-                partnerBadge.textContent = partner.name;
-                partnerBadge.style.display = 'inline-block';
-            }
+        const partner = await API.PartnerAPI.getById(partnerId);
+        const partnerBadge = document.getElementById('partnerBadge');
+        if (partnerBadge) {
+            partnerBadge.textContent = partner.name;
+            partnerBadge.style.display = 'inline-block';
         }
     } catch (error) {
         console.error('Failed to load partner:', error);
@@ -379,10 +366,7 @@ async function loadOpenTasks(customerId) {
     if (!container) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/tasks?customer_id=${customerId}`);
-        if (!response.ok) throw new Error('Failed to load tasks');
-
-        const data = await response.json();
+        const data = await API.TaskAPI.getAll({ customer_id: customerId });
         // Handle paginated response - filter for open tasks only (open or in_progress)
         const tasks = (data.items || data).filter(t => t.status === 'open' || t.status === 'in_progress');
 
@@ -445,10 +429,7 @@ async function loadRecentEngagements(customerId) {
     if (!container) return;
 
     try {
-        const response = await fetch(`${API_BASE_URL}/engagements?customer_id=${customerId}`);
-        if (!response.ok) throw new Error('Failed to load engagements');
-
-        const data = await response.json();
+        const data = await API.EngagementAPI.getAll({ customer_id: customerId });
         // Handle paginated response
         const engagements = data.items || data;
 

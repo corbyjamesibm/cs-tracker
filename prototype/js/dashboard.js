@@ -2,6 +2,9 @@
  * Dashboard - Load and display data from API
  */
 
+// Store customers globally for drill-down functionality
+let dashboardCustomers = [];
+
 document.addEventListener('DOMContentLoaded', async function() {
     // Check auth and redirect if needed
     if (await Auth.checkAuthAndRedirect()) {
@@ -24,6 +27,9 @@ async function loadDashboardData() {
         const tasks = tasksData.items || [];
         const risks = risksData.items || [];
         const engagements = engagementsData.items || engagementsData || [];
+
+        // Store customers globally for drill-down
+        dashboardCustomers = customers;
 
         // Update KPI cards
         updateKPICards(customers, tasks);
@@ -104,21 +110,25 @@ function updateHealthDistribution(customers) {
         const greenDeg = (healthCounts.green / total) * 360;
         const yellowDeg = greenDeg + (healthCounts.yellow / total) * 360;
         donutChart.style.background = `conic-gradient(var(--health-green) 0deg ${greenDeg}deg, var(--health-yellow) ${greenDeg}deg ${yellowDeg}deg, var(--health-red) ${yellowDeg}deg 360deg)`;
+
+        // Make donut chart clickable to show all customers
+        donutChart.style.cursor = 'pointer';
+        donutChart.onclick = () => showHealthDrilldown('all');
     }
 
-    // Update legend counts
+    // Update legend counts with clickable items
     const legend = document.querySelector('.legend');
     if (legend) {
         legend.innerHTML = `
-            <div class="legend__item">
+            <div class="legend__item legend__item--clickable" data-health="green" onclick="showHealthDrilldown('green')">
                 <div class="legend__color legend__color--green"></div>
                 <span>Healthy (${healthCounts.green})</span>
             </div>
-            <div class="legend__item">
+            <div class="legend__item legend__item--clickable" data-health="yellow" onclick="showHealthDrilldown('yellow')">
                 <div class="legend__color legend__color--yellow"></div>
                 <span>At Risk (${healthCounts.yellow})</span>
             </div>
-            <div class="legend__item">
+            <div class="legend__item legend__item--clickable" data-health="red" onclick="showHealthDrilldown('red')">
                 <div class="legend__color legend__color--red"></div>
                 <span>Critical (${healthCounts.red})</span>
             </div>
@@ -419,5 +429,98 @@ function formatActivityDate(date) {
     }
 }
 
+// Show health drill-down modal with filtered customers
+function showHealthDrilldown(healthStatus) {
+    const modal = document.getElementById('health-drilldown-modal');
+    if (!modal) return;
+
+    // Filter customers by health status
+    let filteredCustomers = dashboardCustomers;
+    let title = 'All Customers';
+
+    if (healthStatus !== 'all') {
+        filteredCustomers = dashboardCustomers.filter(c => c.health_status === healthStatus);
+        const statusLabels = {
+            green: 'Healthy Customers',
+            yellow: 'At-Risk Customers',
+            red: 'Critical Customers'
+        };
+        title = statusLabels[healthStatus] || 'Customers';
+    }
+
+    // Sort by ARR descending
+    filteredCustomers.sort((a, b) => (parseFloat(b.arr) || 0) - (parseFloat(a.arr) || 0));
+
+    // Update modal title
+    const modalTitle = modal.querySelector('.modal__title');
+    if (modalTitle) {
+        modalTitle.textContent = title;
+    }
+
+    // Update customer count
+    const countBadge = modal.querySelector('.modal__count');
+    if (countBadge) {
+        countBadge.textContent = filteredCustomers.length;
+    }
+
+    // Populate customer list
+    const customerList = modal.querySelector('.drilldown-list');
+    if (customerList) {
+        if (filteredCustomers.length === 0) {
+            customerList.innerHTML = '<div class="text-secondary" style="padding: 24px; text-align: center;">No customers found</div>';
+        } else {
+            customerList.innerHTML = filteredCustomers.map(customer => {
+                const healthClass = Utils.getHealthStatusClass ? Utils.getHealthStatusClass(customer.health_status) : `tag--${customer.health_status}`;
+                const healthLabel = Utils.getHealthStatusLabel ? Utils.getHealthStatusLabel(customer.health_status) : customer.health_status;
+                const arrFormatted = Utils.formatCurrency ? Utils.formatCurrency(customer.arr || 0) : `$${customer.arr || 0}`;
+
+                return `
+                    <a href="customer-detail.html?id=${customer.id}" class="drilldown-item">
+                        <div class="drilldown-item__main">
+                            <div class="drilldown-item__name">${customer.name}</div>
+                            <div class="drilldown-item__details text-secondary">${arrFormatted} ARR</div>
+                        </div>
+                        <div class="drilldown-item__status">
+                            <span class="tag ${healthClass}">${healthLabel}</span>
+                        </div>
+                        <svg class="drilldown-item__arrow" width="16" height="16" viewBox="0 0 32 32" fill="currentColor">
+                            <path d="M22 16L12 26l-1.4-1.4 8.6-8.6-8.6-8.6L12 6z"/>
+                        </svg>
+                    </a>
+                `;
+            }).join('');
+        }
+    }
+
+    // Show the modal
+    modal.classList.add('modal--open');
+    document.body.style.overflow = 'hidden';
+}
+
+// Close health drill-down modal
+function closeHealthDrilldown() {
+    const modal = document.getElementById('health-drilldown-modal');
+    if (modal) {
+        modal.classList.remove('modal--open');
+        document.body.style.overflow = '';
+    }
+}
+
+// Close modal on backdrop click
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('modal') && e.target.classList.contains('modal--open')) {
+        closeHealthDrilldown();
+    }
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeHealthDrilldown();
+    }
+});
+
 // Make completeTask available globally
 window.completeTask = completeTask;
+window.showHealthDrilldown = showHealthDrilldown;
+window.closeHealthDrilldown = closeHealthDrilldown;

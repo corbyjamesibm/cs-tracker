@@ -2354,3 +2354,148 @@ input[type="file"].form-input::file-selector-button:hover {
   font-size: 12px;
   color: var(--cds-text-secondary);
 }
+
+/* Health Distribution Drill-down */
+.legend__item--clickable {
+  cursor: pointer;
+  padding: 8px 12px;
+  margin: -8px -12px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.legend__item--clickable:hover {
+  background-color: var(--cds-layer-hover-01);
+}
+
+/* Health Drill-down Modal */
+.modal--open {
+  display: flex !important;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal__content {
+  position: relative;
+  background: var(--cds-layer-01);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  animation: modalSlideIn 0.2s ease-out;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.modal__content--medium {
+  width: 100%;
+  max-width: 600px;
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.modal__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.modal__count {
+  font-size: 0.875rem;
+}
+
+.modal__close {
+  background: none;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: var(--cds-text-secondary);
+  border-radius: 4px;
+  transition: background-color 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal__close:hover {
+  background-color: var(--cds-layer-hover-01);
+  color: var(--cds-text-primary);
+}
+
+.modal__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+/* Drill-down List */
+.drilldown-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.drilldown-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  transition: background-color 0.15s ease;
+}
+
+.drilldown-item:hover {
+  background-color: var(--cds-layer-hover-01);
+}
+
+.drilldown-item:last-child {
+  border-bottom: none;
+}
+
+.drilldown-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.drilldown-item__name {
+  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--cds-text-primary);
+  margin-bottom: 2px;
+}
+
+.drilldown-item__details {
+  font-size: 0.8125rem;
+}
+
+.drilldown-item__status {
+  flex-shrink: 0;
+}
+
+.drilldown-item__arrow {
+  flex-shrink: 0;
+  color: var(--cds-text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.drilldown-item:hover .drilldown-item__arrow {
+  transform: translateX(4px);
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

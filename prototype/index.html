@@ -120,22 +120,22 @@
               <h2 class="card__title">Health Distribution</h2>
             </div>
             <div class="flex gap-5" style="align-items: center;">
-              <div class="donut-chart" style="background: conic-gradient(var(--health-green) 0deg 200deg, var(--health-yellow) 200deg 280deg, var(--health-red) 280deg 360deg);">
+              <div class="donut-chart" style="background: conic-gradient(var(--health-green) 0deg 200deg, var(--health-yellow) 200deg 280deg, var(--health-red) 280deg 360deg); cursor: pointer;" onclick="showHealthDrilldown('all')">
                 <div class="donut-chart__center" style="background: white; width: 120px; height: 120px; border-radius: 50%;">
                   <div class="donut-chart__value">18</div>
                   <div class="donut-chart__label">Customers</div>
                 </div>
               </div>
               <div class="legend">
-                <div class="legend__item">
+                <div class="legend__item legend__item--clickable" onclick="showHealthDrilldown('green')">
                   <div class="legend__color legend__color--green"></div>
                   <span>Healthy (10)</span>
                 </div>
-                <div class="legend__item">
+                <div class="legend__item legend__item--clickable" onclick="showHealthDrilldown('yellow')">
                   <div class="legend__color legend__color--yellow"></div>
                   <span>At Risk (5)</span>
                 </div>
-                <div class="legend__item">
+                <div class="legend__item legend__item--clickable" onclick="showHealthDrilldown('red')">
                   <div class="legend__color legend__color--red"></div>
                   <span>Critical (3)</span>
                 </div>
@@ -261,12 +261,32 @@
     <button class="fab" onclick="openQuickAdd()">
       <svg width="24" height="24" viewBox="0 0 32 32" fill="white"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
     </button>
+
+    <!-- Health Drill-down Modal -->
+    <div class="modal" id="health-drilldown-modal">
+      <div class="modal__content modal__content--medium">
+        <div class="modal__header">
+          <h3 class="modal__title">Customers</h3>
+          <span class="tag tag--blue modal__count">0</span>
+          <button class="modal__close" onclick="closeHealthDrilldown()">
+            <svg width="20" height="20" viewBox="0 0 32 32" fill="currentColor">
+              <path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <div class="drilldown-list">
+            <!-- Customer items will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- API and Dashboard Scripts -->
-  <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=11"></script>
-  <script src="js/dashboard.js?v=6"></script>
+  <script src="js/auth.js?v=6"></script>
+  <script src="js/api.js?v=12"></script>
+  <script src="js/dashboard.js?v=9"></script>
   <script>
     function toggleNav() {
       document.getElementById('sideNav').classList.toggle('open');
@@ -293,6 +313,7 @@
           localStorage.setItem('navCollapsed', sideNav.classList.contains('collapsed'));
         });
       }
+
     });
   </script>
 </body>
