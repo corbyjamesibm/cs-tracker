@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -28,6 +28,8 @@ class RiskBase(BaseModel):
     description: Optional[str] = None
     severity: RiskSeverity = RiskSeverity.MEDIUM
     category: Optional[RiskCategory] = None
+    probability_rating: Optional[int] = Field(None, ge=1, le=5, description="Probability rating 1-5")
+    impact_rating: Optional[int] = Field(None, ge=1, le=5, description="Impact rating 1-5")
     impact: Optional[str] = None
     mitigation_plan: Optional[str] = None
     due_date: Optional[datetime] = None
@@ -44,6 +46,8 @@ class RiskUpdate(BaseModel):
     severity: Optional[RiskSeverity] = None
     status: Optional[RiskStatus] = None
     category: Optional[RiskCategory] = None
+    probability_rating: Optional[int] = Field(None, ge=1, le=5)
+    impact_rating: Optional[int] = Field(None, ge=1, le=5)
     impact: Optional[str] = None
     mitigation_plan: Optional[str] = None
     owner_id: Optional[int] = None
@@ -68,6 +72,7 @@ class RiskResponse(RiskBase):
     resolved_at: Optional[datetime] = None
     resolution_notes: Optional[str] = None
     is_overdue: bool
+    risk_score: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

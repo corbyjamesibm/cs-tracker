@@ -161,6 +161,17 @@ const UserAPI = {
     },
 };
 
+// Partner API
+const PartnerAPI = {
+    async getAll() {
+        return apiRequest('/partners');
+    },
+
+    async getById(id) {
+        return apiRequest(`/partners/${id}`);
+    },
+};
+
 // Roadmap API
 const RoadmapAPI = {
     async getByCustomer(customerId) {
@@ -513,6 +524,7 @@ window.API = {
     TaskAPI,
     EngagementAPI,
     UserAPI,
+    PartnerAPI,
     RoadmapAPI,
     RiskAPI,
     AssessmentAPI,

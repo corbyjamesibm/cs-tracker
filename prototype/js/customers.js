@@ -361,8 +361,9 @@ async function openEditCustomerModal(customerId) {
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
 
-    // Load CSM users for dropdown
+    // Load CSM users and partners for dropdowns
     await loadCSMUsersForEdit();
+    await loadPartnersForEdit();
 
     // Load customer data and populate form
     try {
@@ -389,6 +390,20 @@ async function loadCSMUsersForEdit() {
     }
 }
 
+async function loadPartnersForEdit() {
+    try {
+        const data = await API.PartnerAPI.getAll();
+        const partners = (data.items || []).filter(p => p.is_active);
+        const partnerSelect = document.getElementById('editCustomerPartner');
+        if (partnerSelect) {
+            partnerSelect.innerHTML = '<option value="">No Partner</option>' +
+                partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        }
+    } catch (error) {
+        console.error('Failed to load partners:', error);
+    }
+}
+
 function populateEditForm(customer) {
     document.getElementById('editCustomerId').value = customer.id;
     document.getElementById('editCustomerName').value = customer.name || '';
@@ -399,6 +414,7 @@ function populateEditForm(customer) {
     document.getElementById('editCustomerAdoption').value = customer.adoption_stage || 'onboarding';
     document.getElementById('editCustomerRenewal').value = customer.renewal_date || '';
     document.getElementById('editCustomerCSM').value = customer.csm_owner_id || '';
+    document.getElementById('editCustomerPartner').value = customer.partner_id || '';
     document.getElementById('editCustomerEmployees').value = customer.employee_count || '';
     document.getElementById('editCustomerWebsite').value = customer.website || '';
 }
@@ -460,6 +476,9 @@ async function handleEditCustomer(event) {
 
         const csmOwnerId = document.getElementById('editCustomerCSM').value;
         if (csmOwnerId) formData.csm_owner_id = parseInt(csmOwnerId);
+
+        const partnerId = document.getElementById('editCustomerPartner').value;
+        formData.partner_id = partnerId ? parseInt(partnerId) : null;
 
         const employeeCount = document.getElementById('editCustomerEmployees').value;
         if (employeeCount) formData.employee_count = employeeCount;

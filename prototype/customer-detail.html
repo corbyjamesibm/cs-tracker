@@ -1290,6 +1290,31 @@
                 </div>
               </div>
 
+              <div class="grid grid--2" style="gap: 16px;">
+                <div class="form-group">
+                  <label class="form-label" for="riskProbability">Probability (1-5)</label>
+                  <select id="riskProbability" class="form-select">
+                    <option value="">Not rated</option>
+                    <option value="1">1 - Very Unlikely</option>
+                    <option value="2">2 - Unlikely</option>
+                    <option value="3">3 - Possible</option>
+                    <option value="4">4 - Likely</option>
+                    <option value="5">5 - Very Likely</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="riskImpactRating">Impact (1-5)</label>
+                  <select id="riskImpactRating" class="form-select">
+                    <option value="">Not rated</option>
+                    <option value="1">1 - Minimal</option>
+                    <option value="2">2 - Minor</option>
+                    <option value="3">3 - Moderate</option>
+                    <option value="4">4 - Major</option>
+                    <option value="5">5 - Severe</option>
+                  </select>
+                </div>
+              </div>
+
               <div class="form-group">
                 <label class="form-label" for="riskDescription">Description</label>
                 <textarea id="riskDescription" class="form-textarea" rows="2" placeholder="Detailed description of the risk"></textarea>
@@ -1614,6 +1639,12 @@
                   </select>
                 </div>
                 <div class="form-group">
+                  <label class="form-label" for="editPartner">Partner</label>
+                  <select id="editPartner" class="form-select">
+                    <option value="">No Partner</option>
+                  </select>
+                </div>
+                <div class="form-group">
                   <label class="form-label" for="editIndustry">Industry</label>
                   <input type="text" id="editIndustry" class="form-input" placeholder="e.g., Financial Services">
                 </div>
@@ -1694,7 +1725,7 @@
   </div>
 
   <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=11"></script>
-  <script src="js/customer-detail.js?v=22"></script>
+  <script src="js/api.js?v=12"></script>
+  <script src="js/customer-detail.js?v=23"></script>
 </body>
 </html>

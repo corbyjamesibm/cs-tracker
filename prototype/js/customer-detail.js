@@ -1540,6 +1540,7 @@ function renderOpenRisks() {
             <div style="border-left: 3px solid ${severityColor}; padding: 8px 12px; margin-bottom: 8px; background: var(--cds-layer-02); border-radius: 0 4px 4px 0; cursor: pointer;" onclick="switchToRisksTab()">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span class="tag tag--${risk.severity === 'critical' ? 'red' : risk.severity === 'high' ? 'orange' : risk.severity === 'medium' ? 'yellow' : 'gray'}" style="font-size: 10px; text-transform: uppercase;">${risk.severity}</span>
+                    ${risk.risk_score ? `<span style="font-size: 10px; font-weight: 600; color: ${risk.risk_score >= 15 ? 'var(--cds-support-error)' : risk.risk_score >= 10 ? '#ff832b' : 'var(--cds-text-secondary)'};">[${risk.risk_score}]</span>` : ''}
                     <span style="font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${risk.title}</span>
                 </div>
                 ${risk.category ? `<div class="text-secondary" style="font-size: 11px; margin-top: 4px;">${Utils.getRiskCategoryLabel ? Utils.getRiskCategoryLabel(risk.category) : risk.category}</div>` : ''}
@@ -1604,6 +1605,7 @@ function renderRisksTab() {
                             <span class="tag tag--${risk.severity === 'critical' ? 'red' : risk.severity === 'high' ? 'orange' : risk.severity === 'medium' ? 'yellow' : 'gray'}" style="text-transform: uppercase; font-size: 10px;">${risk.severity}</span>
                             ${statusBadge}
                             ${risk.category ? `<span class="tag">${Utils.getRiskCategoryLabel(risk.category)}</span>` : ''}
+                            ${risk.risk_score ? `<span class="tag" style="background: ${risk.risk_score >= 15 ? 'var(--cds-support-error)' : risk.risk_score >= 10 ? '#ff832b' : risk.risk_score >= 5 ? '#f1c21b' : 'var(--cds-layer-accent-01)'}; color: ${risk.risk_score >= 10 ? 'white' : 'inherit'};" title="Risk Score: P(${risk.probability_rating}) × I(${risk.impact_rating})">${risk.risk_score}</span>` : ''}
                         </div>
                         <div style="display: flex; gap: 8px;">
                             ${risk.status === 'open' || risk.status === 'mitigating' ? `<button class="btn btn--ghost btn--sm" onclick="openResolveRiskModal(${risk.id}, '${risk.title.replace(/'/g, "\\'")}')">Resolve</button>` : ''}
@@ -1614,6 +1616,7 @@ function renderRisksTab() {
                     ${risk.description ? `<p class="text-secondary" style="font-size: 13px; margin-bottom: 12px;">${risk.description}</p>` : ''}
                     <div style="display: flex; gap: 24px; font-size: 12px; color: var(--cds-text-secondary); flex-wrap: wrap;">
                         ${risk.owner ? `<span>Owner: ${risk.owner.first_name} ${risk.owner.last_name}</span>` : '<span>Unassigned</span>'}
+                        ${risk.probability_rating && risk.impact_rating ? `<span>P: ${risk.probability_rating} × I: ${risk.impact_rating}</span>` : ''}
                         ${dueDateStr ? `<span style="${isOverdue ? 'color: var(--cds-support-error); font-weight: 500;' : ''}">Due: ${dueDateStr}${isOverdue ? ' (Overdue)' : ''}</span>` : ''}
                         <span>Created: ${Utils.formatDate(risk.created_at)}</span>
                     </div>
@@ -1668,6 +1671,8 @@ async function editRisk(riskId) {
     document.getElementById('riskTitle').value = risk.title;
     document.getElementById('riskSeverity').value = risk.severity;
     document.getElementById('riskCategory').value = risk.category || '';
+    document.getElementById('riskProbability').value = risk.probability_rating || '';
+    document.getElementById('riskImpactRating').value = risk.impact_rating || '';
     document.getElementById('riskDescription').value = risk.description || '';
     document.getElementById('riskImpact').value = risk.impact || '';
     document.getElementById('riskMitigation').value = risk.mitigation_plan || '';
@@ -1707,11 +1712,13 @@ async function handleRiskSubmit(event) {
         title: document.getElementById('riskTitle').value,
         severity: document.getElementById('riskSeverity').value,
         category: document.getElementById('riskCategory').value || null,
+        probability_rating: document.getElementById('riskProbability').value ? parseInt(document.getElementById('riskProbability').value) : null,
+        impact_rating: document.getElementById('riskImpactRating').value ? parseInt(document.getElementById('riskImpactRating').value) : null,
         description: document.getElementById('riskDescription').value || null,
         impact: document.getElementById('riskImpact').value || null,
         mitigation_plan: document.getElementById('riskMitigation').value || null,
-        owner_id: document.getElementById('riskOwner').value || null,
-        due_date: document.getElementById('riskDueDate').value || null,
+        owner_id: document.getElementById('riskOwner').value ? parseInt(document.getElementById('riskOwner').value) : null,
+        due_date: document.getElementById('riskDueDate').value ? new Date(document.getElementById('riskDueDate').value).toISOString() : null,
     };
 
     if (riskId) {
@@ -2845,6 +2852,15 @@ async function openEditAccountModal() {
         csmSelect.value = currentCustomer.csm_owner_id;
     }
 
+    // Load partners dropdown
+    await loadPartnerOptions();
+
+    // Set current partner
+    const partnerSelect = document.getElementById('editPartner');
+    if (partnerSelect && currentCustomer.partner_id) {
+        partnerSelect.value = currentCustomer.partner_id;
+    }
+
     // Open modal
     document.getElementById('editAccountModal').classList.add('open');
 }
@@ -2869,6 +2885,30 @@ async function loadCsmOwnerOptions() {
         });
     } catch (error) {
         console.error('Failed to load users:', error);
+    }
+}
+
+// Load Partner options from partners API
+async function loadPartnerOptions() {
+    const select = document.getElementById('editPartner');
+    if (!select) return;
+
+    try {
+        const response = await API.PartnerAPI.getAll();
+        const partners = (response.items || []).filter(p => p.is_active);
+
+        // Clear existing options except the first one
+        select.innerHTML = '<option value="">No Partner</option>';
+
+        // Add partner options
+        partners.forEach(partner => {
+            const option = document.createElement('option');
+            option.value = partner.id;
+            option.textContent = partner.name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load partners:', error);
     }
 }
 
@@ -2903,6 +2943,11 @@ async function handleEditAccountSubmit(event) {
         const csmOwnerId = document.getElementById('editCsmOwner').value;
         if (csmOwnerId !== String(currentCustomer.csm_owner_id || '')) {
             updateData.csm_owner_id = csmOwnerId ? parseInt(csmOwnerId) : null;
+        }
+
+        const partnerId = document.getElementById('editPartner').value;
+        if (partnerId !== String(currentCustomer.partner_id || '')) {
+            updateData.partner_id = partnerId ? parseInt(partnerId) : null;
         }
 
         const industry = document.getElementById('editIndustry').value.trim();
@@ -3012,6 +3057,17 @@ function updateAccountDetailsUI(customer) {
     const statDaysToRenewal = document.getElementById('statDaysToRenewal');
     if (statDaysToRenewal && customer.days_to_renewal !== undefined) {
         statDaysToRenewal.textContent = customer.days_to_renewal;
+    }
+
+    // Update partner badge
+    const partnerBadge = document.getElementById('partnerBadge');
+    if (partnerBadge) {
+        if (customer.partner_id && customer.partner) {
+            partnerBadge.textContent = customer.partner.name;
+            partnerBadge.style.display = 'inline-flex';
+        } else {
+            partnerBadge.style.display = 'none';
+        }
     }
 }
 

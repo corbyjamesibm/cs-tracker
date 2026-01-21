@@ -66,6 +66,15 @@ class UserSummary(BaseModel):
         return f"{self.first_name} {self.last_name}"
 
 
+class PartnerSummary(BaseModel):
+    """Minimal partner info for nested responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    is_active: bool = True
+
+
 class CustomerResponse(CustomerBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -73,6 +82,7 @@ class CustomerResponse(CustomerBase):
     csm_owner_id: Optional[int] = None
     csm_owner: Optional[UserSummary] = None
     partner_id: Optional[int] = None
+    partner: Optional[PartnerSummary] = None
     health_trend: Optional[str] = None
     adoption_percentage: Optional[int] = None
     last_contact_date: Optional[datetime] = None

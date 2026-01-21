@@ -56,7 +56,7 @@ async def list_customers(
 
     # Pagination
     query = query.offset(skip).limit(limit)
-    query = query.options(selectinload(Customer.csm_owner))
+    query = query.options(selectinload(Customer.csm_owner), selectinload(Customer.partner))
 
     result = await db.execute(query)
     customers = result.scalars().all()
@@ -94,7 +94,15 @@ async def create_customer(customer_in: CustomerCreate, db: AsyncSession = Depend
     customer = Customer(**customer_in.model_dump())
     db.add(customer)
     await db.flush()
-    await db.refresh(customer)
+
+    # Re-fetch with relationships loaded
+    query = select(Customer).where(Customer.id == customer.id).options(
+        selectinload(Customer.csm_owner),
+        selectinload(Customer.partner)
+    )
+    result = await db.execute(query)
+    customer = result.scalar_one()
+
     return CustomerResponse.model_validate(customer)
 
 
@@ -117,7 +125,15 @@ async def update_customer(
         setattr(customer, field, value)
 
     await db.flush()
-    await db.refresh(customer)
+
+    # Re-fetch with relationships loaded
+    query = select(Customer).where(Customer.id == customer_id).options(
+        selectinload(Customer.csm_owner),
+        selectinload(Customer.partner)
+    )
+    result = await db.execute(query)
+    customer = result.scalar_one()
+
     return CustomerResponse.model_validate(customer)
 
 

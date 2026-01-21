@@ -1,4 +1,4 @@
-from sqlalchemy import String, DateTime, Enum as SQLEnum, ForeignKey, Text
+from sqlalchemy import String, DateTime, Enum as SQLEnum, ForeignKey, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from typing import Optional, TYPE_CHECKING
@@ -54,6 +54,10 @@ class Risk(Base):
         SQLEnum(RiskCategory), nullable=True
     )
 
+    # Risk ratings (1-5 scale)
+    probability_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    impact_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     # Impact and mitigation
     impact: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     mitigation_plan: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -87,6 +91,13 @@ class Risk(Base):
             now = datetime.now(self.due_date.tzinfo) if self.due_date.tzinfo else datetime.utcnow()
             return now > self.due_date
         return False
+
+    @property
+    def risk_score(self) -> Optional[int]:
+        """Calculate risk score (probability * impact). Returns None if either rating is missing."""
+        if self.probability_rating is not None and self.impact_rating is not None:
+            return self.probability_rating * self.impact_rating
+        return None
 
     def __repr__(self) -> str:
         return f"<Risk {self.title} ({self.severity.value})>"

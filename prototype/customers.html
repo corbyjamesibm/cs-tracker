@@ -599,6 +599,13 @@
             </div>
 
             <div class="form-group">
+              <label class="form-label" for="editCustomerPartner">Partner</label>
+              <select class="form-select" id="editCustomerPartner" name="partner_id">
+                <option value="">No Partner</option>
+              </select>
+            </div>
+
+            <div class="form-group">
               <label class="form-label" for="editCustomerEmployees">Employee Count</label>
               <select class="form-select" id="editCustomerEmployees" name="employee_count">
                 <option value="">Select range</option>
@@ -628,8 +635,8 @@
 
   <!-- API and Customers Scripts -->
   <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=10"></script>
-  <script src="js/customers.js?v=6"></script>
+  <script src="js/api.js?v=12"></script>
+  <script src="js/customers.js?v=7"></script>
   <script>
     function toggleNav() {
       document.getElementById('sideNav').classList.toggle('open');
