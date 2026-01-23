@@ -182,7 +182,8 @@ function populateCustomerData(customer) {
 
     // Account Details
     const accountManagerEl = document.getElementById('accountManager');
-    if (accountManagerEl) accountManagerEl.textContent = customer.account_manager || '-';
+    if (accountManagerEl) accountManagerEl.textContent = customer.account_manager ?
+        (customer.account_manager.full_name || `${customer.account_manager.first_name} ${customer.account_manager.last_name}`) : '-';
 
     const industryEl = document.getElementById('customerIndustry');
     if (industryEl) industryEl.textContent = customer.industry || '-';
@@ -2815,26 +2816,36 @@ async function openEditAccountModal() {
         return;
     }
 
+    // Load dropdown options from API (in parallel for performance)
+    await Promise.all([
+        loadAccountManagerOptions(),
+        loadCsmOwnerOptions(),
+        loadPartnerOptions(),
+        loadIndustryOptions(),
+        loadEmployeeCountOptions()
+    ]);
+
     // Populate form with current values
-    document.getElementById('editAccountManager').value = currentCustomer.account_manager || '';
-    document.getElementById('editIndustry').value = currentCustomer.industry || '';
-    document.getElementById('editEmployees').value = currentCustomer.employee_count || '';
     document.getElementById('editContractStart').value = currentCustomer.contract_start_date || '';
     document.getElementById('editContractEnd').value = currentCustomer.contract_end_date || '';
     document.getElementById('editRenewalDate').value = currentCustomer.renewal_date || '';
     document.getElementById('editArr').value = currentCustomer.arr || '';
 
-    // Load users for CSM Owner dropdown
-    await loadCsmOwnerOptions();
+    // Set dropdown values (after options are loaded)
+    document.getElementById('editIndustry').value = currentCustomer.industry || '';
+    document.getElementById('editEmployees').value = currentCustomer.employee_count || '';
+
+    // Set current Account Manager
+    const amSelect = document.getElementById('editAccountManager');
+    if (currentCustomer.account_manager_id) {
+        amSelect.value = currentCustomer.account_manager_id;
+    }
 
     // Set current CSM owner
     const csmSelect = document.getElementById('editCsmOwner');
     if (currentCustomer.csm_owner_id) {
         csmSelect.value = currentCustomer.csm_owner_id;
     }
-
-    // Load partners dropdown
-    await loadPartnerOptions();
 
     // Set current partner
     const partnerSelect = document.getElementById('editPartner');
@@ -2844,6 +2855,29 @@ async function openEditAccountModal() {
 
     // Open modal
     document.getElementById('editAccountModal').classList.add('open');
+}
+
+// Load Account Manager options from users API
+async function loadAccountManagerOptions() {
+    const select = document.getElementById('editAccountManager');
+
+    try {
+        const response = await API.UserAPI.getAll();
+        const users = response.items || [];
+
+        // Clear existing options except the first one
+        select.innerHTML = '<option value="">Select Account Manager</option>';
+
+        // Add user options
+        users.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.id;
+            option.textContent = user.full_name || `${user.first_name} ${user.last_name}`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load users:', error);
+    }
 }
 
 // Load CSM Owner options from users API
@@ -2893,6 +2927,71 @@ async function loadPartnerOptions() {
     }
 }
 
+// Load Industry options from lookups API
+async function loadIndustryOptions() {
+    const select = document.getElementById('editIndustry');
+    if (!select) return;
+
+    try {
+        const response = await API.LookupAPI.getCategoryValues('industry');
+        const values = (response.values || []).filter(v => v.is_active);
+
+        select.innerHTML = '<option value="">Select industry</option>';
+
+        values.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.value;
+            option.textContent = item.label;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load industries:', error);
+        // Fallback to basic options if API fails
+        select.innerHTML = `
+            <option value="">Select industry</option>
+            <option value="Financial Services">Financial Services</option>
+            <option value="Healthcare">Healthcare</option>
+            <option value="Technology">Technology</option>
+            <option value="Manufacturing">Manufacturing</option>
+            <option value="Retail">Retail</option>
+            <option value="Other">Other</option>
+        `;
+    }
+}
+
+// Load Employee Count options from lookups API
+async function loadEmployeeCountOptions() {
+    const select = document.getElementById('editEmployees');
+    if (!select) return;
+
+    try {
+        const response = await API.LookupAPI.getCategoryValues('employee_count');
+        const values = (response.values || []).filter(v => v.is_active);
+
+        select.innerHTML = '<option value="">Select range</option>';
+
+        values.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.value;
+            option.textContent = item.label;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load employee counts:', error);
+        // Fallback to basic options if API fails
+        select.innerHTML = `
+            <option value="">Select range</option>
+            <option value="1-50">1-50</option>
+            <option value="51-200">51-200</option>
+            <option value="201-500">201-500</option>
+            <option value="501-1000">501-1000</option>
+            <option value="1001-5000">1,001-5,000</option>
+            <option value="5001-10000">5,001-10,000</option>
+            <option value="10000+">10,000+</option>
+        `;
+    }
+}
+
 // Close the edit account modal
 function closeEditAccountModal() {
     document.getElementById('editAccountModal').classList.remove('open');
@@ -2916,9 +3015,9 @@ async function handleEditAccountSubmit(event) {
         // Gather form data
         const updateData = {};
 
-        const accountManager = document.getElementById('editAccountManager').value.trim();
-        if (accountManager !== (currentCustomer.account_manager || '')) {
-            updateData.account_manager = accountManager || null;
+        const accountManagerId = document.getElementById('editAccountManager').value;
+        if (accountManagerId !== String(currentCustomer.account_manager_id || '')) {
+            updateData.account_manager_id = accountManagerId ? parseInt(accountManagerId) : null;
         }
 
         const csmOwnerId = document.getElementById('editCsmOwner').value;
@@ -2931,7 +3030,7 @@ async function handleEditAccountSubmit(event) {
             updateData.partner_id = partnerId ? parseInt(partnerId) : null;
         }
 
-        const industry = document.getElementById('editIndustry').value.trim();
+        const industry = document.getElementById('editIndustry').value;
         if (industry !== (currentCustomer.industry || '')) {
             updateData.industry = industry || null;
         }
@@ -2990,7 +3089,8 @@ function updateAccountDetailsUI(customer) {
     // Account Manager
     const accountManagerEl = document.getElementById('accountManager');
     if (accountManagerEl) {
-        accountManagerEl.textContent = customer.account_manager || '-';
+        accountManagerEl.textContent = customer.account_manager?.full_name ||
+                                       (customer.account_manager ? `${customer.account_manager.first_name} ${customer.account_manager.last_name}` : '-');
     }
 
     // CSM Owner

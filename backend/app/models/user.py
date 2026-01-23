@@ -15,6 +15,7 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
     MANAGER = "manager"
     CSM = "csm"
+    ACCOUNT_MANAGER = "account_manager"
     READ_ONLY = "read_only"
 
 

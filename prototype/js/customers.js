@@ -4,6 +4,8 @@
 
 let allCustomers = [];
 let filteredCustomers = [];
+let currentPage = 1;
+const itemsPerPage = 8;
 
 document.addEventListener('DOMContentLoaded', async function() {
     if (await Auth.checkAuthAndRedirect()) {
@@ -11,6 +13,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         await loadCustomersData();
         await loadCSMUsersForFilter();
         setupFilters();
+
+        // Fix overflow on table card to allow action menus to display fully
+        const tableCard = document.querySelector('.data-table')?.closest('.card');
+        if (tableCard) {
+            tableCard.style.overflow = 'visible';
+        }
     }
 });
 
@@ -19,11 +27,20 @@ async function loadCustomersData() {
         const data = await API.CustomerAPI.getAll();
         allCustomers = data.items || [];
         filteredCustomers = [...allCustomers];
+        updateCustomerCount();
         renderCustomersList();
         updateFilterCounts();
     } catch (error) {
         console.error('Failed to load customers:', error);
         showErrorMessage('Failed to load customers. Please check that the backend is running.');
+    }
+}
+
+function updateCustomerCount() {
+    const countElement = document.getElementById('customer-count');
+    if (countElement) {
+        const count = allCustomers.length;
+        countElement.textContent = `${count} customer${count !== 1 ? 's' : ''} in your portfolio`;
     }
 }
 
@@ -39,10 +56,20 @@ function renderCustomersList() {
                 </td>
             </tr>
         `;
+        renderPagination();
         return;
     }
 
-    tableBody.innerHTML = filteredCustomers.map(customer => `
+    // Calculate pagination
+    const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
+
+    tableBody.innerHTML = paginatedCustomers.map(customer => `
         <tr onclick="window.location.href='customer-detail.html?id=${customer.id}'" style="cursor: pointer;">
             <td>
                 <div class="customer-cell">
@@ -65,7 +92,7 @@ function renderCustomersList() {
             <td>${customer.csm_owner?.full_name || customer.csm_owner?.first_name || 'Unassigned'}</td>
             <td>
                 <div class="action-menu-wrapper">
-                    <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation(); toggleActionMenu(${customer.id}, event)">
+                    <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation(); toggleActionMenu(${customer.id}, this)">
                         <svg width="16" height="16" viewBox="0 0 32 32"><circle cx="16" cy="8" r="2"/><circle cx="16" cy="16" r="2"/><circle cx="16" cy="24" r="2"/></svg>
                     </button>
                     <div class="action-menu" id="actionMenu-${customer.id}">
@@ -92,6 +119,57 @@ function renderCustomersList() {
     const countEl = document.querySelector('.results-count');
     if (countEl) {
         countEl.textContent = `${filteredCustomers.length} customer${filteredCustomers.length !== 1 ? 's' : ''}`;
+    }
+
+    // Render pagination
+    renderPagination();
+}
+
+function renderPagination() {
+    const paginationContainer = document.getElementById('pagination-container');
+    if (!paginationContainer) return;
+
+    const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage + 1;
+    const endIndex = Math.min(currentPage * itemsPerPage, filteredCustomers.length);
+
+    // Update the showing text
+    const showingText = filteredCustomers.length === 0
+        ? 'No customers to display'
+        : `Showing ${startIndex}-${endIndex} of ${filteredCustomers.length} customers`;
+
+    paginationContainer.innerHTML = `
+        <div class="text-secondary">${showingText}</div>
+        <div class="flex gap-3">
+            <button class="btn btn--ghost" ${currentPage === 1 ? 'disabled' : ''} onclick="goToPage(${currentPage - 1})">Previous</button>
+            ${generatePageButtons(totalPages)}
+            <button class="btn btn--ghost" ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''} onclick="goToPage(${currentPage + 1})">Next</button>
+        </div>
+    `;
+}
+
+function generatePageButtons(totalPages) {
+    if (totalPages === 0) return '';
+
+    let buttons = '';
+    for (let i = 1; i <= totalPages; i++) {
+        const isActive = i === currentPage;
+        buttons += `<button class="btn ${isActive ? 'btn--primary' : 'btn--ghost'}" onclick="goToPage(${i})">${i}</button>`;
+    }
+    return buttons;
+}
+
+function goToPage(page) {
+    const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+    if (page < 1 || page > totalPages) return;
+
+    currentPage = page;
+    renderCustomersList();
+
+    // Scroll to top of table
+    const table = document.querySelector('.data-table');
+    if (table) {
+        table.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
@@ -139,6 +217,8 @@ function filterCustomers() {
         return matchesSearch && matchesHealth;
     });
 
+    // Reset to first page when filters change
+    currentPage = 1;
     renderCustomersList();
 }
 
@@ -235,12 +315,13 @@ function populateCSMDropdown() {
         csmUsers.map(user => `<option value="${user.id}">${user.full_name || user.first_name}</option>`).join('');
 }
 
-function openAddCustomerModal() {
+async function openAddCustomerModal() {
     const modal = document.getElementById('addCustomerModal');
     if (modal) {
         modal.classList.add('active');
         document.body.style.overflow = 'hidden';
         loadCSMUsers();
+        await loadIndustriesForAdd();
 
         // Set default renewal date to 1 year from now
         const renewalInput = document.getElementById('customerRenewal');
@@ -249,6 +330,22 @@ function openAddCustomerModal() {
             nextYear.setFullYear(nextYear.getFullYear() + 1);
             renewalInput.value = nextYear.toISOString().split('T')[0];
         }
+    }
+}
+
+// Load industries from lookup API for Add Customer modal
+async function loadIndustriesForAdd() {
+    const select = document.getElementById('customerIndustry');
+    if (!select) return;
+
+    try {
+        const response = await API.LookupAPI.getCategoryValues('industry');
+        const values = (response.values || []).filter(v => v.is_active);
+
+        select.innerHTML = '<option value="">Select industry</option>' +
+            values.map(v => `<option value="${v.label}">${v.label}</option>`).join('');
+    } catch (error) {
+        console.error('Failed to load industries:', error);
     }
 }
 
@@ -361,9 +458,10 @@ async function openEditCustomerModal(customerId) {
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
 
-    // Load CSM users and partners for dropdowns
+    // Load CSM users, partners, and industries for dropdowns
     await loadCSMUsersForEdit();
     await loadPartnersForEdit();
+    await loadIndustriesForEdit();
 
     // Load customer data and populate form
     try {
@@ -373,6 +471,22 @@ async function openEditCustomerModal(customerId) {
         console.error('Failed to load customer:', error);
         showToast('Failed to load customer data', 'error');
         closeEditCustomerModal();
+    }
+}
+
+// Load industries from lookup API for Edit Customer modal
+async function loadIndustriesForEdit() {
+    const select = document.getElementById('editCustomerIndustry');
+    if (!select) return;
+
+    try {
+        const response = await API.LookupAPI.getCategoryValues('industry');
+        const values = (response.values || []).filter(v => v.is_active);
+
+        select.innerHTML = '<option value="">Select industry</option>' +
+            values.map(v => `<option value="${v.label}">${v.label}</option>`).join('');
+    } catch (error) {
+        console.error('Failed to load industries:', error);
     }
 }
 
@@ -515,18 +629,43 @@ async function handleEditCustomer(event) {
 
 let activeActionMenu = null;
 
-function toggleActionMenu(customerId, event) {
-    event.stopPropagation();
-
+function toggleActionMenu(customerId, buttonOrEvent) {
     // Close any open menu
     closeAllActionMenus();
 
     const menuId = `actionMenu-${customerId}`;
     const menu = document.getElementById(menuId);
 
+    // Handle both 'this' (button element) and 'event' as second parameter
+    const button = buttonOrEvent?.tagName ? buttonOrEvent :
+                   buttonOrEvent?.currentTarget || buttonOrEvent?.target?.closest('button');
+
     if (menu) {
         menu.classList.toggle('active');
         activeActionMenu = menu.classList.contains('active') ? menu : null;
+
+        if (activeActionMenu && button) {
+            // Position the menu using fixed positioning to escape overflow containers
+            const buttonRect = button.getBoundingClientRect();
+            const menuHeight = 150; // Approximate menu height
+            const viewportHeight = window.innerHeight;
+
+            // Check if menu would overflow bottom of viewport
+            const spaceBelow = viewportHeight - buttonRect.bottom;
+            const openUpward = spaceBelow < menuHeight;
+
+            menu.style.position = 'fixed';
+            menu.style.right = 'auto';
+            menu.style.left = (buttonRect.left - 140) + 'px'; // Align right edge with button
+
+            if (openUpward) {
+                menu.style.top = 'auto';
+                menu.style.bottom = (viewportHeight - buttonRect.top) + 'px';
+            } else {
+                menu.style.top = buttonRect.bottom + 'px';
+                menu.style.bottom = 'auto';
+            }
+        }
     }
 }
 
@@ -588,3 +727,4 @@ window.handleEditCustomer = handleEditCustomer;
 window.toggleActionMenu = toggleActionMenu;
 window.closeAllActionMenus = closeAllActionMenus;
 window.confirmDeleteCustomer = confirmDeleteCustomer;
+window.goToPage = goToPage;

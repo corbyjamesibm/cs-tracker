@@ -35,7 +35,7 @@ class Customer(Base):
 
     # Ownership
     csm_owner_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
-    account_manager: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    account_manager_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     # Products (stored as JSON array)
     products_owned: Mapped[Optional[List[str]]] = mapped_column(JSONB, default=list)
@@ -84,6 +84,7 @@ class Customer(Base):
 
     # Relationships
     csm_owner: Mapped[Optional["User"]] = relationship(back_populates="assigned_customers", foreign_keys=[csm_owner_id])
+    account_manager: Mapped[Optional["User"]] = relationship(foreign_keys=[account_manager_id])
     partner: Mapped[Optional["Partner"]] = relationship(back_populates="customers")
     tasks: Mapped[List["Task"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     engagements: Mapped[List["Engagement"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
@@ -93,6 +94,7 @@ class Customer(Base):
     adoption_history: Mapped[List["AdoptionHistory"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     risks: Mapped[List["Risk"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     assessments: Mapped[List["CustomerAssessment"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
+    roadmaps: Mapped[List["Roadmap"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
 
     @property
     def days_to_renewal(self) -> Optional[int]:

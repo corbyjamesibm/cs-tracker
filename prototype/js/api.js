@@ -44,6 +44,12 @@ async function apiRequest(endpoint, options = {}) {
         if (!response.ok) {
             throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
+
+        // Handle 204 No Content (e.g., successful DELETE)
+        if (response.status === 204) {
+            return null;
+        }
+
         return await response.json();
     } catch (error) {
         console.error(`API request failed: ${endpoint}`, error);
@@ -518,6 +524,49 @@ const AssessmentAPI = {
     },
 };
 
+// Lookup API - for managing configurable dropdown lists
+const LookupAPI = {
+    async getCategories() {
+        return apiRequest('/lookups/categories');
+    },
+
+    async getCategoryValues(category, includeInactive = false) {
+        const params = includeInactive ? '?include_inactive=true' : '';
+        return apiRequest(`/lookups/category/${category}${params}`);
+    },
+
+    async getAll(params = {}) {
+        const queryString = new URLSearchParams(params).toString();
+        return apiRequest(`/lookups${queryString ? '?' + queryString : ''}`);
+    },
+
+    async create(data) {
+        return apiRequest('/lookups', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async update(id, data) {
+        return apiRequest(`/lookups/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async delete(id) {
+        return apiRequest(`/lookups/${id}`, {
+            method: 'DELETE',
+        });
+    },
+
+    async initializeCategory(category) {
+        return apiRequest(`/lookups/initialize/${category}`, {
+            method: 'POST',
+        });
+    },
+};
+
 // Export for use in other files
 window.API = {
     CustomerAPI,
@@ -528,6 +577,7 @@ window.API = {
     RoadmapAPI,
     RiskAPI,
     AssessmentAPI,
+    LookupAPI,
 };
 
 window.Utils = {

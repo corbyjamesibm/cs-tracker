@@ -1630,7 +1630,9 @@
               <div class="grid grid--2" style="gap: 16px;">
                 <div class="form-group">
                   <label class="form-label" for="editAccountManager">Account Manager</label>
-                  <input type="text" id="editAccountManager" class="form-input" placeholder="Account Manager name">
+                  <select id="editAccountManager" class="form-select">
+                    <option value="">Select Account Manager</option>
+                  </select>
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="editCsmOwner">CSM Owner</label>
@@ -1646,18 +1648,14 @@
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="editIndustry">Industry</label>
-                  <input type="text" id="editIndustry" class="form-input" placeholder="e.g., Financial Services">
+                  <select id="editIndustry" class="form-select">
+                    <option value="">Select industry</option>
+                  </select>
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="editEmployees">Employee Count</label>
                   <select id="editEmployees" class="form-select">
                     <option value="">Select range</option>
-                    <option value="1-50">1-50</option>
-                    <option value="51-200">51-200</option>
-                    <option value="201-500">201-500</option>
-                    <option value="501-1000">501-1000</option>
-                    <option value="1000-5000">1000-5000</option>
-                    <option value="5000+">5000+</option>
                   </select>
                 </div>
                 <div class="form-group">
@@ -1726,6 +1724,6 @@
 
   <script src="js/auth.js?v=5"></script>
   <script src="js/api.js?v=12"></script>
-  <script src="js/customer-detail.js?v=24"></script>
+  <script src="js/customer-detail.js?v=26"></script>
 </body>
 </html>

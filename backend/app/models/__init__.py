@@ -11,6 +11,7 @@ from .assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
     CustomerAssessment, AssessmentResponse, AssessmentStatus
 )
+from .lookup import LookupValue
 
 __all__ = [
     "User", "UserRole",
@@ -24,4 +25,5 @@ __all__ = [
     "Risk", "RiskSeverity", "RiskStatus", "RiskCategory",
     "AssessmentTemplate", "AssessmentDimension", "AssessmentQuestion",
     "CustomerAssessment", "AssessmentResponse", "AssessmentStatus",
+    "LookupValue",
 ]

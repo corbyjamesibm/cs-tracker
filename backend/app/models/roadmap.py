@@ -46,6 +46,7 @@ class Roadmap(Base):
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     # Relationships
+    customer: Mapped["Customer"] = relationship(back_populates="roadmaps")
     items: Mapped[List["RoadmapItem"]] = relationship(back_populates="roadmap", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:

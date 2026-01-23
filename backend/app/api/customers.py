@@ -56,7 +56,7 @@ async def list_customers(
 
     # Pagination
     query = query.offset(skip).limit(limit)
-    query = query.options(selectinload(Customer.csm_owner), selectinload(Customer.partner))
+    query = query.options(selectinload(Customer.csm_owner), selectinload(Customer.account_manager), selectinload(Customer.partner))
 
     result = await db.execute(query)
     customers = result.scalars().all()
@@ -74,6 +74,7 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     """Get a single customer with full details."""
     query = select(Customer).where(Customer.id == customer_id).options(
         selectinload(Customer.csm_owner),
+        selectinload(Customer.account_manager),
         selectinload(Customer.partner),
         selectinload(Customer.contacts),
         selectinload(Customer.tasks),
@@ -98,6 +99,7 @@ async def create_customer(customer_in: CustomerCreate, db: AsyncSession = Depend
     # Re-fetch with relationships loaded
     query = select(Customer).where(Customer.id == customer.id).options(
         selectinload(Customer.csm_owner),
+        selectinload(Customer.account_manager),
         selectinload(Customer.partner)
     )
     result = await db.execute(query)
@@ -129,6 +131,7 @@ async def update_customer(
     # Re-fetch with relationships loaded
     query = select(Customer).where(Customer.id == customer_id).options(
         selectinload(Customer.csm_owner),
+        selectinload(Customer.account_manager),
         selectinload(Customer.partner)
     )
     result = await db.execute(query)
@@ -148,6 +151,7 @@ async def delete_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Customer not found")
 
     await db.delete(customer)
+    await db.commit()
 
 
 # Contacts

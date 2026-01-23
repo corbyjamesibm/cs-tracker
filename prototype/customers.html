@@ -69,7 +69,7 @@
           </button>
           <div>
             <h1 class="header__title">Customers</h1>
-            <p class="header__subtitle">18 customers in your portfolio</p>
+            <p class="header__subtitle" id="customer-count">Loading...</p>
           </div>
         </div>
         <div class="header__right">
@@ -137,7 +137,7 @@
         </div>
 
         <!-- Customer Table -->
-        <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="card" style="padding: 0;">
           <table class="data-table data-table--responsive" id="customerTable">
             <thead>
               <tr>
@@ -366,15 +366,9 @@
         </div>
 
         <!-- Pagination -->
-        <div class="flex flex-between flex-center mt-4">
-          <div class="text-secondary">Showing 1-8 of 18 customers</div>
-          <div class="flex gap-3">
-            <button class="btn btn--ghost" disabled>Previous</button>
-            <button class="btn btn--ghost">1</button>
-            <button class="btn btn--primary">2</button>
-            <button class="btn btn--ghost">3</button>
-            <button class="btn btn--ghost">Next</button>
-          </div>
+        <div id="pagination-container" class="flex flex-between flex-center mt-4">
+          <div class="text-secondary">Loading...</div>
+          <div class="flex gap-3"></div>
         </div>
       </div>
     </main>
@@ -442,14 +436,6 @@
               <label class="form-label" for="customerIndustry">Industry</label>
               <select class="form-select" id="customerIndustry" name="industry">
                 <option value="">Select industry</option>
-                <option value="Technology">Technology</option>
-                <option value="Financial Services">Financial Services</option>
-                <option value="Healthcare">Healthcare</option>
-                <option value="Retail">Retail</option>
-                <option value="Manufacturing">Manufacturing</option>
-                <option value="SaaS">SaaS</option>
-                <option value="Education">Education</option>
-                <option value="Other">Other</option>
               </select>
             </div>
 
@@ -545,14 +531,6 @@
               <label class="form-label" for="editCustomerIndustry">Industry</label>
               <select class="form-select" id="editCustomerIndustry" name="industry">
                 <option value="">Select industry</option>
-                <option value="Technology">Technology</option>
-                <option value="Financial Services">Financial Services</option>
-                <option value="Healthcare">Healthcare</option>
-                <option value="Retail">Retail</option>
-                <option value="Manufacturing">Manufacturing</option>
-                <option value="SaaS">SaaS</option>
-                <option value="Education">Education</option>
-                <option value="Other">Other</option>
               </select>
             </div>
 
@@ -635,8 +613,8 @@
 
   <!-- API and Customers Scripts -->
   <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=12"></script>
-  <script src="js/customers.js?v=7"></script>
+  <script src="js/api.js?v=13"></script>
+  <script src="js/customers.js?v=12"></script>
   <script>
     function toggleNav() {
       document.getElementById('sideNav').classList.toggle('open');

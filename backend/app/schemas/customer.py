@@ -9,7 +9,6 @@ from app.models.customer import HealthStatus, AdoptionStage
 class CustomerBase(BaseModel):
     name: str
     salesforce_id: Optional[str] = None
-    account_manager: Optional[str] = None
     products_owned: Optional[List[str]] = []
     health_status: HealthStatus = HealthStatus.GREEN
     health_score: Optional[int] = None
@@ -27,14 +26,15 @@ class CustomerBase(BaseModel):
 
 class CustomerCreate(CustomerBase):
     csm_owner_id: Optional[int] = None
+    account_manager_id: Optional[int] = None
     partner_id: Optional[int] = None
 
 
 class CustomerUpdate(BaseModel):
     name: Optional[str] = None
     salesforce_id: Optional[str] = None
-    account_manager: Optional[str] = None
     csm_owner_id: Optional[int] = None
+    account_manager_id: Optional[int] = None
     products_owned: Optional[List[str]] = None
     health_status: Optional[HealthStatus] = None
     health_score: Optional[int] = None
@@ -81,6 +81,8 @@ class CustomerResponse(CustomerBase):
     id: int
     csm_owner_id: Optional[int] = None
     csm_owner: Optional[UserSummary] = None
+    account_manager_id: Optional[int] = None
+    account_manager: Optional[UserSummary] = None
     partner_id: Optional[int] = None
     partner: Optional[PartnerSummary] = None
     health_trend: Optional[str] = None

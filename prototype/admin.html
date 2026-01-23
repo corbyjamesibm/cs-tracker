@@ -395,6 +395,54 @@
           </div>
         </div>
 
+        <!-- Dropdown Lists Management -->
+        <div class="card mt-5">
+          <div class="card__header">
+            <h2 class="card__title">Dropdown Lists</h2>
+            <button class="btn btn--primary" onclick="openAddLookupValueModal()">
+              <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+              Add Value
+            </button>
+          </div>
+          <div class="card__body">
+            <p class="text-secondary mb-4">
+              Manage the options that appear in dropdown lists throughout the application, such as Industries, Employee Count ranges, Solution Areas, and Domains.
+            </p>
+            <div class="flex gap-3 mb-4">
+              <select class="form-select" id="lookupCategoryFilter" onchange="loadLookupValues()" style="width: auto; min-width: 180px;">
+                <option value="">Select a category...</option>
+                <option value="industry">Industries</option>
+                <option value="employee_count">Employee Count</option>
+                <option value="solution_area">Solution Areas</option>
+                <option value="domain">Domains</option>
+                <option value="task_category">Task Categories</option>
+              </select>
+              <button class="btn btn--secondary" onclick="initializeCategory()" id="initCategoryBtn" style="display: none;">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zM20 22h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
+                Initialize with Defaults
+              </button>
+            </div>
+            <div class="data-table-container" style="max-height: 400px; overflow-y: auto;">
+              <table class="data-table" id="lookupValuesTable">
+                <thead>
+                  <tr>
+                    <th>Value</th>
+                    <th>Label</th>
+                    <th>Order</th>
+                    <th>Active</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="lookupValuesTableBody">
+                  <tr>
+                    <td colspan="5" class="text-center text-secondary">Select a category to view values</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- Authentication Settings -->
         <div class="card mt-5">
           <div class="card__header">
@@ -727,13 +775,70 @@
     </div>
   </div>
 
+  <!-- Lookup Value Modal -->
+  <div class="modal-overlay" id="lookupValueModal">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title" id="lookupValueModalTitle">Add Value</h2>
+        <button class="modal__close" onclick="closeLookupValueModal()">
+          <svg width="20" height="20" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+        </button>
+      </div>
+      <form id="lookupValueForm" onsubmit="handleLookupValueSubmit(event)">
+        <input type="hidden" id="lookupValueEditId" value="">
+        <div class="modal__body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="lookupValueCategory">Category *</label>
+              <select class="form-select" id="lookupValueCategory" name="category" required>
+                <option value="">Select category...</option>
+                <option value="industry">Industries</option>
+                <option value="employee_count">Employee Count</option>
+                <option value="solution_area">Solution Areas</option>
+                <option value="domain">Domains</option>
+                <option value="task_category">Task Categories</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="lookupValueValue">Value *</label>
+              <input type="text" class="form-input" id="lookupValueValue" name="value" required placeholder="e.g., financial_services">
+              <span class="form-hint">Internal value (no spaces, lowercase)</span>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label class="form-label" for="lookupValueLabel">Display Label *</label>
+              <input type="text" class="form-input" id="lookupValueLabel" name="label" required placeholder="e.g., Financial Services">
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label class="form-label" for="lookupValueDescription">Description</label>
+              <textarea class="form-input" id="lookupValueDescription" name="description" rows="2" placeholder="Optional description"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="lookupValueOrder">Display Order</label>
+              <input type="number" class="form-input" id="lookupValueOrder" name="display_order" value="0" min="0">
+            </div>
+            <div class="form-group">
+              <label class="checkbox-wrapper" style="margin-top: 24px;">
+                <input type="checkbox" id="lookupValueActive" name="is_active" checked>
+                <span class="checkbox-label">Active</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--secondary" onclick="closeLookupValueModal()">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="lookupValueSubmitBtn">Add Value</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast container -->
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- Scripts -->
   <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=10"></script>
-  <script src="js/admin.js?v=10"></script>
+  <script src="js/api.js?v=12"></script>
+  <script src="js/admin.js?v=13"></script>
   <script>
     function toggleNav() {
       document.getElementById('sideNav').classList.toggle('open');

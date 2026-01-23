@@ -1736,3 +1736,270 @@ window.handleCreateTemplate = handleCreateTemplate;
 window.activateTemplate = activateTemplate;
 window.viewTemplateDetails = viewTemplateDetails;
 window.deleteTemplate = deleteTemplate;
+
+// ==================== LOOKUP VALUE MANAGEMENT ====================
+
+let lookupValuesCache = [];
+let currentLookupCategory = '';
+
+const LOOKUP_CATEGORY_LABELS = {
+    'industry': 'Industries',
+    'employee_count': 'Employee Count',
+    'solution_area': 'Solution Areas',
+    'domain': 'Domains',
+    'task_category': 'Task Categories'
+};
+
+/**
+ * Load lookup values for the selected category
+ */
+async function loadLookupValues() {
+    const categorySelect = document.getElementById('lookupCategoryFilter');
+    const tableBody = document.getElementById('lookupValuesTableBody');
+    const initBtn = document.getElementById('initCategoryBtn');
+
+    if (!categorySelect || !tableBody) return;
+
+    currentLookupCategory = categorySelect.value;
+
+    if (!currentLookupCategory) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">Select a category to view values</td></tr>';
+        initBtn.style.display = 'none';
+        return;
+    }
+
+    try {
+        const data = await window.API.LookupAPI.getCategoryValues(currentLookupCategory, true);
+        lookupValuesCache = data.values || [];
+
+        // Check if these are default values (id === 0)
+        const isDefaultData = lookupValuesCache.length > 0 && lookupValuesCache[0].id === 0;
+
+        if (isDefaultData) {
+            // Show initialize button prominently
+            initBtn.style.display = 'inline-flex';
+
+            // Show the default values in the table (read-only preview)
+            tableBody.innerHTML = lookupValuesCache.map(lv => `
+                <tr class="text-secondary">
+                    <td><code>${lv.value}</code></td>
+                    <td>${lv.label}</td>
+                    <td>${lv.display_order}</td>
+                    <td><span class="tag tag--gray">Default</span></td>
+                    <td><span class="text-secondary" style="font-size: 12px;">Initialize to edit</span></td>
+                </tr>
+            `).join('');
+            return;
+        }
+
+        initBtn.style.display = 'none';
+
+        if (lookupValuesCache.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">No values found for this category</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = lookupValuesCache.map(lv => `
+            <tr>
+                <td><code>${lv.value}</code></td>
+                <td>${lv.label}</td>
+                <td>${lv.display_order}</td>
+                <td><span class="tag ${lv.is_active ? 'tag--green' : 'tag--gray'}">${lv.is_active ? 'Active' : 'Inactive'}</span></td>
+                <td>
+                    <div class="flex gap-2">
+                        <button class="btn btn--ghost btn--small" onclick="editLookupValue(${lv.id})" title="Edit">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                        </button>
+                        <button class="btn btn--ghost btn--small" onclick="toggleLookupValueStatus(${lv.id}, ${lv.is_active})" title="${lv.is_active ? 'Deactivate' : 'Activate'}">
+                            ${lv.is_active
+                                ? '<svg width="16" height="16" viewBox="0 0 32 32"><path d="M30 28.59L3.41 2 2 3.41 28.59 30 30 28.59z"/></svg>'
+                                : '<svg width="16" height="16" viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>'}
+                        </button>
+                        <button class="btn btn--ghost btn--small btn--danger" onclick="deleteLookupValue(${lv.id})" title="Delete">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 12h2v12h-2zM18 12h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zM12 2h8v2h-8z"/></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        console.error('Failed to load lookup values:', error);
+        tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load values</td></tr>';
+    }
+}
+
+/**
+ * Initialize a category with default values
+ */
+async function initializeCategory() {
+    if (!currentLookupCategory) return;
+
+    try {
+        await window.API.LookupAPI.initializeCategory(currentLookupCategory);
+        showToast(`${LOOKUP_CATEGORY_LABELS[currentLookupCategory] || currentLookupCategory} initialized with default values`, 'success');
+        await loadLookupValues();
+    } catch (error) {
+        console.error('Failed to initialize category:', error);
+        showToast(error.message || 'Failed to initialize category', 'error');
+    }
+}
+
+/**
+ * Open add lookup value modal
+ */
+function openAddLookupValueModal() {
+    const modal = document.getElementById('lookupValueModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        document.getElementById('lookupValueForm').reset();
+        document.getElementById('lookupValueEditId').value = '';
+        document.getElementById('lookupValueModalTitle').textContent = 'Add Value';
+        document.getElementById('lookupValueSubmitBtn').textContent = 'Add Value';
+        document.getElementById('lookupValueActive').checked = true;
+
+        // Pre-select current category if one is selected
+        if (currentLookupCategory) {
+            document.getElementById('lookupValueCategory').value = currentLookupCategory;
+        }
+    }
+}
+
+/**
+ * Close lookup value modal
+ */
+function closeLookupValueModal() {
+    const modal = document.getElementById('lookupValueModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Edit existing lookup value
+ */
+function editLookupValue(lookupId) {
+    const lookup = lookupValuesCache.find(lv => lv.id === lookupId);
+    if (!lookup) return;
+
+    const modal = document.getElementById('lookupValueModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+
+        document.getElementById('lookupValueEditId').value = lookup.id;
+        document.getElementById('lookupValueCategory').value = lookup.category;
+        document.getElementById('lookupValueValue').value = lookup.value;
+        document.getElementById('lookupValueLabel').value = lookup.label;
+        document.getElementById('lookupValueDescription').value = lookup.description || '';
+        document.getElementById('lookupValueOrder').value = lookup.display_order || 0;
+        document.getElementById('lookupValueActive').checked = lookup.is_active !== false;
+
+        document.getElementById('lookupValueModalTitle').textContent = 'Edit Value';
+        document.getElementById('lookupValueSubmitBtn').textContent = 'Update Value';
+    }
+}
+
+/**
+ * Handle lookup value form submission
+ */
+async function handleLookupValueSubmit(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('lookupValueSubmitBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Saving...';
+
+    const editId = document.getElementById('lookupValueEditId').value;
+    const isEdit = editId && editId !== '';
+
+    try {
+        const formData = {
+            category: document.getElementById('lookupValueCategory').value,
+            value: document.getElementById('lookupValueValue').value.trim(),
+            label: document.getElementById('lookupValueLabel').value.trim(),
+            display_order: parseInt(document.getElementById('lookupValueOrder').value, 10) || 0,
+            is_active: document.getElementById('lookupValueActive').checked,
+        };
+
+        const description = document.getElementById('lookupValueDescription').value.trim();
+        if (description) formData.description = description;
+
+        let result;
+        if (isEdit) {
+            // For update, we don't send category
+            delete formData.category;
+            result = await window.API.LookupAPI.update(parseInt(editId), formData);
+        } else {
+            result = await window.API.LookupAPI.create(formData);
+        }
+
+        closeLookupValueModal();
+        showToast(`Value "${result.label}" ${isEdit ? 'updated' : 'created'} successfully`, 'success');
+
+        // Update category filter to match
+        if (!isEdit) {
+            document.getElementById('lookupCategoryFilter').value = formData.category;
+            currentLookupCategory = formData.category;
+        }
+
+        await loadLookupValues();
+
+    } catch (error) {
+        console.error('Failed to save lookup value:', error);
+        showToast(error.message || 'Failed to save value', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Toggle lookup value active status
+ */
+async function toggleLookupValueStatus(lookupId, currentStatus) {
+    const action = currentStatus ? 'deactivate' : 'activate';
+    if (!confirm(`Are you sure you want to ${action} this value?`)) {
+        return;
+    }
+
+    try {
+        await window.API.LookupAPI.update(lookupId, { is_active: !currentStatus });
+        showToast(`Value ${action}d successfully`, 'success');
+        await loadLookupValues();
+    } catch (error) {
+        console.error(`Failed to ${action} value:`, error);
+        showToast(error.message || `Failed to ${action} value`, 'error');
+    }
+}
+
+/**
+ * Delete lookup value
+ */
+async function deleteLookupValue(lookupId) {
+    if (!confirm('Are you sure you want to delete this value?\n\nThis action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        await window.API.LookupAPI.delete(lookupId);
+        showToast('Value deleted successfully', 'success');
+        await loadLookupValues();
+    } catch (error) {
+        console.error('Failed to delete value:', error);
+        showToast(error.message || 'Failed to delete value', 'error');
+    }
+}
+
+// Export lookup functions
+window.loadLookupValues = loadLookupValues;
+window.initializeCategory = initializeCategory;
+window.openAddLookupValueModal = openAddLookupValueModal;
+window.closeLookupValueModal = closeLookupValueModal;
+window.editLookupValue = editLookupValue;
+window.handleLookupValueSubmit = handleLookupValueSubmit;
+window.toggleLookupValueStatus = toggleLookupValueStatus;
+window.deleteLookupValue = deleteLookupValue;

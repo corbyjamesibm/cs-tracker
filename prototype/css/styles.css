@@ -1372,11 +1372,6 @@ input[type="file"].form-input::file-selector-button:hover {
 }
 
 /* Action Menu */
-.action-menu-wrapper {
-  position: relative;
-  display: inline-block;
-}
-
 .action-menu {
   display: none;
   position: absolute;
@@ -1386,9 +1381,28 @@ input[type="file"].form-input::file-selector-button:hover {
   background: var(--cds-layer-01);
   border: 1px solid var(--cds-border-subtle-01);
   border-radius: 4px;
-  box-shadow: var(--cds-shadow);
-  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
   padding: var(--cds-spacing-02) 0;
+}
+
+/* Ensure action menu can overflow table cells and card container */
+.card:has(.data-table) {
+  overflow: visible !important;
+}
+
+.data-table td {
+  overflow: visible;
+}
+
+.data-table tbody {
+  overflow: visible;
+}
+
+.action-menu-wrapper {
+  position: relative;
+  display: inline-block;
+  overflow: visible;
 }
 
 .action-menu.active {
