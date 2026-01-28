@@ -48,6 +48,7 @@ class User(Base):
     partner: Mapped[Optional["Partner"]] = relationship(back_populates="system_users")
     owned_risks: Mapped[List["Risk"]] = relationship(back_populates="owner", foreign_keys="Risk.owner_id")
     created_risks: Mapped[List["Risk"]] = relationship(back_populates="created_by", foreign_keys="Risk.created_by_id")
+    meeting_notes: Mapped[List["MeetingNote"]] = relationship(back_populates="created_by")
 
     @property
     def full_name(self) -> str:

@@ -76,6 +76,14 @@ function getAdoptionStageIndex(stage) {
     return stages.indexOf(stage);
 }
 
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Fetch and display customer data
 async function loadCustomerDetail() {
     const customerId = getCustomerId();
@@ -105,6 +113,9 @@ async function loadCustomerDetail() {
 
         // Load recent engagements for this customer
         loadRecentEngagements(customerId);
+
+        // Load meeting notes for this customer
+        loadMeetingNotes(customerId);
 
         // Load use cases for this customer
         loadUseCases(customerId);
@@ -2863,7 +2874,8 @@ async function loadAccountManagerOptions() {
 
     try {
         const response = await API.UserAPI.getAll();
-        const users = response.items || [];
+        // Filter to only show users with account_manager role
+        const users = (response.items || []).filter(u => u.role === 'account_manager' && u.is_active);
 
         // Clear existing options except the first one
         select.innerHTML = '<option value="">Select Account Manager</option>';
@@ -3156,6 +3168,162 @@ function updateAccountDetailsUI(customer) {
 window.openEditAccountModal = openEditAccountModal;
 window.closeEditAccountModal = closeEditAccountModal;
 window.handleEditAccountSubmit = handleEditAccountSubmit;
+
+// ==========================================
+// HEALTH SCORE EDITING FUNCTIONS
+// ==========================================
+
+// Open the edit health modal
+function openEditHealthModal() {
+    if (!currentCustomer) {
+        console.error('No customer data available');
+        return;
+    }
+
+    const modal = document.getElementById('editHealthModal');
+    if (!modal) return;
+
+    // Populate form with current values
+    document.getElementById('editHealthStatus').value = currentCustomer.health_status || 'green';
+    document.getElementById('editHealthScore').value = currentCustomer.health_score || '';
+    document.getElementById('editHealthTrend').value = currentCustomer.health_trend || '';
+    document.getElementById('editHealthOverrideReason').value = currentCustomer.health_override_reason || '';
+
+    modal.classList.add('open');
+}
+
+// Close the edit health modal
+function closeEditHealthModal() {
+    const modal = document.getElementById('editHealthModal');
+    if (modal) {
+        modal.classList.remove('open');
+    }
+}
+
+// Handle health score form submission
+async function handleEditHealthSubmit(event) {
+    event.preventDefault();
+
+    if (!currentCustomer) {
+        console.error('No customer data available');
+        return;
+    }
+
+    const submitBtn = document.getElementById('editHealthSubmitBtn');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+
+    try {
+        const updateData = {};
+
+        // Get form values
+        const healthStatus = document.getElementById('editHealthStatus').value;
+        if (healthStatus !== currentCustomer.health_status) {
+            updateData.health_status = healthStatus;
+        }
+
+        const healthScore = document.getElementById('editHealthScore').value;
+        const currentScore = currentCustomer.health_score !== null ? String(currentCustomer.health_score) : '';
+        if (healthScore !== currentScore) {
+            updateData.health_score = healthScore ? parseInt(healthScore) : null;
+        }
+
+        const healthTrend = document.getElementById('editHealthTrend').value;
+        if (healthTrend !== (currentCustomer.health_trend || '')) {
+            updateData.health_trend = healthTrend || null;
+        }
+
+        const overrideReason = document.getElementById('editHealthOverrideReason').value.trim();
+        if (overrideReason !== (currentCustomer.health_override_reason || '')) {
+            updateData.health_override_reason = overrideReason || null;
+        }
+
+        // Only update if there are changes
+        if (Object.keys(updateData).length === 0) {
+            closeEditHealthModal();
+            return;
+        }
+
+        // Send update to API
+        const updatedCustomer = await API.CustomerAPI.update(currentCustomer.id, updateData);
+
+        // Update local state
+        currentCustomer = { ...currentCustomer, ...updatedCustomer };
+
+        // Update UI
+        updateHealthScoreDisplay(currentCustomer);
+
+        closeEditHealthModal();
+        showToast('Health score updated successfully', 'success');
+
+    } catch (error) {
+        console.error('Failed to update health score:', error);
+        showToast('Failed to update health score', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+// Update the health score display in the UI
+function updateHealthScoreDisplay(customer) {
+    const score = customer.health_score;
+    const status = customer.health_status || 'green';
+    const trend = customer.health_trend;
+
+    // Update score circle
+    const scoreCircle = document.getElementById('healthScoreCircle');
+    const scoreValue = document.getElementById('healthScoreValue');
+
+    if (scoreValue) {
+        scoreValue.textContent = score !== null && score !== undefined ? score : '-';
+    }
+
+    // Calculate gradient based on score (0-100 maps to 0-360 degrees)
+    const degrees = score !== null && score !== undefined ? (score / 100) * 360 : 0;
+
+    // Get color based on status
+    const colorMap = {
+        'green': 'var(--health-green)',
+        'yellow': 'var(--health-yellow)',
+        'red': 'var(--health-red)'
+    };
+    const color = colorMap[status] || colorMap.green;
+
+    if (scoreCircle) {
+        scoreCircle.style.background = `conic-gradient(${color} 0deg ${degrees}deg, var(--cds-background-hover) ${degrees}deg 360deg)`;
+    }
+    if (scoreValue) {
+        scoreValue.style.color = color;
+    }
+
+    // Update trend display
+    const trendEl = document.getElementById('healthTrend');
+    if (trendEl && trend) {
+        const trendIcons = {
+            'improving': { text: 'Improving', class: 'text-success', icon: '↑' },
+            'stable': { text: 'Stable', class: 'text-secondary', icon: '→' },
+            'declining': { text: 'Declining', class: 'text-danger', icon: '↓' }
+        };
+        const trendInfo = trendIcons[trend] || { text: trend, class: '', icon: '' };
+        trendEl.textContent = `${trendInfo.icon} ${trendInfo.text}`;
+        trendEl.className = trendInfo.class;
+    }
+
+    // Update health status badge in header if exists
+    const headerHealthBadge = document.getElementById('customerHealth');
+    if (headerHealthBadge) {
+        const statusLabels = { 'green': 'Healthy', 'yellow': 'Needs Attention', 'red': 'At Risk' };
+        headerHealthBadge.textContent = statusLabels[status] || status;
+        headerHealthBadge.className = `tag tag--${status}`;
+    }
+}
+
+// Expose health modal functions to window
+window.openEditHealthModal = openEditHealthModal;
+window.closeEditHealthModal = closeEditHealthModal;
+window.handleEditHealthSubmit = handleEditHealthSubmit;
 
 // ==========================================
 // SPM MATURITY ASSESSMENT FUNCTIONS
@@ -3755,6 +3923,11 @@ function renderAssessmentHistory(assessments) {
     });
 
     tbody.innerHTML = html;
+
+    // Initialize table sorting (Date, Version, Score, Change, Status - not Compare/Actions)
+    if (window.TableSort) {
+        TableSort.init('assessmentHistoryTable', [1, 2, 3, 4, 5]);
+    }
 }
 
 // View assessment detail
@@ -4282,6 +4455,262 @@ function showSection(sectionName) {
 
 // Make showSection available globally
 window.showSection = showSection;
+
+// ==================== MEETING NOTES ====================
+
+let currentMeetingNotes = [];
+let currentMeetingNoteId = null;
+
+// Load meeting notes for the customer
+async function loadMeetingNotes(customerId) {
+    const container = document.getElementById('meetingNotesContainer');
+    if (!container) return;
+
+    try {
+        const response = await API.MeetingNoteAPI.getByCustomer(customerId);
+        currentMeetingNotes = response.items || [];
+
+        if (currentMeetingNotes.length === 0) {
+            container.innerHTML = `
+                <div class="text-secondary text-center" style="padding: 24px;">
+                    <svg width="48" height="48" viewBox="0 0 32 32" style="opacity: 0.5; margin-bottom: 8px;">
+                        <path d="M28 4H4a2 2 0 00-2 2v20a2 2 0 002 2h24a2 2 0 002-2V6a2 2 0 00-2-2zM4 26V6h24v20z"/>
+                        <path d="M6 12h20v2H6zM6 18h20v2H6zM6 24h12v2H6z"/>
+                    </svg>
+                    <p style="margin: 0;">No meeting notes yet</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = currentMeetingNotes.slice(0, 5).map(note => `
+            <div class="meeting-note-item" onclick="viewMeetingNote(${note.id})" style="padding: 12px; border-bottom: 1px solid var(--cds-border-subtle); cursor: pointer; transition: background-color 0.2s;">
+                <div class="flex justify-between items-center" style="margin-bottom: 4px;">
+                    <span style="font-weight: 500;">${escapeHtml(note.title)}</span>
+                    <span class="tag tag--gray" style="font-size: 11px;">${formatDate(note.meeting_date)}</span>
+                </div>
+                ${note.attendees ? `<div style="font-size: 12px; color: var(--cds-text-secondary); margin-bottom: 4px;"><strong>Attendees:</strong> ${escapeHtml(note.attendees)}</div>` : ''}
+                ${note.notes ? `<div style="font-size: 12px; color: var(--cds-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(note.notes.substring(0, 100))}${note.notes.length > 100 ? '...' : ''}</div>` : ''}
+            </div>
+        `).join('');
+
+        // Add hover effect
+        container.querySelectorAll('.meeting-note-item').forEach(item => {
+            item.addEventListener('mouseenter', () => item.style.backgroundColor = 'var(--cds-layer-hover)');
+            item.addEventListener('mouseleave', () => item.style.backgroundColor = '');
+        });
+
+    } catch (error) {
+        console.error('Failed to load meeting notes:', error);
+        container.innerHTML = `
+            <div class="text-secondary text-center" style="padding: 16px;">
+                Failed to load meeting notes
+            </div>
+        `;
+    }
+}
+
+// Open meeting note modal for creating
+function openMeetingNoteModal(noteId = null) {
+    const modal = document.getElementById('meetingNoteModal');
+    const form = document.getElementById('meetingNoteForm');
+    const title = document.getElementById('meetingNoteModalTitle');
+    const submitBtn = document.getElementById('meetingNoteSubmitBtn');
+
+    form.reset();
+    document.getElementById('meetingNoteId').value = '';
+
+    if (noteId) {
+        // Edit mode
+        const note = currentMeetingNotes.find(n => n.id === noteId);
+        if (note) {
+            title.textContent = 'Edit Meeting Note';
+            submitBtn.textContent = 'Update Note';
+            document.getElementById('meetingNoteId').value = note.id;
+            document.getElementById('meetingNoteDate').value = note.meeting_date;
+            document.getElementById('meetingNoteTitle').value = note.title;
+            document.getElementById('meetingNoteAttendees').value = note.attendees || '';
+            document.getElementById('meetingNoteNotes').value = note.notes || '';
+            document.getElementById('meetingNoteActionItems').value = note.action_items || '';
+            document.getElementById('meetingNoteNextSteps').value = note.next_steps || '';
+        }
+    } else {
+        // Create mode
+        title.textContent = 'Add Meeting Note';
+        submitBtn.textContent = 'Save Note';
+        // Set default date to today
+        document.getElementById('meetingNoteDate').value = new Date().toISOString().split('T')[0];
+    }
+
+    modal.classList.add('open');
+}
+
+// Close meeting note modal
+function closeMeetingNoteModal() {
+    const modal = document.getElementById('meetingNoteModal');
+    modal.classList.remove('open');
+}
+
+// Handle meeting note form submission
+async function handleMeetingNoteSubmit(event) {
+    event.preventDefault();
+    const submitBtn = document.getElementById('meetingNoteSubmitBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+
+    const noteId = document.getElementById('meetingNoteId').value;
+    const customerId = getCustomerId();
+
+    const data = {
+        meeting_date: document.getElementById('meetingNoteDate').value,
+        title: document.getElementById('meetingNoteTitle').value,
+        attendees: document.getElementById('meetingNoteAttendees').value || null,
+        notes: document.getElementById('meetingNoteNotes').value || null,
+        action_items: document.getElementById('meetingNoteActionItems').value || null,
+        next_steps: document.getElementById('meetingNoteNextSteps').value || null,
+    };
+
+    try {
+        if (noteId) {
+            // Update existing
+            await API.MeetingNoteAPI.update(parseInt(noteId), data);
+        } else {
+            // Create new
+            data.customer_id = parseInt(customerId);
+            await API.MeetingNoteAPI.create(data);
+        }
+
+        closeMeetingNoteModal();
+        loadMeetingNotes(customerId);
+    } catch (error) {
+        console.error('Error saving meeting note:', error);
+        alert('Failed to save meeting note. Please try again.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = noteId ? 'Update Note' : 'Save Note';
+    }
+}
+
+// View meeting note details
+function viewMeetingNote(noteId) {
+    const note = currentMeetingNotes.find(n => n.id === noteId);
+    if (!note) return;
+
+    currentMeetingNoteId = noteId;
+    const modal = document.getElementById('viewMeetingNoteModal');
+    const titleEl = document.getElementById('viewMeetingNoteTitle');
+    const contentEl = document.getElementById('viewMeetingNoteContent');
+
+    titleEl.textContent = note.title;
+
+    contentEl.innerHTML = `
+        <div style="margin-bottom: 16px;">
+            <div class="flex justify-between items-center" style="margin-bottom: 16px;">
+                <span class="tag tag--blue">${formatDate(note.meeting_date)}</span>
+            </div>
+            ${note.attendees ? `
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 12px; text-transform: uppercase; color: var(--cds-text-secondary); margin-bottom: 8px;">Attendees</h4>
+                    <p style="margin: 0;">${escapeHtml(note.attendees)}</p>
+                </div>
+            ` : ''}
+            ${note.notes ? `
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 12px; text-transform: uppercase; color: var(--cds-text-secondary); margin-bottom: 8px;">Notes</h4>
+                    <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(note.notes)}</p>
+                </div>
+            ` : ''}
+            ${note.action_items ? `
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 12px; text-transform: uppercase; color: var(--cds-text-secondary); margin-bottom: 8px;">Action Items</h4>
+                    <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(note.action_items)}</p>
+                </div>
+            ` : ''}
+            ${note.next_steps ? `
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 12px; text-transform: uppercase; color: var(--cds-text-secondary); margin-bottom: 8px;">Next Steps</h4>
+                    <p style="margin: 0; white-space: pre-wrap;">${escapeHtml(note.next_steps)}</p>
+                </div>
+            ` : ''}
+        </div>
+    `;
+
+    modal.classList.add('open');
+}
+
+// Close view meeting note modal
+function closeViewMeetingNoteModal() {
+    const modal = document.getElementById('viewMeetingNoteModal');
+    modal.classList.remove('open');
+    currentMeetingNoteId = null;
+}
+
+// Edit current meeting note
+function editMeetingNote() {
+    closeViewMeetingNoteModal();
+    openMeetingNoteModal(currentMeetingNoteId);
+}
+
+// Delete current meeting note
+async function deleteMeetingNote() {
+    if (!currentMeetingNoteId) return;
+
+    if (!confirm('Are you sure you want to delete this meeting note?')) {
+        return;
+    }
+
+    try {
+        await API.MeetingNoteAPI.delete(currentMeetingNoteId);
+        closeViewMeetingNoteModal();
+        loadMeetingNotes(getCustomerId());
+    } catch (error) {
+        console.error('Error deleting meeting note:', error);
+        alert('Failed to delete meeting note. Please try again.');
+    }
+}
+
+// Create a task from the current meeting note
+async function createTaskFromMeetingNote() {
+    if (!currentMeetingNoteId) return;
+
+    const note = currentMeetingNotes.find(n => n.id === currentMeetingNoteId);
+    if (!note) return;
+
+    // Close the view modal
+    closeViewMeetingNoteModal();
+
+    // Open the task modal
+    await openTaskModal();
+
+    // Pre-populate task fields with meeting note context
+    const titlePrefix = `Follow-up: ${note.title}`;
+    document.getElementById('taskTitle').value = titlePrefix;
+
+    // Build description from meeting note
+    let description = `From meeting on ${formatDate(note.meeting_date)}`;
+    if (note.attendees) {
+        description += `\nAttendees: ${note.attendees}`;
+    }
+    if (note.action_items) {
+        description += `\n\nAction Items:\n${note.action_items}`;
+    }
+    if (note.next_steps) {
+        description += `\n\nNext Steps:\n${note.next_steps}`;
+    }
+    document.getElementById('taskDescription').value = description;
+}
+
+// Make meeting note functions globally available
+window.openMeetingNoteModal = openMeetingNoteModal;
+window.closeMeetingNoteModal = closeMeetingNoteModal;
+window.handleMeetingNoteSubmit = handleMeetingNoteSubmit;
+window.viewMeetingNote = viewMeetingNote;
+window.closeViewMeetingNoteModal = closeViewMeetingNoteModal;
+window.editMeetingNote = editMeetingNote;
+window.deleteMeetingNote = deleteMeetingNote;
+window.createTaskFromMeetingNote = createTaskFromMeetingNote;
+
+// ==================== END MEETING NOTES ====================
 
 // Nav toggle function
 function toggleNav() {

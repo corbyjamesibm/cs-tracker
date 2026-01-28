@@ -141,10 +141,10 @@
           <table class="data-table data-table--responsive" id="customerTable">
             <thead>
               <tr>
-                <th style="cursor: pointer;" onclick="sortTable(0)">Customer Name <svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align: middle;"><path d="M16 4L6 14h20L16 4zm0 24l10-10H6l10 10z"/></svg></th>
+                <th>Customer Name</th>
                 <th>Health</th>
-                <th style="cursor: pointer;" onclick="sortTable(2)">ARR <svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align: middle;"><path d="M16 4L6 14h20L16 4zm0 24l10-10H6l10 10z"/></svg></th>
-                <th style="cursor: pointer;" onclick="sortTable(3)">Renewal Date <svg width="12" height="12" viewBox="0 0 32 32" style="vertical-align: middle;"><path d="M16 4L6 14h20L16 4zm0 24l10-10H6l10 10z"/></svg></th>
+                <th>ARR</th>
+                <th>Renewal Date</th>
                 <th>Adoption</th>
                 <th>CSM</th>
                 <th>Partner</th>
@@ -614,7 +614,8 @@
   <!-- API and Customers Scripts -->
   <script src="js/auth.js?v=5"></script>
   <script src="js/api.js?v=13"></script>
-  <script src="js/customers.js?v=12"></script>
+  <script src="js/table-sort.js?v=1"></script>
+  <script src="js/customers.js?v=13"></script>
   <script>
     function toggleNav() {
       document.getElementById('sideNav').classList.toggle('open');
@@ -656,55 +657,16 @@
       }
     }
 
-    function sortTable(n) {
-      const table = document.getElementById('customerTable');
-      let switching = true;
-      let dir = 'asc';
-      let switchcount = 0;
-
-      while (switching) {
-        switching = false;
-        const rows = table.rows;
-
-        for (let i = 1; i < (rows.length - 1); i++) {
-          let shouldSwitch = false;
-          const x = rows[i].getElementsByTagName('td')[n];
-          const y = rows[i + 1].getElementsByTagName('td')[n];
-
-          let xContent = x.textContent || x.innerText;
-          let yContent = y.textContent || y.innerText;
-
-          // Handle currency
-          if (xContent.includes('$')) {
-            xContent = parseFloat(xContent.replace(/[$,]/g, ''));
-            yContent = parseFloat(yContent.replace(/[$,]/g, ''));
-          }
-
-          if (dir === 'asc') {
-            if (xContent > yContent) {
-              shouldSwitch = true;
-              break;
-            }
-          } else if (dir === 'desc') {
-            if (xContent < yContent) {
-              shouldSwitch = true;
-              break;
-            }
-          }
+    // Initialize table sorting after page loads
+    document.addEventListener('DOMContentLoaded', function() {
+      // Wait a bit for customers.js to populate the table
+      setTimeout(() => {
+        if (window.TableSort) {
+          // Customer Name, Health, ARR, Renewal Date, Adoption, CSM, Partner, Last Contact (skip Actions)
+          TableSort.init('customerTable', [0, 1, 2, 3, 4, 5, 6, 7]);
         }
-
-        if (shouldSwitch) {
-          rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-          switching = true;
-          switchcount++;
-        } else {
-          if (switchcount === 0 && dir === 'asc') {
-            dir = 'desc';
-            switching = true;
-          }
-        }
-      }
-    }
+      }, 500);
+    });
   </script>
 </body>
 </html>

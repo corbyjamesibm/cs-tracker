@@ -271,6 +271,11 @@ async function loadUsers() {
                 </td>
             </tr>
         `).join('');
+
+        // Initialize table sorting (Name, Email, Role, Partner, Status - not Actions)
+        if (window.TableSort) {
+            TableSort.init('usersTable', [0, 1, 2, 3, 4]);
+        }
     } catch (error) {
         console.error('Failed to load users:', error);
         tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Failed to load users</td></tr>';
@@ -292,6 +297,7 @@ function getRoleClass(role) {
         'admin': 'tag--purple',
         'manager': 'tag--blue',
         'csm': 'tag--teal',
+        'account_manager': 'tag--orange',
         'read_only': 'tag--gray'
     };
     return classes[role] || 'tag--gray';
@@ -305,6 +311,7 @@ function formatRole(role) {
         'admin': 'Admin',
         'manager': 'Manager',
         'csm': 'CSM',
+        'account_manager': 'Account Manager',
         'read_only': 'Read Only'
     };
     return labels[role] || role;
@@ -568,6 +575,11 @@ async function loadPartners() {
                 </td>
             </tr>
         `).join('');
+
+        // Initialize table sorting (Name, Code, Contact Email, Status - not Actions)
+        if (window.TableSort) {
+            TableSort.init('partnersTable', [0, 1, 2, 3]);
+        }
     } catch (error) {
         console.error('Failed to load partners:', error);
         tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load partners</td></tr>';
@@ -779,6 +791,11 @@ async function loadUseCases() {
                 </td>
             </tr>
         `).join('');
+
+        // Initialize table sorting (Name, Solution Area, Domain, Order, Active - not Actions)
+        if (window.TableSort) {
+            TableSort.init('useCasesTable', [0, 1, 2, 3, 4]);
+        }
     } catch (error) {
         console.error('Failed to load use cases:', error);
         tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Failed to load use cases</td></tr>';
@@ -1378,6 +1395,11 @@ function renderAdoptionCustomersTable(customers) {
             </tr>
         `;
     }).join('');
+
+    // Initialize table sorting (Customer, Stage, Health, ARR, Renewal Date)
+    if (window.TableSort) {
+        TableSort.init('adoptionCustomersTable', [0, 1, 2, 3, 4]);
+    }
 }
 
 /**
@@ -1470,6 +1492,11 @@ async function loadAssessmentTemplates() {
                 </td>
             </tr>
         `).join('');
+
+        // Initialize table sorting (Name, Version, Questions, Dimensions, Status - not Actions)
+        if (window.TableSort) {
+            TableSort.init('assessmentTemplatesTable', [0, 1, 2, 3, 4]);
+        }
     } catch (error) {
         console.error('Failed to load assessment templates:', error);
         tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Failed to load templates</td></tr>';
@@ -1822,6 +1849,11 @@ async function loadLookupValues() {
                 </td>
             </tr>
         `).join('');
+
+        // Initialize table sorting (Value, Label, Order, Active - not Actions)
+        if (window.TableSort) {
+            TableSort.init('lookupValuesTable', [0, 1, 2, 3]);
+        }
 
     } catch (error) {
         console.error('Failed to load lookup values:', error);

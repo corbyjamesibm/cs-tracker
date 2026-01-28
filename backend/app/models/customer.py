@@ -95,6 +95,7 @@ class Customer(Base):
     risks: Mapped[List["Risk"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     assessments: Mapped[List["CustomerAssessment"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
     roadmaps: Mapped[List["Roadmap"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
+    meeting_notes: Mapped[List["MeetingNote"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
 
     @property
     def days_to_renewal(self) -> Optional[int]:

@@ -12,6 +12,7 @@ from .assessment import (
     CustomerAssessment, AssessmentResponse, AssessmentStatus
 )
 from .lookup import LookupValue
+from .meeting_note import MeetingNote
 
 __all__ = [
     "User", "UserRole",
@@ -26,4 +27,5 @@ __all__ = [
     "AssessmentTemplate", "AssessmentDimension", "AssessmentQuestion",
     "CustomerAssessment", "AssessmentResponse", "AssessmentStatus",
     "LookupValue",
+    "MeetingNote",
 ]

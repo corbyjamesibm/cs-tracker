@@ -567,6 +567,42 @@ const LookupAPI = {
     },
 };
 
+// Meeting Note API
+const MeetingNoteAPI = {
+    async getAll(params = {}) {
+        const queryString = new URLSearchParams(params).toString();
+        return apiRequest(`/meeting-notes${queryString ? '?' + queryString : ''}`);
+    },
+
+    async getById(id) {
+        return apiRequest(`/meeting-notes/${id}`);
+    },
+
+    async getByCustomer(customerId) {
+        return apiRequest(`/meeting-notes?customer_id=${customerId}`);
+    },
+
+    async create(data) {
+        return apiRequest('/meeting-notes', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async update(id, data) {
+        return apiRequest(`/meeting-notes/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async delete(id) {
+        return apiRequest(`/meeting-notes/${id}`, {
+            method: 'DELETE',
+        });
+    },
+};
+
 // Export for use in other files
 window.API = {
     CustomerAPI,
@@ -578,6 +614,7 @@ window.API = {
     RiskAPI,
     AssessmentAPI,
     LookupAPI,
+    MeetingNoteAPI,
 };
 
 window.Utils = {

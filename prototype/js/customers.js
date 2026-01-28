@@ -115,6 +115,11 @@ function renderCustomersList() {
         </tr>
     `).join('');
 
+    // Initialize table sorting (Customer, Health, Stage, ARR, Renewal, CSM - not Actions)
+    if (window.TableSort) {
+        TableSort.init('customerTable', [0, 1, 2, 3, 4, 5]);
+    }
+
     // Update count
     const countEl = document.querySelector('.results-count');
     if (countEl) {

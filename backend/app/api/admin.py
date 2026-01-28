@@ -7,7 +7,7 @@ from sqlalchemy import text, delete
 from pydantic import BaseModel
 from typing import Optional
 
-from app.core.database import get_db
+from app.core.database import get_db, engine
 from app.models.customer import Customer, Contact
 from app.models.task import Task
 from app.models.engagement import Engagement
@@ -256,6 +256,24 @@ async def run_migrations(db: AsyncSession = Depends(get_db)):
             migrations_run.append("Seeded default auth settings")
 
         await db.commit()
+
+        # Migration: Add ACCOUNT_MANAGER to userrole enum (uppercase to match existing values)
+        # Note: ALTER TYPE ... ADD VALUE cannot run in a transaction
+        result = await db.execute(text("""
+            SELECT enumlabel FROM pg_enum
+            WHERE enumtypid = 'userrole'::regtype AND enumlabel = 'ACCOUNT_MANAGER'
+        """))
+        if not result.scalar():
+            # ALTER TYPE ... ADD VALUE cannot run inside a transaction
+            # Get raw asyncpg connection to execute outside transaction
+            raw_conn = await engine.raw_connection()
+            try:
+                await raw_conn.execute(
+                    "ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'ACCOUNT_MANAGER'"
+                )
+                migrations_run.append("Added ACCOUNT_MANAGER to userrole enum")
+            finally:
+                await raw_conn.close()
 
         if migrations_run:
             return {"success": True, "message": "Migrations completed", "migrations": migrations_run}
