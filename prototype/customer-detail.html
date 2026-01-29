@@ -702,48 +702,63 @@
           <div class="modal__overlay" onclick="closeNewAssessmentModal()"></div>
           <div class="modal__container" style="max-width: 800px; max-height: 90vh;">
             <div class="modal__header">
-              <h2 class="modal__title">SPM Maturity Assessment</h2>
+              <h2 class="modal__title" id="assessmentModalTitle">Select Assessment Template</h2>
               <button class="modal__close" onclick="closeNewAssessmentModal()">&times;</button>
             </div>
             <div class="modal__body" style="max-height: calc(90vh - 160px); overflow-y: auto;">
-              <!-- Progress Indicator -->
-              <div class="assessment-wizard-progress">
-                <div class="wizard-progress__bar">
-                  <div class="wizard-progress__fill" id="wizardProgressBar" style="width: 0%;"></div>
-                </div>
-                <div class="wizard-progress__text">
-                  <span id="currentDimensionName">Loading...</span>
-                  <span id="questionProgress">0 / 0</span>
+              <!-- Template Selection Step -->
+              <div id="templateSelectionStep">
+                <p class="text-secondary mb-4">Choose an assessment template to begin:</p>
+                <div id="templateList" class="template-list">
+                  <div class="text-secondary text-center" style="padding: 24px;">Loading templates...</div>
                 </div>
               </div>
 
-              <!-- Question Display -->
-              <div class="assessment-question-container">
-                <h3 id="currentQuestionNumber" style="font-size: 12px; color: var(--cds-text-secondary); margin-bottom: 8px;">Question 1</h3>
-                <p id="currentQuestionText" style="font-size: 16px; font-weight: 500; margin-bottom: 24px;">Loading question...</p>
-
-                <!-- Rating Options -->
-                <div id="ratingOptions" class="rating-scale">
-                  <!-- Options populated by JS -->
+              <!-- Question Step (hidden initially) -->
+              <div id="questionStep" style="display: none;">
+                <!-- Progress Indicator -->
+                <div class="assessment-wizard-progress">
+                  <div class="wizard-progress__bar">
+                    <div class="wizard-progress__fill" id="wizardProgressBar" style="width: 0%;"></div>
+                  </div>
+                  <div class="wizard-progress__text">
+                    <span id="currentDimensionName">Loading...</span>
+                    <span id="questionProgress">0 / 0</span>
+                  </div>
                 </div>
 
-                <!-- Notes -->
-                <div class="form-group" style="margin-top: 16px;">
-                  <label class="form-label" for="questionNotes">Notes (optional)</label>
-                  <textarea id="questionNotes" class="form-textarea" rows="2" placeholder="Add any comments about this rating..."></textarea>
+                <!-- Question Display -->
+                <div class="assessment-question-container">
+                  <h3 id="currentQuestionNumber" style="font-size: 12px; color: var(--cds-text-secondary); margin-bottom: 8px;">Question 1</h3>
+                  <p id="currentQuestionText" style="font-size: 16px; font-weight: 500; margin-bottom: 24px;">Loading question...</p>
+
+                  <!-- Rating Options -->
+                  <div id="ratingOptions" class="rating-scale">
+                    <!-- Options populated by JS -->
+                  </div>
+
+                  <!-- Notes -->
+                  <div class="form-group" style="margin-top: 16px;">
+                    <label class="form-label" for="questionNotes">Notes (optional)</label>
+                    <textarea id="questionNotes" class="form-textarea" rows="2" placeholder="Add any comments about this rating..."></textarea>
+                  </div>
                 </div>
               </div>
             </div>
             <div class="modal__footer" style="justify-content: space-between;">
-              <button type="button" class="btn btn--secondary" id="saveCloseBtn" onclick="saveAndCloseAssessment()">
+              <button type="button" class="btn btn--secondary" id="saveCloseBtn" onclick="saveAndCloseAssessment()" style="display: none;">
                 Save & Close
               </button>
               <div class="flex gap-2">
-                <button type="button" class="btn btn--ghost" id="prevQuestionBtn" onclick="previousQuestion()" disabled>
+                <button type="button" class="btn btn--ghost" id="backToTemplatesBtn" onclick="showTemplateSelection()" style="display: none;">
+                  <svg width="16" height="16" viewBox="0 0 32 32"><path d="M10 16L20 6l1.4 1.4-8.6 8.6 8.6 8.6L20 26z"/></svg>
+                  Back
+                </button>
+                <button type="button" class="btn btn--ghost" id="prevQuestionBtn" onclick="previousQuestion()" style="display: none;" disabled>
                   <svg width="16" height="16" viewBox="0 0 32 32"><path d="M10 16L20 6l1.4 1.4-8.6 8.6 8.6 8.6L20 26z"/></svg>
                   Previous
                 </button>
-                <button type="button" class="btn btn--primary" id="nextQuestionBtn" onclick="nextQuestion()">
+                <button type="button" class="btn btn--primary" id="nextQuestionBtn" onclick="nextQuestion()" style="display: none;">
                   Next
                   <svg width="16" height="16" viewBox="0 0 32 32"><path d="M22 16L12 26l-1.4-1.4 8.6-8.6-8.6-8.6L12 6z"/></svg>
                 </button>
@@ -1962,6 +1977,6 @@
   <script src="js/auth.js?v=5"></script>
   <script src="js/api.js?v=13"></script>
   <script src="js/table-sort.js?v=1"></script>
-  <script src="js/customer-detail.js?v=32"></script>
+  <script src="js/customer-detail.js?v=34"></script>
 </body>
 </html>

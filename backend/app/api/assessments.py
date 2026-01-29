@@ -158,7 +158,7 @@ async def upload_template_excel(
 
     # Determine file type and parse accordingly
     if filename.endswith('.csv'):
-        # Parse CSV file (specifically handles TBM Maturity Assessment format)
+        # Parse CSV file
         rows = parse_csv_file(contents)
     else:
         # Parse Excel file
@@ -176,6 +176,140 @@ async def upload_template_excel(
     if not rows:
         return ExcelUploadResult(success=False, errors=["No data found in file"])
 
+    # Check for SPM Maturity format (Domain, Lens, Question, Rating, Rating Label)
+    header = [str(cell).strip().lower() if cell else "" for cell in rows[0]]
+    is_spm_format = 'domain' in header and 'question' in header and 'rating' in header
+
+    if is_spm_format:
+        return await parse_spm_maturity_csv(rows, name, version, description, db)
+    else:
+        return await parse_tbm_format(rows, name, version, description, db)
+
+
+async def parse_spm_maturity_csv(
+    rows: List[List[str]],
+    name: str,
+    version: str,
+    description: Optional[str],
+    db: AsyncSession
+) -> ExcelUploadResult:
+    """Parse SPM Maturity Assessment CSV format (Domain, Lens, Question, Rating, Rating Label)."""
+    errors = []
+
+    # Find column indices from header
+    header = [str(cell).strip().lower() if cell else "" for cell in rows[0]]
+    try:
+        domain_idx = header.index('domain')
+        lens_idx = header.index('lens')
+        question_idx = header.index('question')
+        rating_idx = header.index('rating')
+        label_idx = header.index('rating label')
+    except ValueError as e:
+        return ExcelUploadResult(success=False, errors=[f"Missing required column: {str(e)}"])
+
+    # Create template
+    template = AssessmentTemplate(name=name, version=version, description=description)
+    db.add(template)
+    await db.flush()
+
+    # Group questions by Domain + Lens + Question text (each question has 5 rows for ratings 1-5)
+    # Structure: {domain: {(lens, question_text): {rating: label}}}
+    question_data = {}
+
+    for row_idx, row in enumerate(rows[1:], start=2):  # Skip header
+        if not row or len(row) <= max(domain_idx, lens_idx, question_idx, rating_idx, label_idx):
+            continue
+
+        domain = str(row[domain_idx]).strip() if row[domain_idx] else ""
+        lens = str(row[lens_idx]).strip() if row[lens_idx] else ""
+        question_text = str(row[question_idx]).strip() if row[question_idx] else ""
+        rating = str(row[rating_idx]).strip() if row[rating_idx] else ""
+        label = str(row[label_idx]).strip() if row[label_idx] else ""
+
+        if not domain or not question_text:
+            continue
+
+        if domain not in question_data:
+            question_data[domain] = {}
+
+        key = (lens, question_text)
+        if key not in question_data[domain]:
+            question_data[domain][key] = {}
+
+        question_data[domain][key][rating] = label
+
+    # Create dimensions and questions
+    dimension_map = {}
+    dimensions_created = 0
+    questions_created = 0
+
+    for domain, questions in question_data.items():
+        # Create dimension for this domain
+        if domain.lower() not in dimension_map:
+            dimension = AssessmentDimension(
+                template_id=template.id,
+                name=domain,
+                description=None,
+                display_order=dimensions_created
+            )
+            db.add(dimension)
+            await db.flush()
+            dimension_map[domain.lower()] = dimension.id
+            dimensions_created += 1
+
+        dim_id = dimension_map[domain.lower()]
+        question_number = 1
+
+        for (lens, question_text), score_labels_raw in questions.items():
+            # Build score labels dict
+            score_labels = {}
+            for rating, label in score_labels_raw.items():
+                score_labels[rating] = label
+
+            # Determine min/max scores from the ratings we found
+            ratings = [int(r) for r in score_labels.keys() if r.isdigit()]
+            min_score = min(ratings) if ratings else 1
+            max_score = max(ratings) if ratings else 5
+
+            # Include lens in question text if present
+            full_question_text = f"[{lens}] {question_text}" if lens else question_text
+
+            question = AssessmentQuestion(
+                template_id=template.id,
+                dimension_id=dim_id,
+                question_text=full_question_text,
+                question_number=f"{dimensions_created}.{question_number}",
+                min_score=min_score,
+                max_score=max_score,
+                score_labels=score_labels,
+                display_order=questions_created,
+                is_required=True
+            )
+            db.add(question)
+            questions_created += 1
+            question_number += 1
+
+    await db.flush()
+
+    return ExcelUploadResult(
+        success=True,
+        template_id=template.id,
+        dimensions_created=dimensions_created,
+        questions_created=questions_created,
+        errors=errors
+    )
+
+
+async def parse_tbm_format(
+    rows: List[List[str]],
+    name: str,
+    version: str,
+    description: Optional[str],
+    db: AsyncSession
+) -> ExcelUploadResult:
+    """Parse TBM-style format (dimension headers with questions below)."""
+    errors = []
+
     # Create template
     template = AssessmentTemplate(name=name, version=version, description=description)
     db.add(template)
@@ -188,7 +322,6 @@ async def upload_template_excel(
     current_dimension_desc = None
     question_number = 1
 
-    # Parse TBM-style format (dimension headers with questions below)
     for row_idx, row in enumerate(rows):
         if not row or not row[0]:
             continue
@@ -235,7 +368,6 @@ async def upload_template_excel(
                 dimensions_created += 1
 
             # Create question
-            # Extract score labels from the dropdown values (0 - NA / Opt Out, 1 - Basic, etc.)
             score_labels = {
                 "0": "NA / Opt Out",
                 "1": "Initial",

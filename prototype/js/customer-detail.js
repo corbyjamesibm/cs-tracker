@@ -4154,41 +4154,128 @@ async function deleteAssessment(assessmentId) {
     }
 }
 
-// Open new assessment modal
+// Open new assessment modal - show template selection
 async function openNewAssessmentModal() {
     // Reset state
     currentQuestionIndex = 0;
     assessmentResponses = {};
-    currentEditingAssessmentId = null; // Clear any existing editing ID
+    currentEditingAssessmentId = null;
+    assessmentTemplate = null;
+    assessmentQuestions = [];
+
+    // Show template selection step, hide question step
+    document.getElementById('templateSelectionStep').style.display = 'block';
+    document.getElementById('questionStep').style.display = 'none';
+    document.getElementById('assessmentModalTitle').textContent = 'Select Assessment Template';
+
+    // Hide question navigation buttons
+    document.getElementById('saveCloseBtn').style.display = 'none';
+    document.getElementById('backToTemplatesBtn').style.display = 'none';
+    document.getElementById('prevQuestionBtn').style.display = 'none';
+    document.getElementById('nextQuestionBtn').style.display = 'none';
+    document.getElementById('submitAssessmentBtn').style.display = 'none';
+
+    // Load templates
+    const templateList = document.getElementById('templateList');
+    templateList.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Loading templates...</div>';
+
+    document.getElementById('newAssessmentModal').classList.add('open');
 
     try {
-        // Get active template
-        assessmentTemplate = await API.AssessmentAPI.getActiveTemplate();
-        if (!assessmentTemplate) {
-            alert('No active assessment template found. Please contact an administrator to set up an assessment template.');
+        const response = await API.AssessmentAPI.getTemplates();
+        const templates = response.items || response || [];
+
+        if (!templates || templates.length === 0) {
+            templateList.innerHTML = `
+                <div class="text-secondary text-center" style="padding: 24px;">
+                    <p>No assessment templates available.</p>
+                    <p class="mt-2">Please contact an administrator to create a template.</p>
+                </div>
+            `;
             return;
         }
 
+        // Render template cards
+        templateList.innerHTML = templates.map(t => `
+            <div class="template-card" onclick="selectAssessmentTemplate(${t.id})">
+                <div class="template-card__info">
+                    <div class="template-card__name">${escapeHtml(t.name)}</div>
+                    <div class="template-card__meta">
+                        Version ${escapeHtml(t.version || '1.0')}
+                        ${t.description ? ' · ' + escapeHtml(t.description) : ''}
+                        ${t.questions_count ? ' · ' + t.questions_count + ' questions' : ''}
+                    </div>
+                </div>
+                <div class="template-card__arrow">
+                    <svg width="20" height="20" viewBox="0 0 32 32"><path d="M22 16L12 26l-1.4-1.4 8.6-8.6-8.6-8.6L12 6z"/></svg>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('Failed to load templates:', error);
+        templateList.innerHTML = `
+            <div class="text-secondary text-center" style="padding: 24px;">
+                Failed to load templates. <button class="btn-link" onclick="openNewAssessmentModal()">Try again</button>
+            </div>
+        `;
+    }
+}
+
+// Select a template and start the assessment
+async function selectAssessmentTemplate(templateId) {
+    try {
         // Get template with questions
-        const templateDetail = await API.AssessmentAPI.getTemplate(assessmentTemplate.id);
+        const templateDetail = await API.AssessmentAPI.getTemplate(templateId);
+        assessmentTemplate = templateDetail;
         assessmentQuestions = templateDetail.questions || [];
 
         if (assessmentQuestions.length === 0) {
-            alert('The assessment template has no questions. Please contact an administrator.');
+            alert('This template has no questions. Please choose another template or contact an administrator.');
             return;
         }
 
         // Sort questions by display order
         assessmentQuestions.sort((a, b) => a.display_order - b.display_order);
 
+        // Switch to question step
+        document.getElementById('templateSelectionStep').style.display = 'none';
+        document.getElementById('questionStep').style.display = 'block';
+        document.getElementById('assessmentModalTitle').textContent = assessmentTemplate.name || 'Assessment';
+
+        // Show navigation buttons
+        document.getElementById('saveCloseBtn').style.display = 'block';
+        document.getElementById('backToTemplatesBtn').style.display = 'block';
+        document.getElementById('prevQuestionBtn').style.display = 'block';
+        document.getElementById('nextQuestionBtn').style.display = 'block';
+
         // Display first question
         displayQuestion(0);
 
-        document.getElementById('newAssessmentModal').classList.add('open');
     } catch (error) {
-        console.error('Failed to load assessment template:', error);
-        alert('Failed to load assessment template. Please try again.');
+        console.error('Failed to load template:', error);
+        alert('Failed to load template. Please try again.');
     }
+}
+
+// Go back to template selection
+function showTemplateSelection() {
+    document.getElementById('templateSelectionStep').style.display = 'block';
+    document.getElementById('questionStep').style.display = 'none';
+    document.getElementById('assessmentModalTitle').textContent = 'Select Assessment Template';
+
+    // Hide question navigation buttons
+    document.getElementById('saveCloseBtn').style.display = 'none';
+    document.getElementById('backToTemplatesBtn').style.display = 'none';
+    document.getElementById('prevQuestionBtn').style.display = 'none';
+    document.getElementById('nextQuestionBtn').style.display = 'none';
+    document.getElementById('submitAssessmentBtn').style.display = 'none';
+
+    // Reset state
+    assessmentTemplate = null;
+    assessmentQuestions = [];
+    assessmentResponses = {};
+    currentQuestionIndex = 0;
 }
 
 // Close new assessment modal
@@ -4405,6 +4492,8 @@ async function handleAssessmentUpload(event) {
 window.loadAssessments = loadAssessments;
 window.openNewAssessmentModal = openNewAssessmentModal;
 window.closeNewAssessmentModal = closeNewAssessmentModal;
+window.selectAssessmentTemplate = selectAssessmentTemplate;
+window.showTemplateSelection = showTemplateSelection;
 window.previousQuestion = previousQuestion;
 window.nextQuestion = nextQuestion;
 window.selectRating = selectRating;
