@@ -567,6 +567,98 @@ const LookupAPI = {
     },
 };
 
+// Document API
+const DocumentAPI = {
+    async list(customerId, params = {}) {
+        const queryString = new URLSearchParams(params).toString();
+        return apiRequest(`/customers/${customerId}/documents${queryString ? '?' + queryString : ''}`);
+    },
+
+    async getById(documentId) {
+        return apiRequest(`/documents/${documentId}`);
+    },
+
+    async upload(customerId, file, options = {}) {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (options.engagementId) {
+            formData.append('engagement_id', options.engagementId);
+        }
+        formData.append('source', options.source || 'upload');
+
+        const url = `${API_BASE_URL}/customers/${customerId}/documents`;
+        const headers = {};
+        if (window.Auth && window.Auth.getToken()) {
+            headers['Authorization'] = `Bearer ${window.Auth.getToken()}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(error || `Upload failed: ${response.status}`);
+        }
+
+        return response.json();
+    },
+
+    async parseEmail(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const url = `${API_BASE_URL}/documents/parse/email`;
+        const headers = {};
+        if (window.Auth && window.Auth.getToken()) {
+            headers['Authorization'] = `Bearer ${window.Auth.getToken()}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: formData,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Parse failed: ${response.status}`);
+        }
+
+        return response.json();
+    },
+
+    async parseCalendar(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const url = `${API_BASE_URL}/documents/parse/calendar`;
+        const headers = {};
+        if (window.Auth && window.Auth.getToken()) {
+            headers['Authorization'] = `Bearer ${window.Auth.getToken()}`;
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: formData,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Parse failed: ${response.status}`);
+        }
+
+        return response.json();
+    },
+
+    async delete(documentId) {
+        return apiRequest(`/documents/${documentId}`, {
+            method: 'DELETE',
+        });
+    },
+};
+
 // Meeting Note API
 const MeetingNoteAPI = {
     async getAll(params = {}) {
@@ -615,6 +707,7 @@ window.API = {
     AssessmentAPI,
     LookupAPI,
     MeetingNoteAPI,
+    DocumentAPI,
 };
 
 window.Utils = {

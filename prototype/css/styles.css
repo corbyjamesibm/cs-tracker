@@ -2534,3 +2534,238 @@ input[type="file"].form-input::file-selector-button:hover {
     transform: translateY(0);
   }
 }
+
+/* ==========================================
+   DROP ZONE STYLES
+   ========================================== */
+
+.drop-zone {
+  position: relative;
+  border: 2px dashed var(--cds-border-strong-01);
+  border-radius: 8px;
+  padding: 24px;
+  margin: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--cds-layer-02);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.drop-zone:hover {
+  border-color: var(--cds-interactive);
+  background: rgba(15, 98, 254, 0.03);
+}
+
+.drop-zone.drag-over {
+  border-color: var(--cds-interactive);
+  border-style: solid;
+  background: rgba(15, 98, 254, 0.08);
+  transform: scale(1.01);
+}
+
+.drop-zone.processing {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.drop-zone.processing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drop-zone.success {
+  border-color: var(--cds-support-success);
+  background: rgba(36, 161, 72, 0.08);
+}
+
+.drop-zone.error {
+  border-color: var(--cds-support-error);
+  background: rgba(218, 30, 40, 0.08);
+}
+
+.drop-zone__icon {
+  color: var(--cds-text-secondary);
+  transition: color 0.2s ease;
+}
+
+.drop-zone:hover .drop-zone__icon,
+.drop-zone.drag-over .drop-zone__icon {
+  color: var(--cds-interactive);
+}
+
+.drop-zone__content {
+  text-align: center;
+  color: var(--cds-text-secondary);
+}
+
+.drop-zone__content strong {
+  display: block;
+  color: var(--cds-text-primary);
+  font-size: 0.9375rem;
+  margin-bottom: 4px;
+}
+
+.drop-zone__content span {
+  font-size: 0.8125rem;
+}
+
+.drop-zone__hint {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  text-align: center;
+  min-height: 18px;
+}
+
+.drop-zone__hint.warning {
+  color: var(--cds-support-warning);
+}
+
+.drop-zone__hint.error {
+  color: var(--cds-support-error);
+}
+
+.drop-zone__hint.success {
+  color: var(--cds-support-success);
+}
+
+/* Drop Action Modal Styles */
+.drop-action-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drop-action-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--cds-border-subtle-01);
+  border-radius: 8px;
+  background: var(--cds-layer-01);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.drop-action-btn:hover {
+  border-color: var(--cds-interactive);
+  background: rgba(15, 98, 254, 0.03);
+}
+
+.drop-action-btn:focus {
+  outline: 2px solid var(--cds-interactive);
+  outline-offset: 2px;
+}
+
+.drop-action-btn__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--cds-layer-02);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cds-interactive);
+}
+
+.drop-action-btn__content {
+  flex: 1;
+}
+
+.drop-action-btn__content strong {
+  display: block;
+  font-size: 0.9375rem;
+  color: var(--cds-text-primary);
+  margin-bottom: 4px;
+}
+
+.drop-action-btn__content span {
+  font-size: 0.8125rem;
+  color: var(--cds-text-secondary);
+}
+
+/* Drop Preview */
+.drop-preview {
+  font-size: 0.875rem;
+}
+
+.drop-preview__label {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.drop-preview__value {
+  color: var(--cds-text-primary);
+  word-break: break-word;
+}
+
+.drop-preview__row {
+  margin-bottom: 8px;
+}
+
+.drop-preview__row:last-child {
+  margin-bottom: 0;
+}
+
+/* Button Link Style */
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--cds-link-primary);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  color: var(--cds-interactive-hover);
+}
+
+/* Spinner for processing state */
+@keyframes dropZoneSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.drop-zone.processing .drop-zone__icon svg {
+  animation: dropZoneSpin 1s linear infinite;
+}
+
+/* Toast notification animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}

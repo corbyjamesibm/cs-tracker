@@ -2479,67 +2479,98 @@ function refreshTPData() {
 
 let customerDocuments = [];
 
-async function loadDocuments(customerId) {
+// Document type icons
+const documentTypeIcons = {
+    email: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 6H4a2 2 0 00-2 2v16a2 2 0 002 2h24a2 2 0 002-2V8a2 2 0 00-2-2zm0 2v.67l-12 8.41-12-8.41V8zm-24 16V10.67l11.56 8.09a1 1 0 00.44.24 1 1 0 00.44-.24L28 10.67V24z"/></svg>',
+    calendar: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M26 4h-4V2h-2v2h-8V2h-2v2H6a2 2 0 00-2 2v20a2 2 0 002 2h20a2 2 0 002-2V6a2 2 0 00-2-2zm0 22H6V12h20zm0-16H6V6h4v2h2V6h8v2h2V6h4z"/></svg>',
+    pdf: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M30 18v-2h-6v10h2v-4h3v-2h-3v-2h4zm-11 8h-4V16h4a3 3 0 013 3v4a3 3 0 01-3 3zm-2-2h2a1 1 0 001-1v-4a1 1 0 00-1-1h-2zm-6-8h-4v10h2v-3h2a2.5 2.5 0 000-5zm0 5h-2v-3h2a.5.5 0 010 1z"/><path d="M22 14V4a2 2 0 00-.59-1.41l-4-4A2 2 0 0016 2V0H4a2 2 0 00-2 2v14h2V2h10v4a2 2 0 002 2h4v6h2z"/></svg>',
+    document: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/></svg>',
+    spreadsheet: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M4 20v8h8v-8H4zm2 6v-4h4v4H6zm8-6v8h8v-8h-8zm2 6v-4h4v4h-4zm8-6v8h8v-8h-8zm2 6v-4h4v4h-4zM4 10v8h8v-8H4zm2 6v-4h4v4H6zm8-6v8h8v-8h-8zm2 6v-4h4v4h-4zm8-6v8h8v-8h-8zm2 6v-4h4v4h-4z"/></svg>',
+    presentation: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 4H4a2 2 0 00-2 2v14a2 2 0 002 2h11v4h-4v2h10v-2h-4v-4h11a2 2 0 002-2V6a2 2 0 00-2-2zM4 20V6h24v14z"/></svg>',
+    image: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M19 14a3 3 0 10-3-3 3 3 0 003 3zm0-4a1 1 0 11-1 1 1 1 0 011-1z"/><path d="M26 4H6a2 2 0 00-2 2v20a2 2 0 002 2h20a2 2 0 002-2V6a2 2 0 00-2-2zm0 22H6v-6l5-5 5.59 5.59a2 2 0 002.82 0L21 19l5 5zm0-4.83l-3.59-3.59a2 2 0 00-2.82 0L18 19.17l-5.59-5.59a2 2 0 00-2.82 0L6 17.17V6h20z"/></svg>',
+    text: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/><path d="M10 22h12v2H10zm0-6h12v2H10z"/></svg>',
+    data: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M4 24h10v2H4zm0-6h10v2H4zm0-6h10v2H4zm14 0h10v2H18zm0 6h10v2H18zm0 6h10v2H18z"/></svg>',
+    other: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/></svg>'
+};
+
+// Document type labels
+const documentTypeLabels = {
+    email: 'Email',
+    calendar: 'Calendar Event',
+    pdf: 'PDF',
+    document: 'Document',
+    spreadsheet: 'Spreadsheet',
+    presentation: 'Presentation',
+    image: 'Image',
+    text: 'Text',
+    data: 'Data',
+    other: 'Other'
+};
+
+async function loadDocuments(customerId, params = {}) {
     const container = document.getElementById('documentsTabContainer');
     if (!container) return;
 
     container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Loading documents...</div>';
 
-    // For demo, show sample documents
-    customerDocuments = generateSampleDocuments();
-    renderDocumentsTab();
-}
-
-function generateSampleDocuments() {
-    return [
-        { id: 1, name: 'Master Service Agreement 2025.pdf', type: 'contract', size: '2.4 MB', uploadedBy: 'Corby James', uploadedAt: '2025-01-05T10:00:00' },
-        { id: 2, name: 'SOW - Phase 2 Implementation.docx', type: 'sow', size: '1.1 MB', uploadedBy: 'Jane Smith', uploadedAt: '2025-01-02T14:30:00' },
-        { id: 3, name: 'Q4 2024 QBR Presentation.pptx', type: 'presentation', size: '5.8 MB', uploadedBy: 'Corby James', uploadedAt: '2024-12-15T09:00:00' },
-        { id: 4, name: 'Implementation Status Report.pdf', type: 'report', size: '890 KB', uploadedBy: 'Mike Johnson', uploadedAt: '2024-12-20T16:45:00' },
-        { id: 5, name: 'Technical Architecture Diagram.png', type: 'other', size: '1.5 MB', uploadedBy: 'John Doe', uploadedAt: '2024-11-28T11:20:00' }
-    ];
+    try {
+        const response = await API.DocumentAPI.list(customerId, params);
+        customerDocuments = response.items || [];
+        renderDocumentsTab();
+    } catch (error) {
+        console.error('Failed to load documents:', error);
+        container.innerHTML = `
+            <div class="text-secondary text-center" style="padding: 24px;">
+                Failed to load documents. <button class="btn-link" onclick="loadDocuments(${customerId})">Try again</button>
+            </div>
+        `;
+    }
 }
 
 function renderDocumentsTab() {
     const container = document.getElementById('documentsTabContainer');
     const filterValue = document.getElementById('documentFilter')?.value || 'all';
 
-    const filtered = filterValue === 'all'
-        ? customerDocuments
-        : customerDocuments.filter(d => d.type === filterValue);
-
-    if (filtered.length === 0) {
-        container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">No documents found</div>';
-        return;
+    // Filter documents based on dropdown selection
+    let filtered = customerDocuments;
+    if (filterValue !== 'all') {
+        // Map filter values to file types
+        const filterTypeMap = {
+            'contract': ['document', 'pdf'],
+            'sow': ['document', 'pdf'],
+            'presentation': ['presentation'],
+            'report': ['document', 'pdf'],
+            'other': ['other', 'image', 'text', 'data']
+        };
+        const allowedTypes = filterTypeMap[filterValue] || [filterValue];
+        filtered = customerDocuments.filter(d => allowedTypes.includes(d.file_type));
     }
 
-    const typeIcons = {
-        contract: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/></svg>',
-        sow: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/><path d="M10 22h12v2H10zm0-6h12v2H10z"/></svg>',
-        presentation: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 4H4a2 2 0 00-2 2v14a2 2 0 002 2h11v4h-4v2h10v-2h-4v-4h11a2 2 0 002-2V6a2 2 0 00-2-2zM4 20V6h24v14z"/></svg>',
-        report: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>',
-        other: '<svg width="20" height="20" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/></svg>'
-    };
-
-    const typeLabels = {
-        contract: 'Contract',
-        sow: 'SOW',
-        presentation: 'Presentation',
-        report: 'Report',
-        other: 'Other'
-    };
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div class="text-secondary text-center" style="padding: 24px;">
+                ${customerDocuments.length === 0
+                    ? 'No documents yet. Drop files above to add documents.'
+                    : 'No documents match the selected filter.'}
+            </div>
+        `;
+        return;
+    }
 
     container.innerHTML = `
         <div style="display: grid; gap: 12px;">
             ${filtered.map(doc => `
-                <div style="display: flex; align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--cds-border-subtle-01); border-radius: 4px; cursor: pointer;" onclick="downloadDocument(${doc.id})">
-                    <div style="color: var(--cds-icon-secondary);">${typeIcons[doc.type] || typeIcons.other}</div>
+                <div class="document-row" style="display: flex; align-items: center; gap: 16px; padding: 16px; border: 1px solid var(--cds-border-subtle-01); border-radius: 4px;">
+                    <div style="color: var(--cds-icon-secondary);">${documentTypeIcons[doc.file_type] || documentTypeIcons.other}</div>
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${doc.name}</div>
-                        <div class="text-secondary" style="font-size: 12px;">${typeLabels[doc.type]} · ${doc.size} · Uploaded by ${doc.uploadedBy}</div>
+                        <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(doc.original_filename)}">${escapeHtml(doc.original_filename)}</div>
+                        <div class="text-secondary" style="font-size: 12px;">
+                            ${documentTypeLabels[doc.file_type] || 'File'} · ${formatFileSizeAlt(doc.file_size)}
+                            ${doc.extra_data?.subject ? ` · ${escapeHtml(doc.extra_data.subject.substring(0, 50))}` : ''}
+                        </div>
                     </div>
-                    <div class="text-secondary" style="font-size: 12px; white-space: nowrap;">${formatDate(doc.uploadedAt)}</div>
-                    <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation(); deleteDocument(${doc.id})" title="Delete">
+                    <div class="text-secondary" style="font-size: 12px; white-space: nowrap;">${formatDate(doc.created_at)}</div>
+                    <button class="btn btn--ghost btn--icon" onclick="event.stopPropagation(); deleteDocumentById(${doc.id})" title="Delete">
                         <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 12h2v12h-2zm6 0h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/></svg>
                     </button>
                 </div>
@@ -2548,26 +2579,73 @@ function renderDocumentsTab() {
     `;
 }
 
+function formatFileSizeAlt(bytes) {
+    if (!bytes) return 'Unknown size';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 function filterDocuments() {
     renderDocumentsTab();
 }
 
 function openDocumentModal() {
-    alert('Document upload feature - would open file picker and upload to server');
+    // Trigger the document file input
+    const fileInput = document.getElementById('documentFileInput');
+    if (fileInput) {
+        fileInput.click();
+    }
 }
 
-function downloadDocument(id) {
-    const doc = customerDocuments.find(d => d.id === id);
-    if (doc) {
-        alert(`Would download: ${doc.name}`);
+async function deleteDocumentById(id) {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+
+    try {
+        await API.DocumentAPI.delete(id);
+        customerDocuments = customerDocuments.filter(d => d.id !== id);
+        renderDocumentsTab();
+        showSuccessToast('Document deleted');
+    } catch (error) {
+        console.error('Failed to delete document:', error);
+        showErrorToast('Failed to delete document');
     }
 }
 
 function deleteDocument(id) {
-    if (!confirm('Are you sure you want to delete this document?')) return;
-    customerDocuments = customerDocuments.filter(d => d.id !== id);
-    renderDocumentsTab();
+    return deleteDocumentById(id);
 }
+
+function downloadDocument(id) {
+    const doc = customerDocuments.find(d => d.id === id);
+    if (!doc) {
+        showErrorToast('Document not found');
+        return;
+    }
+
+    // For now, show info about the document since we don't have file storage implemented
+    // In the future, this would trigger a download from the storage path
+    if (doc.storage_path) {
+        window.open(`${API_BASE_URL}/documents/${id}/download`, '_blank');
+    } else if (doc.content_text) {
+        // Create a blob from the text content
+        const blob = new Blob([doc.content_text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.original_filename || 'document.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+    } else {
+        showErrorToast('Download not available for this document');
+    }
+}
+
+// Expose document functions globally
+window.deleteDocumentById = deleteDocumentById;
+window.deleteDocument = deleteDocument;
+window.downloadDocument = downloadDocument;
+window.openDocumentModal = openDocumentModal;
 
 // ============================================
 // USAGE FRAMEWORK TAB FUNCTIONS
@@ -4732,4 +4810,451 @@ document.addEventListener('DOMContentLoaded', function() {
             localStorage.setItem('navCollapsed', sideNav.classList.contains('collapsed'));
         });
     }
+
+    // Initialize drop zones
+    initDropZones();
 });
+
+// ==========================================
+// DRAG & DROP FUNCTIONALITY
+// ==========================================
+
+let pendingDropData = null;  // Stores parsed data while waiting for user choice
+let pendingDropFile = null;  // Stores the original file
+
+// Allowed file extensions for drop zones
+const ENGAGEMENT_ALLOWED_EXTENSIONS = ['.eml', '.ics', '.ical'];
+const DOCUMENT_ALLOWED_EXTENSIONS = ['.eml', '.ics', '.ical', '.msg', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.txt', '.csv'];
+
+// Maximum file size (10MB)
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// Initialize drop zones with event listeners
+function initDropZones() {
+    const engagementDropZone = document.getElementById('engagementDropZone');
+    const documentDropZone = document.getElementById('documentDropZone');
+
+    if (engagementDropZone) {
+        setupDropZone(engagementDropZone, 'engagement');
+    }
+
+    if (documentDropZone) {
+        setupDropZone(documentDropZone, 'document');
+    }
+
+    // Show browser warning for Chrome/Firefox on first visit
+    checkBrowserCompatibility();
+}
+
+// Set up event listeners for a drop zone
+function setupDropZone(dropZone, dropType) {
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults);
+    });
+
+    // Highlight drop zone when item is dragged over it
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.add('drag-over');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.remove('drag-over');
+        });
+    });
+
+    // Handle drop
+    dropZone.addEventListener('drop', (e) => handleDrop(e, dropType));
+
+    // Also allow click to browse
+    dropZone.addEventListener('click', (e) => {
+        // Don't trigger if clicking on the file input or browse button
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.classList.contains('btn-link')) {
+            return;
+        }
+        const fileInput = dropType === 'engagement'
+            ? document.getElementById('engagementFileInput')
+            : document.getElementById('documentFileInput');
+        if (fileInput) {
+            fileInput.click();
+        }
+    });
+}
+
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+// Check browser compatibility and show warning
+function checkBrowserCompatibility() {
+    // Skip if user has dismissed the warning
+    if (localStorage.getItem('dismissBrowserWarning') === 'true') {
+        return;
+    }
+
+    // Check if Chrome or Firefox on Mac
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+    const isFirefox = /Firefox/.test(navigator.userAgent);
+
+    if (isMac && (isChrome || isFirefox)) {
+        // Show hint in the drop zone
+        const hintEl = document.getElementById('engagementDropHint');
+        if (hintEl) {
+            hintEl.innerHTML = '<span class="warning">Tip: For Mac Outlook, drag to Desktop first, then here</span>';
+        }
+    }
+}
+
+// Handle file drop
+async function handleDrop(e, dropType) {
+    const dropZone = e.currentTarget;
+    const files = e.dataTransfer.files;
+
+    if (files.length === 0) {
+        // Check for text/calendar data (sometimes Outlook drops this)
+        const calendarData = e.dataTransfer.getData('text/calendar');
+        if (calendarData) {
+            await processCalendarData(calendarData, dropType, dropZone);
+            return;
+        }
+
+        // Check for text/plain (email preview text)
+        const textData = e.dataTransfer.getData('text/plain');
+        if (textData && textData.includes('Subject:')) {
+            showDropHint(dropZone, 'For full email content, save as .eml first', 'warning');
+            return;
+        }
+
+        showDropHint(dropZone, 'No files detected. Try dragging to Desktop first.', 'warning');
+        return;
+    }
+
+    // Process the first file
+    const file = files[0];
+    await processDroppedFile(file, dropType, dropZone);
+}
+
+// Process a dropped file
+async function processDroppedFile(file, dropType, dropZone) {
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+        showDropHint(dropZone, 'File too large. Maximum size is 10MB.', 'error');
+        return;
+    }
+
+    // Validate file extension
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    const allowedExt = dropType === 'engagement' ? ENGAGEMENT_ALLOWED_EXTENSIONS : DOCUMENT_ALLOWED_EXTENSIONS;
+
+    if (!allowedExt.includes(ext)) {
+        showDropHint(dropZone, `File type not supported. Allowed: ${allowedExt.join(', ')}`, 'error');
+        return;
+    }
+
+    // Show processing state
+    dropZone.classList.add('processing');
+    showDropHint(dropZone, 'Processing file...', '');
+
+    try {
+        if (ext === '.eml') {
+            // Parse email and show action modal
+            const parsed = await API.DocumentAPI.parseEmail(file);
+            pendingDropData = { type: 'email', data: parsed };
+            pendingDropFile = file;
+            showDropActionModal(parsed, 'email', dropType);
+        } else if (ext === '.ics' || ext === '.ical') {
+            // Parse calendar and show action modal
+            const parsed = await API.DocumentAPI.parseCalendar(file);
+            pendingDropData = { type: 'calendar', data: parsed };
+            pendingDropFile = file;
+            showDropActionModal(parsed, 'calendar', dropType);
+        } else {
+            // Non-parseable file - upload directly as document
+            if (dropType === 'document') {
+                await uploadDocument(file);
+            } else {
+                showDropHint(dropZone, 'This file type can only be saved as a document', 'warning');
+            }
+        }
+
+        showDropHint(dropZone, '', '');
+    } catch (error) {
+        console.error('Error processing dropped file:', error);
+        showDropHint(dropZone, 'Failed to process file. Please try again.', 'error');
+    } finally {
+        dropZone.classList.remove('processing');
+    }
+}
+
+// Process calendar data dropped directly
+async function processCalendarData(calendarData, dropType, dropZone) {
+    dropZone.classList.add('processing');
+
+    try {
+        // Create a Blob from the calendar data
+        const blob = new Blob([calendarData], { type: 'text/calendar' });
+        const file = new File([blob], 'event.ics', { type: 'text/calendar' });
+
+        const parsed = await API.DocumentAPI.parseCalendar(file);
+        pendingDropData = { type: 'calendar', data: parsed };
+        pendingDropFile = file;
+        showDropActionModal(parsed, 'calendar', dropType);
+    } catch (error) {
+        console.error('Error processing calendar data:', error);
+        showDropHint(dropZone, 'Failed to parse calendar data', 'error');
+    } finally {
+        dropZone.classList.remove('processing');
+    }
+}
+
+// Show hint message in drop zone
+function showDropHint(dropZone, message, type) {
+    const hintId = dropZone.id === 'engagementDropZone' ? 'engagementDropHint' : 'documentDropHint';
+    const hintEl = document.getElementById(hintId);
+    if (hintEl) {
+        hintEl.textContent = message;
+        hintEl.className = 'drop-zone__hint' + (type ? ` ${type}` : '');
+    }
+}
+
+// Handle file selection via browse button
+function handleEngagementFileSelect(event) {
+    const files = event.target.files;
+    if (files.length > 0) {
+        const dropZone = document.getElementById('engagementDropZone');
+        processDroppedFile(files[0], 'engagement', dropZone);
+    }
+    // Reset input so same file can be selected again
+    event.target.value = '';
+}
+
+function handleDocumentFileSelect(event) {
+    const files = event.target.files;
+    if (files.length > 0) {
+        const dropZone = document.getElementById('documentDropZone');
+        processDroppedFile(files[0], 'document', dropZone);
+    }
+    event.target.value = '';
+}
+
+// Show the drop action modal with parsed content preview
+function showDropActionModal(parsed, fileType, dropType) {
+    const modal = document.getElementById('dropActionModal');
+    const previewContent = document.getElementById('dropPreviewContent');
+    const description = document.getElementById('dropActionDescription');
+
+    if (fileType === 'email') {
+        description.textContent = 'You dropped an email. How would you like to save it?';
+        previewContent.innerHTML = `
+            <div class="drop-preview__row">
+                <div class="drop-preview__label">Subject</div>
+                <div class="drop-preview__value">${escapeHtml(parsed.subject || '(No subject)')}</div>
+            </div>
+            <div class="drop-preview__row">
+                <div class="drop-preview__label">From</div>
+                <div class="drop-preview__value">${escapeHtml(parsed.from_name || '')} ${escapeHtml(parsed.from_address || '')}</div>
+            </div>
+            <div class="drop-preview__row">
+                <div class="drop-preview__label">Date</div>
+                <div class="drop-preview__value">${parsed.date ? formatDate(parsed.date) : 'Unknown'}</div>
+            </div>
+        `;
+    } else if (fileType === 'calendar') {
+        description.textContent = 'You dropped a calendar event. How would you like to save it?';
+        previewContent.innerHTML = `
+            <div class="drop-preview__row">
+                <div class="drop-preview__label">Event</div>
+                <div class="drop-preview__value">${escapeHtml(parsed.summary || '(No title)')}</div>
+            </div>
+            <div class="drop-preview__row">
+                <div class="drop-preview__label">When</div>
+                <div class="drop-preview__value">${parsed.start ? formatDate(parsed.start) : 'Unknown'}</div>
+            </div>
+            ${parsed.location ? `
+            <div class="drop-preview__row">
+                <div class="drop-preview__label">Location</div>
+                <div class="drop-preview__value">${escapeHtml(parsed.location)}</div>
+            </div>
+            ` : ''}
+            ${parsed.attendees && parsed.attendees.length > 0 ? `
+            <div class="drop-preview__row">
+                <div class="drop-preview__label">Attendees</div>
+                <div class="drop-preview__value">${parsed.attendees.length} participant(s)</div>
+            </div>
+            ` : ''}
+        `;
+    }
+
+    // If dropped on engagement zone, auto-create engagement
+    if (dropType === 'engagement') {
+        saveDropAsEngagement();
+        return;
+    }
+
+    // Otherwise show modal for user choice
+    modal.classList.add('open');
+}
+
+function closeDropActionModal() {
+    const modal = document.getElementById('dropActionModal');
+    modal.classList.remove('open');
+    pendingDropData = null;
+    pendingDropFile = null;
+}
+
+// Save the dropped item as an engagement
+async function saveDropAsEngagement() {
+    closeDropActionModal();
+
+    if (!pendingDropData) return;
+
+    const customerId = getCustomerId();
+    const { type, data } = pendingDropData;
+
+    try {
+        let engagementData;
+
+        if (type === 'email') {
+            engagementData = {
+                customer_id: parseInt(customerId),
+                engagement_type: 'email',
+                title: data.subject || 'Email',
+                summary: data.body_text ? data.body_text.substring(0, 500) : '',
+                details: data.body_text || '',
+                engagement_date: data.date || new Date().toISOString(),
+                attendees: [
+                    ...(data.from_address ? [{ email: data.from_address, name: data.from_name || '' }] : []),
+                    ...(data.to_addresses || []).map(email => ({ email })),
+                ],
+            };
+        } else if (type === 'calendar') {
+            engagementData = {
+                customer_id: parseInt(customerId),
+                engagement_type: 'meeting',
+                title: data.summary || 'Meeting',
+                summary: data.description || '',
+                details: data.description || '',
+                engagement_date: data.start || new Date().toISOString(),
+                attendees: (data.attendees || []).map(a => ({
+                    email: a.email,
+                    name: a.name || '',
+                    status: a.status || 'unknown',
+                })),
+            };
+        }
+
+        // Create engagement
+        await API.EngagementAPI.create(engagementData);
+
+        // Also save the original file as a document linked to this engagement
+        // (Optional: could prompt user)
+
+        // Refresh engagements list
+        await loadRecentEngagements(customerId);
+
+        // Show success
+        showSuccessToast('Engagement created successfully');
+
+    } catch (error) {
+        console.error('Failed to create engagement:', error);
+        showErrorToast('Failed to create engagement');
+    }
+
+    pendingDropData = null;
+    pendingDropFile = null;
+}
+
+// Save the dropped item as a document
+async function saveDropAsDocument() {
+    closeDropActionModal();
+
+    if (!pendingDropFile) return;
+
+    await uploadDocument(pendingDropFile);
+
+    pendingDropData = null;
+    pendingDropFile = null;
+}
+
+// Upload a file as a document
+async function uploadDocument(file) {
+    const customerId = getCustomerId();
+
+    try {
+        await API.DocumentAPI.upload(customerId, file, { source: 'drag_drop' });
+
+        // Refresh documents list
+        await loadDocuments(customerId);
+
+        showSuccessToast('Document uploaded successfully');
+
+    } catch (error) {
+        console.error('Failed to upload document:', error);
+        showErrorToast('Failed to upload document');
+    }
+}
+
+// Simple toast notifications
+function showSuccessToast(message) {
+    showToast(message, 'success');
+}
+
+function showErrorToast(message) {
+    showToast(message, 'error');
+}
+
+function showToast(message, type) {
+    // Remove existing toast
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 12px 24px;
+        border-radius: 4px;
+        background: ${type === 'success' ? 'var(--cds-support-success)' : 'var(--cds-support-error)'};
+        color: white;
+        font-size: 14px;
+        z-index: 10000;
+        animation: slideUp 0.3s ease;
+    `;
+    toast.textContent = message;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'slideDown 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// Browser warning modal functions
+function closeBrowserWarningModal() {
+    const modal = document.getElementById('browserWarningModal');
+    modal.classList.remove('open');
+
+    // Check if user wants to dismiss permanently
+    const checkbox = document.getElementById('dontShowBrowserWarning');
+    if (checkbox && checkbox.checked) {
+        localStorage.setItem('dismissBrowserWarning', 'true');
+    }
+}
+
+// Expose drag-drop functions globally
+window.handleEngagementFileSelect = handleEngagementFileSelect;
+window.handleDocumentFileSelect = handleDocumentFileSelect;
+window.closeDropActionModal = closeDropActionModal;
+window.saveDropAsEngagement = saveDropAsEngagement;
+window.saveDropAsDocument = saveDropAsDocument;
+window.closeBrowserWarningModal = closeBrowserWarningModal;
+
+// ==================== END DRAG & DROP ====================

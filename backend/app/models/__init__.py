@@ -13,6 +13,7 @@ from .assessment import (
 )
 from .lookup import LookupValue
 from .meeting_note import MeetingNote
+from .document import Document
 
 __all__ = [
     "User", "UserRole",
@@ -28,4 +29,5 @@ __all__ = [
     "CustomerAssessment", "AssessmentResponse", "AssessmentStatus",
     "LookupValue",
     "MeetingNote",
+    "Document",
 ]

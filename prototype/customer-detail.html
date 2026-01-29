@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Acme Corporation - Customer Status Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=22">
+  <link rel="stylesheet" href="css/styles.css?v=23">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     .customer-header {
@@ -957,6 +957,19 @@
               </button>
             </div>
           </div>
+          <!-- Engagement Drop Zone -->
+          <div class="drop-zone" id="engagementDropZone" data-drop-type="engagement">
+            <div class="drop-zone__icon">
+              <svg width="32" height="32" viewBox="0 0 32 32"><path d="M17.74 30L16 29l4-7h6a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h9v2H6a4 4 0 01-4-4V8a4 4 0 014-4h20a4 4 0 014 4v12a4 4 0 01-4 4h-4.84z"/></svg>
+            </div>
+            <div class="drop-zone__content">
+              <strong>Drop Outlook emails or calendar events here</strong>
+              <span>Or <button type="button" class="btn-link" onclick="document.getElementById('engagementFileInput').click()">browse files</button> (.eml, .ics)</span>
+            </div>
+            <input type="file" id="engagementFileInput" accept=".eml,.ics,.ical" style="display:none" onchange="handleEngagementFileSelect(event)">
+            <div class="drop-zone__hint" id="engagementDropHint"></div>
+          </div>
+
           <div id="engagementsTabContainer" style="padding: 16px;">
             <div class="text-secondary text-center">Loading engagements...</div>
           </div>
@@ -1025,6 +1038,19 @@
               </button>
             </div>
           </div>
+          <!-- Document Drop Zone -->
+          <div class="drop-zone" id="documentDropZone" data-drop-type="document">
+            <div class="drop-zone__icon">
+              <svg width="32" height="32" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/><path d="M10 22h12v2H10zm0-6h12v2H10z"/></svg>
+            </div>
+            <div class="drop-zone__content">
+              <strong>Drop files to attach</strong>
+              <span>Or <button type="button" class="btn-link" onclick="document.getElementById('documentFileInput').click()">browse files</button></span>
+            </div>
+            <input type="file" id="documentFileInput" multiple style="display:none" onchange="handleDocumentFileSelect(event)">
+            <div class="drop-zone__hint" id="documentDropHint"></div>
+          </div>
+
           <div id="documentsTabContainer" style="padding: 16px;">
             <div class="text-secondary text-center">Loading documents...</div>
           </div>
@@ -1821,6 +1847,79 @@
           </div>
         </div>
       </div>
+
+      <!-- Drop Action Modal (for choosing engagement vs document) -->
+      <div class="modal" id="dropActionModal">
+        <div class="modal__overlay" onclick="closeDropActionModal()"></div>
+        <div class="modal__container" style="max-width: 500px;">
+          <div class="modal__header">
+            <h2 class="modal__title">Save Dropped Item</h2>
+            <button class="modal__close" onclick="closeDropActionModal()">&times;</button>
+          </div>
+          <div class="modal__body">
+            <p style="margin-bottom: 16px;" id="dropActionDescription">How would you like to save this item?</p>
+
+            <!-- Preview of dropped content -->
+            <div class="drop-preview" id="dropPreview" style="background: var(--cds-layer-02); padding: 12px; border-radius: 4px; margin-bottom: 16px;">
+              <div id="dropPreviewContent"></div>
+            </div>
+
+            <div class="drop-action-options">
+              <button type="button" class="drop-action-btn" onclick="saveDropAsEngagement()">
+                <div class="drop-action-btn__icon">
+                  <svg width="24" height="24" viewBox="0 0 32 32"><path d="M17.74 30L16 29l4-7h6a2 2 0 002-2V8a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h9v2H6a4 4 0 01-4-4V8a4 4 0 014-4h20a4 4 0 014 4v12a4 4 0 01-4 4h-4.84z"/></svg>
+                </div>
+                <div class="drop-action-btn__content">
+                  <strong>Create Engagement</strong>
+                  <span>Log as an email, meeting, or call interaction</span>
+                </div>
+              </button>
+              <button type="button" class="drop-action-btn" onclick="saveDropAsDocument()">
+                <div class="drop-action-btn__icon">
+                  <svg width="24" height="24" viewBox="0 0 32 32"><path d="M25.7 9.3l-7-7A.91.91 0 0018 2H8a2 2 0 00-2 2v24a2 2 0 002 2h16a2 2 0 002-2V10a.91.91 0 00-.3-.7zM18 4.4l5.6 5.6H18zM24 28H8V4h8v6a2 2 0 002 2h6z"/></svg>
+                </div>
+                <div class="drop-action-btn__content">
+                  <strong>Save as Document</strong>
+                  <span>Store in customer documents for reference</span>
+                </div>
+              </button>
+            </div>
+          </div>
+          <div class="modal__footer">
+            <button type="button" class="btn btn--ghost" onclick="closeDropActionModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Browser Warning Modal -->
+      <div class="modal" id="browserWarningModal">
+        <div class="modal__overlay" onclick="closeBrowserWarningModal()"></div>
+        <div class="modal__container" style="max-width: 500px;">
+          <div class="modal__header">
+            <h2 class="modal__title">Browser Compatibility Note</h2>
+            <button class="modal__close" onclick="closeBrowserWarningModal()">&times;</button>
+          </div>
+          <div class="modal__body">
+            <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px;">
+              <svg width="24" height="24" viewBox="0 0 32 32" fill="#f1c21b"><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-1 6h2v12h-2V8zm1 17c-.8 0-1.5-.7-1.5-1.5S15.2 22 16 22s1.5.7 1.5 1.5S16.8 25 16 25z"/></svg>
+              <div>
+                <p style="margin-bottom: 12px;"><strong>Direct drag-and-drop from Mac Outlook may not work in this browser.</strong></p>
+                <p style="margin-bottom: 12px;">This is a known limitation with Chrome and Firefox on macOS.</p>
+                <p><strong>Workaround:</strong> First drag the email or calendar event to your Desktop to create a file, then drag that file here.</p>
+              </div>
+            </div>
+            <div style="background: var(--cds-layer-02); padding: 12px; border-radius: 4px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="dontShowBrowserWarning" style="width: 16px; height: 16px;">
+                <span>Don't show this message again</span>
+              </label>
+            </div>
+          </div>
+          <div class="modal__footer">
+            <button type="button" class="btn btn--primary" onclick="closeBrowserWarningModal()">Got it</button>
+          </div>
+        </div>
+      </div>
     </main>
 
     <!-- Mobile Bottom Navigation -->
@@ -1863,6 +1962,6 @@
   <script src="js/auth.js?v=5"></script>
   <script src="js/api.js?v=13"></script>
   <script src="js/table-sort.js?v=1"></script>
-  <script src="js/customer-detail.js?v=31"></script>
+  <script src="js/customer-detail.js?v=32"></script>
 </body>
 </html>
