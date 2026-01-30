@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 ## Customer Status Tracker
 
-**Version:** 1.6
-**Date:** January 8, 2026
+**Version:** 1.7
+**Date:** January 30, 2026
 **Author:** Product Team
 **Status:** Requirements Complete
 
@@ -619,6 +619,58 @@ Partner Portal Navigation:
 └── My Account
     ├── Profile
     └── Notification Settings
+```
+
+### 5.11 Implementation Flow Visualization
+**Priority: P1 (Should Have)**
+
+A Sankey diagram visualization showing the flow from assessment dimension gaps to recommended use cases to TargetProcess features, helping CSMs understand what a customer should implement based on their assessment scores.
+
+#### Flow Visualization
+| Requirement | Description |
+|-------------|-------------|
+| **Sankey Diagram** | Visual flow chart showing dimension gaps → use cases → TP features |
+| **Color Coding** | Red (< 2.0), Orange (< 3.0), Yellow (< 4.0) based on dimension scores |
+| **Flow Thickness** | Link thickness based on impact weight |
+| **Interactive** | Click to expand to full-screen modal view |
+| **Export** | Copy to clipboard and download as image |
+
+#### Data Sources
+| Requirement | Description |
+|-------------|-------------|
+| **Assessment Data** | Customer's latest completed assessment with dimension scores |
+| **Gap Threshold** | Configurable threshold (default 3.5) for identifying weak dimensions |
+| **Use Case Mappings** | DimensionUseCaseMapping table linking dimensions to recommended use cases |
+| **TP Feature Mappings** | UseCaseTPFeatureMapping table linking use cases to TargetProcess features |
+
+#### Summary Statistics
+| Metric | Description |
+|--------|-------------|
+| **Weak Dimensions** | Count of dimensions below threshold |
+| **Recommended Use Cases** | Count of use cases that address gaps |
+| **TP Features** | Count of TargetProcess features to implement |
+
+#### API Endpoint
+```
+GET /api/v1/assessments/customer/{customer_id}/flow-visualization
+
+Response:
+{
+  "customer_id": 123,
+  "assessment_id": 456,
+  "nodes": [
+    {"id": "dim_1", "name": "Organization", "score": 2.1, "gap": 1.4, "type": "dimension"},
+    {"id": "uc_1", "name": "Strategic Resource Mgmt", "solution_area": "WFM", "type": "use_case"},
+    {"id": "tp_1", "name": "Resource Capacity", "tp_id": 12345, "is_required": true, "type": "tp_feature"}
+  ],
+  "links": [
+    {"source": "dim_1", "target": "uc_1", "value": 0.8, "impact_weight": 0.8},
+    {"source": "uc_1", "target": "tp_1", "value": 1.0, "is_required": true}
+  ],
+  "weak_dimensions_count": 3,
+  "recommended_use_cases_count": 5,
+  "tp_features_count": 8
+}
 ```
 
 ---
@@ -1779,6 +1831,7 @@ The following are explicitly **not** included in the initial release:
 | 1.4 | Jan 8, 2026 | Product Team | Added: Responsive design for desktop and mobile, PWA features, offline capabilities, touch interactions, mobile-specific UI patterns |
 | 1.5 | Jan 8, 2026 | Product Team | All 22 open questions resolved. Requirements complete. |
 | 1.6 | Jan 8, 2026 | Product Team | Added: Customer Usage Framework with Adoption Steps (journey tracking) and Use Case Checklist |
+| 1.7 | Jan 30, 2026 | Product Team | Added: Implementation Flow visualization with Sankey diagram showing assessment gaps → recommended use cases → TP features flow |
 
 ---
 
