@@ -1574,6 +1574,10 @@ input[type="file"].form-input::file-selector-button:hover {
   }
 }
 
+.animate-spin {
+  animation: spin 0.8s linear infinite;
+}
+
 .gap-4 {
   gap: var(--cds-spacing-05);
 }

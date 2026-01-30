@@ -7239,6 +7239,10 @@ window.loadTargets = loadTargets;
 let flowSankeyChart = null;
 let largeFlowSankeyChart = null;
 let flowVisualizationData = null;
+let flowFilterState = {
+    dimension: 'all',
+    useCase: 'all'
+};
 
 // Get color based on dimension score
 function getDimensionColor(score) {
@@ -7285,6 +7289,9 @@ async function loadFlowVisualization(customerId) {
         document.getElementById('flowUseCasesCount').textContent = flowVisualizationData.recommended_use_cases_count;
         document.getElementById('flowTPFeaturesCount').textContent = flowVisualizationData.tp_features_count;
 
+        // Populate filter dropdowns
+        populateFlowFilters();
+
         // Render tables
         renderFlowDimensionsTable();
         renderFlowUseCasesTable();
@@ -7292,6 +7299,10 @@ async function loadFlowVisualization(customerId) {
 
         // Render Sankey chart
         renderFlowSankeyChart('flowSankeyChart', false);
+
+        // Update export title with customer name
+        const customerName = document.getElementById('customerName')?.textContent || 'Customer';
+        document.getElementById('flowExportTitleText').textContent = `${customerName} - Implementation Flow`;
 
     } catch (error) {
         console.error('Failed to load flow visualization:', error);
@@ -7448,7 +7459,203 @@ function renderFlowTPFeaturesTable() {
     }).join('');
 }
 
-// Render Sankey chart
+// Refresh flow visualization
+function refreshFlowVisualization() {
+    const customerId = getCustomerId();
+    if (customerId) {
+        loadFlowVisualization(customerId);
+    }
+}
+
+// Open flow chart modal
+function openFlowChartModal() {
+    document.getElementById('flowChartModal').classList.add('open');
+    // Sync filters from main view to modal
+    syncFlowFilters();
+    // Render the large chart after modal opens
+    setTimeout(() => {
+        renderFlowSankeyChart('flowSankeyChartLarge', true);
+    }, 100);
+}
+
+// Close flow chart modal
+function closeFlowChartModal() {
+    document.getElementById('flowChartModal').classList.remove('open');
+    if (largeFlowSankeyChart) {
+        largeFlowSankeyChart.destroy();
+        largeFlowSankeyChart = null;
+    }
+}
+
+// Copy flow chart to clipboard
+async function copyFlowChartToClipboard() {
+    const canvas = document.getElementById('flowSankeyChartLarge');
+    if (!canvas) return;
+
+    try {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+        ]);
+        alert('Chart copied to clipboard!');
+    } catch (error) {
+        console.error('Failed to copy chart:', error);
+        alert('Failed to copy chart. Try downloading instead.');
+    }
+}
+
+// Download flow chart (legacy - keep for compatibility)
+function downloadFlowChart() {
+    const canvas = document.getElementById('flowSankeyChartLarge');
+    if (!canvas) return;
+
+    const link = document.createElement('a');
+    link.download = `implementation-flow-${getCustomerId()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+}
+
+// Populate filter dropdowns
+function populateFlowFilters() {
+    if (!flowVisualizationData) return;
+
+    const dimensions = flowVisualizationData.nodes.filter(n => n.type === 'dimension');
+    const useCases = flowVisualizationData.nodes.filter(n => n.type === 'use_case');
+
+    // Populate dimension filters (main and modal)
+    const dimSelects = [
+        document.getElementById('flowDimensionFilter'),
+        document.getElementById('flowDimensionFilterModal')
+    ];
+
+    dimSelects.forEach(select => {
+        if (!select) return;
+        select.innerHTML = '<option value="all">All Dimensions</option>';
+        dimensions.forEach(dim => {
+            const option = document.createElement('option');
+            option.value = dim.id;
+            option.textContent = `${dim.name} (${dim.score?.toFixed(1) || '-'})`;
+            select.appendChild(option);
+        });
+    });
+
+    // Populate use case filters (main and modal)
+    const ucSelects = [
+        document.getElementById('flowUseCaseFilter'),
+        document.getElementById('flowUseCaseFilterModal')
+    ];
+
+    ucSelects.forEach(select => {
+        if (!select) return;
+        select.innerHTML = '<option value="all">All Use Cases</option>';
+        useCases.forEach(uc => {
+            const option = document.createElement('option');
+            option.value = uc.id;
+            option.textContent = uc.name;
+            select.appendChild(option);
+        });
+    });
+}
+
+// Get filtered flow data based on current filter state
+function getFilteredFlowData() {
+    if (!flowVisualizationData) return { nodes: [], links: [] };
+
+    let filteredLinks = [...flowVisualizationData.links];
+    let filteredNodeIds = new Set();
+
+    // Apply dimension filter
+    if (flowFilterState.dimension !== 'all') {
+        // Keep only links that originate from the selected dimension
+        filteredLinks = filteredLinks.filter(link => {
+            if (link.source === flowFilterState.dimension) {
+                return true;
+            }
+            // Check if the link is a downstream link (use case -> TP feature)
+            if (link.source.startsWith('uc_')) {
+                // Check if this use case is connected to the filtered dimension
+                return flowVisualizationData.links.some(l =>
+                    l.source === flowFilterState.dimension && l.target === link.source
+                );
+            }
+            return false;
+        });
+    }
+
+    // Apply use case filter
+    if (flowFilterState.useCase !== 'all') {
+        filteredLinks = filteredLinks.filter(link => {
+            // Keep links where the use case is either source or target
+            if (link.source === flowFilterState.useCase || link.target === flowFilterState.useCase) {
+                return true;
+            }
+            // Check if it's a TP feature link from the selected use case
+            if (link.source.startsWith('uc_') && link.source === flowFilterState.useCase) {
+                return true;
+            }
+            return false;
+        });
+    }
+
+    // Collect all node IDs from filtered links
+    filteredLinks.forEach(link => {
+        filteredNodeIds.add(link.source);
+        filteredNodeIds.add(link.target);
+    });
+
+    // Filter nodes to only include those in the filtered links
+    const filteredNodes = flowVisualizationData.nodes.filter(n => filteredNodeIds.has(n.id));
+
+    return { nodes: filteredNodes, links: filteredLinks };
+}
+
+// Apply flow filters
+function applyFlowFilters(isModal = false) {
+    const dimSelect = isModal
+        ? document.getElementById('flowDimensionFilterModal')
+        : document.getElementById('flowDimensionFilter');
+    const ucSelect = isModal
+        ? document.getElementById('flowUseCaseFilterModal')
+        : document.getElementById('flowUseCaseFilter');
+
+    if (dimSelect) flowFilterState.dimension = dimSelect.value;
+    if (ucSelect) flowFilterState.useCase = ucSelect.value;
+
+    // Sync filters between main and modal
+    syncFlowFilters();
+
+    // Re-render charts
+    renderFlowSankeyChart('flowSankeyChart', false);
+    if (document.getElementById('flowChartModal')?.classList.contains('open')) {
+        renderFlowSankeyChart('flowSankeyChartLarge', true);
+    }
+}
+
+// Sync filter values between main view and modal
+function syncFlowFilters() {
+    const mainDimSelect = document.getElementById('flowDimensionFilter');
+    const modalDimSelect = document.getElementById('flowDimensionFilterModal');
+    const mainUcSelect = document.getElementById('flowUseCaseFilter');
+    const modalUcSelect = document.getElementById('flowUseCaseFilterModal');
+
+    if (mainDimSelect) mainDimSelect.value = flowFilterState.dimension;
+    if (modalDimSelect) modalDimSelect.value = flowFilterState.dimension;
+    if (mainUcSelect) mainUcSelect.value = flowFilterState.useCase;
+    if (modalUcSelect) modalUcSelect.value = flowFilterState.useCase;
+}
+
+// Reset flow filters
+function resetFlowFilters(isModal = false) {
+    flowFilterState.dimension = 'all';
+    flowFilterState.useCase = 'all';
+    syncFlowFilters();
+    applyFlowFilters(isModal);
+}
+
+// Updated render function to use filtered data
+const originalRenderFlowSankeyChart = renderFlowSankeyChart;
+
+// Override renderFlowSankeyChart to use filtered data
 function renderFlowSankeyChart(canvasId, isLarge = false) {
     const ctx = document.getElementById(canvasId);
     if (!ctx || !flowVisualizationData) return;
@@ -7467,10 +7674,13 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
         return;
     }
 
+    // Get filtered data
+    const filteredData = getFilteredFlowData();
+
     // Transform data for Chart.js Sankey format
-    const chartData = flowVisualizationData.links.map(link => {
-        const sourceNode = flowVisualizationData.nodes.find(n => n.id === link.source);
-        const targetNode = flowVisualizationData.nodes.find(n => n.id === link.target);
+    const chartData = filteredData.links.map(link => {
+        const sourceNode = filteredData.nodes.find(n => n.id === link.source);
+        const targetNode = filteredData.nodes.find(n => n.id === link.target);
 
         if (!sourceNode || !targetNode) return null;
 
@@ -7495,11 +7705,21 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
     }).filter(Boolean);
 
     if (chartData.length === 0) {
-        ctx.parentElement.innerHTML = '<div class="text-secondary text-center" style="padding: 48px;">No flow data to display</div>';
+        ctx.parentElement.innerHTML = '<div class="text-secondary text-center" style="padding: 48px;">No data matches the current filter</div>';
         return;
     }
 
-    const chart = new Chart(ctx, {
+    // Ensure the canvas is in DOM
+    if (!ctx.parentElement.querySelector('canvas')) {
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = canvasId;
+        ctx.parentElement.innerHTML = '';
+        ctx.parentElement.appendChild(newCanvas);
+    }
+
+    const canvasEl = document.getElementById(canvasId);
+
+    const chart = new Chart(canvasEl, {
         type: 'sankey',
         data: {
             datasets: [{
@@ -7548,58 +7768,107 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
     }
 }
 
-// Refresh flow visualization
-function refreshFlowVisualization() {
-    const customerId = getCustomerId();
-    if (customerId) {
-        loadFlowVisualization(customerId);
+// Copy entire flow visual to clipboard for PowerPoint
+async function copyFlowVisualToClipboard() {
+    const container = document.getElementById('flowExportContainer');
+    if (!container) {
+        alert('Export container not found');
+        return;
     }
-}
-
-// Open flow chart modal
-function openFlowChartModal() {
-    document.getElementById('flowChartModal').classList.add('open');
-    // Render the large chart after modal opens
-    setTimeout(() => {
-        renderFlowSankeyChart('flowSankeyChartLarge', true);
-    }, 100);
-}
-
-// Close flow chart modal
-function closeFlowChartModal() {
-    document.getElementById('flowChartModal').classList.remove('open');
-    if (largeFlowSankeyChart) {
-        largeFlowSankeyChart.destroy();
-        largeFlowSankeyChart = null;
-    }
-}
-
-// Copy flow chart to clipboard
-async function copyFlowChartToClipboard() {
-    const canvas = document.getElementById('flowSankeyChartLarge');
-    if (!canvas) return;
 
     try {
+        // Show loading state
+        const copyBtn = event?.target?.closest('button');
+        const originalText = copyBtn?.innerHTML;
+        if (copyBtn) {
+            copyBtn.innerHTML = '<svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg> Copying...';
+            copyBtn.disabled = true;
+        }
+
+        // Use html2canvas to capture the entire container
+        const canvas = await html2canvas(container, {
+            backgroundColor: '#ffffff',
+            scale: 2, // Higher resolution for better quality in PPT
+            useCORS: true,
+            logging: false
+        });
+
+        // Convert to blob and copy
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         await navigator.clipboard.write([
             new ClipboardItem({ 'image/png': blob })
         ]);
-        alert('Chart copied to clipboard!');
+
+        // Show success
+        if (copyBtn) {
+            copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+            setTimeout(() => {
+                copyBtn.innerHTML = originalText;
+                copyBtn.disabled = false;
+            }, 2000);
+        } else {
+            alert('Image copied to clipboard! You can now paste it into PowerPoint.');
+        }
+
     } catch (error) {
-        console.error('Failed to copy chart:', error);
-        alert('Failed to copy chart. Try downloading instead.');
+        console.error('Failed to copy visual:', error);
+        alert('Failed to copy. Try downloading instead.');
+        if (copyBtn) {
+            copyBtn.innerHTML = originalText;
+            copyBtn.disabled = false;
+        }
     }
 }
 
-// Download flow chart
-function downloadFlowChart() {
-    const canvas = document.getElementById('flowSankeyChartLarge');
-    if (!canvas) return;
+// Download entire flow visual as image
+async function downloadFlowVisual() {
+    const container = document.getElementById('flowExportContainer');
+    if (!container) {
+        alert('Export container not found');
+        return;
+    }
 
-    const link = document.createElement('a');
-    link.download = `implementation-flow-${getCustomerId()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    try {
+        // Show loading state
+        const downloadBtn = event?.target?.closest('button');
+        const originalText = downloadBtn?.innerHTML;
+        if (downloadBtn) {
+            downloadBtn.innerHTML = '<svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/></svg> Preparing...';
+            downloadBtn.disabled = true;
+        }
+
+        // Use html2canvas to capture the entire container
+        const canvas = await html2canvas(container, {
+            backgroundColor: '#ffffff',
+            scale: 2, // Higher resolution for better quality
+            useCORS: true,
+            logging: false
+        });
+
+        // Get customer name for filename
+        const customerName = document.getElementById('customerName')?.textContent || 'Customer';
+        const safeName = customerName.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+
+        // Download
+        const link = document.createElement('a');
+        link.download = `implementation-flow-${safeName}-${getCustomerId()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+
+        // Reset button
+        if (downloadBtn) {
+            downloadBtn.innerHTML = originalText;
+            downloadBtn.disabled = false;
+        }
+
+    } catch (error) {
+        console.error('Failed to download visual:', error);
+        alert('Failed to download. Please try again.');
+        if (downloadBtn) {
+            downloadBtn.innerHTML = originalText;
+            downloadBtn.disabled = false;
+        }
+    }
 }
 
 // Export flow visualization functions
@@ -7609,3 +7878,7 @@ window.openFlowChartModal = openFlowChartModal;
 window.closeFlowChartModal = closeFlowChartModal;
 window.copyFlowChartToClipboard = copyFlowChartToClipboard;
 window.downloadFlowChart = downloadFlowChart;
+window.applyFlowFilters = applyFlowFilters;
+window.resetFlowFilters = resetFlowFilters;
+window.copyFlowVisualToClipboard = copyFlowVisualToClipboard;
+window.downloadFlowVisual = downloadFlowVisual;

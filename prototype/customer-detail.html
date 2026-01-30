@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="css/chat.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0/dist/chartjs-chart-sankey.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     .customer-header {
       background: linear-gradient(135deg, #161616 0%, #393939 100%);
@@ -1411,6 +1412,25 @@
                 </button>
               </div>
               <div class="card__body">
+                <!-- Filter Controls -->
+                <div class="flow-filters" style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+                  <div class="flow-filter-group">
+                    <label style="font-size: 12px; font-weight: 500; color: var(--cds-text-secondary); margin-right: 8px;">Filter by Dimension:</label>
+                    <select id="flowDimensionFilter" class="form-select" style="min-width: 180px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--cds-border-strong); font-size: 13px;" onchange="applyFlowFilters()">
+                      <option value="all">All Dimensions</option>
+                    </select>
+                  </div>
+                  <div class="flow-filter-group">
+                    <label style="font-size: 12px; font-weight: 500; color: var(--cds-text-secondary); margin-right: 8px;">Filter by Use Case:</label>
+                    <select id="flowUseCaseFilter" class="form-select" style="min-width: 200px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--cds-border-strong); font-size: 13px;" onchange="applyFlowFilters()">
+                      <option value="all">All Use Cases</option>
+                    </select>
+                  </div>
+                  <button class="btn btn--ghost btn--sm" onclick="resetFlowFilters()" style="font-size: 12px;">
+                    <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
+                    Reset
+                  </button>
+                </div>
                 <div class="flow-chart-container" onclick="openFlowChartModal()" style="height: 350px; cursor: pointer; border-radius: 8px; transition: all 0.2s ease;">
                   <canvas id="flowSankeyChart"></canvas>
                 </div>
@@ -1499,29 +1519,80 @@
         <!-- Flow Chart Modal -->
         <div class="modal" id="flowChartModal">
           <div class="modal__overlay" onclick="closeFlowChartModal()"></div>
-          <div class="modal__container" style="max-width: 1000px; max-height: 90vh;">
+          <div class="modal__container" style="max-width: 1100px; max-height: 90vh;">
             <div class="modal__header">
               <h2 class="modal__title">Assessment -> Use Case -> TP Feature Flow</h2>
               <button class="modal__close" onclick="closeFlowChartModal()">&times;</button>
             </div>
-            <div class="modal__body" style="height: 600px; padding: 24px;">
-              <canvas id="flowSankeyChartLarge"></canvas>
+            <div class="modal__body" style="padding: 24px;">
+              <!-- Modal Filter Controls -->
+              <div class="flow-filters" style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+                <div class="flow-filter-group">
+                  <label style="font-size: 12px; font-weight: 500; color: var(--cds-text-secondary); margin-right: 8px;">Filter by Dimension:</label>
+                  <select id="flowDimensionFilterModal" class="form-select" style="min-width: 180px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--cds-border-strong); font-size: 13px;" onchange="applyFlowFilters(true)">
+                    <option value="all">All Dimensions</option>
+                  </select>
+                </div>
+                <div class="flow-filter-group">
+                  <label style="font-size: 12px; font-weight: 500; color: var(--cds-text-secondary); margin-right: 8px;">Filter by Use Case:</label>
+                  <select id="flowUseCaseFilterModal" class="form-select" style="min-width: 200px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--cds-border-strong); font-size: 13px;" onchange="applyFlowFilters(true)">
+                    <option value="all">All Use Cases</option>
+                  </select>
+                </div>
+                <button class="btn btn--ghost btn--sm" onclick="resetFlowFilters(true)" style="font-size: 12px;">
+                  <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
+                  Reset
+                </button>
+              </div>
+
+              <!-- Exportable Container (includes title, chart, and legend) -->
+              <div id="flowExportContainer" style="background: white; padding: 20px; border-radius: 8px;">
+                <!-- Title for export -->
+                <div id="flowExportTitle" style="text-align: center; margin-bottom: 16px;">
+                  <h3 style="font-size: 18px; font-weight: 600; color: #161616; margin: 0;" id="flowExportTitleText">Implementation Flow</h3>
+                  <p style="font-size: 12px; color: #525252; margin: 4px 0 0 0;" id="flowExportSubtitle">Assessment Gaps → Recommended Use Cases → TP Features</p>
+                </div>
+
+                <!-- Chart Container -->
+                <div style="height: 450px;">
+                  <canvas id="flowSankeyChartLarge"></canvas>
+                </div>
+
+                <!-- Legend for export -->
+                <div id="flowExportLegend" style="display: flex; justify-content: center; gap: 24px; margin-top: 16px; padding: 12px; background: #f4f4f4; border-radius: 6px;">
+                  <span style="display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background: #da1e28;"></span> Critical (&lt; 2.0)
+                  </span>
+                  <span style="display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background: #ff832b;"></span> Needs Work (&lt; 3.0)
+                  </span>
+                  <span style="display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background: #f1c21b;"></span> Below Target (&lt; 4.0)
+                  </span>
+                  <span style="display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background: #0f62fe;"></span> Use Cases
+                  </span>
+                  <span style="display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background: #8a3ffc;"></span> TP Features
+                  </span>
+                </div>
+              </div>
             </div>
             <div class="modal__footer" style="justify-content: center;">
-              <button type="button" class="btn btn--secondary" onclick="copyFlowChartToClipboard()">
+              <button type="button" class="btn btn--primary" onclick="copyFlowVisualToClipboard()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
-                Copy to Clipboard
+                Copy for PowerPoint
               </button>
-              <button type="button" class="btn btn--secondary" onclick="downloadFlowChart()">
+              <button type="button" class="btn btn--secondary" onclick="downloadFlowVisual()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                Download
+                Download Image
               </button>
             </div>
           </div>
