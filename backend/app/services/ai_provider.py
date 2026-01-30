@@ -138,10 +138,15 @@ class OllamaProvider(AIProvider):
                 # Check for tool calls in response
                 if "tool_calls" in message:
                     for tc in message["tool_calls"]:
+                        # Handle arguments - may be string (JSON) or dict
+                        args = tc.get("function", {}).get("arguments", {})
+                        if isinstance(args, str):
+                            args = json.loads(args) if args else {}
+
                         tool_calls.append(AIToolCall(
                             id=tc.get("id", f"call_{len(tool_calls)}"),
                             name=tc.get("function", {}).get("name", ""),
-                            arguments=json.loads(tc.get("function", {}).get("arguments", "{}"))
+                            arguments=args
                         ))
 
                 stop_reason = "tool_use" if tool_calls else "end_turn"
