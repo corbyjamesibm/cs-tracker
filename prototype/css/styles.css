@@ -2009,6 +2009,36 @@ input[type="file"].form-input::file-selector-button:hover {
   max-width: 500px;
   margin: 0 auto;
   padding: 16px 32px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.assessment-chart-container:hover {
+  background: rgba(15, 98, 254, 0.05);
+  box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.2);
+}
+
+.assessment-chart-container::after {
+  content: 'Click to enlarge';
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  font-size: 11px;
+  color: #737373;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.assessment-chart-container:hover::after {
+  opacity: 1;
+}
+
+/* Button success state */
+.btn--success {
+  background-color: #10b981 !important;
+  border-color: #10b981 !important;
+  color: white !important;
 }
 
 /* Comparison Legend */
@@ -3107,4 +3137,405 @@ input[type="file"].form-input::file-selector-button:hover {
     opacity: 0;
     transform: translateY(20px);
   }
+}
+
+/* ==========================================
+   ASSESSMENT TARGETS
+   ========================================== */
+
+.target-card {
+  background: var(--cds-layer-02);
+  border: 1px solid var(--cds-border-subtle-01);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: box-shadow 0.2s ease;
+}
+
+.target-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.target-card.active {
+  border-left: 3px solid var(--cds-interactive);
+}
+
+.target-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.target-card__name {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.target-card__date {
+  font-size: 12px;
+  color: var(--cds-text-secondary);
+}
+
+.target-card__status {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.target-card__status--achieved {
+  background: rgba(36, 161, 72, 0.15);
+  color: var(--cds-support-success);
+}
+
+.target-card__status--on-track {
+  background: rgba(15, 98, 254, 0.15);
+  color: var(--cds-interactive);
+}
+
+.target-card__status--needs-attention {
+  background: rgba(241, 194, 27, 0.2);
+  color: #8e6a00;
+}
+
+.target-card__status--at-risk {
+  background: rgba(218, 30, 40, 0.15);
+  color: var(--cds-support-error);
+}
+
+.target-card__scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.target-score-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--cds-layer-01);
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+}
+
+.target-score-chip__value {
+  font-weight: 600;
+  color: var(--cds-interactive);
+}
+
+.target-card__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.target-dimension-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.target-dimension-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.target-dimension-row__name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--cds-text-secondary);
+}
+
+.target-dimension-row__input {
+  width: 80px;
+}
+
+.target-dimension-row__slider {
+  flex: 2;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cds-border-subtle-01);
+  outline: none;
+}
+
+.target-dimension-row__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--cds-interactive);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ==========================================
+   EDIT SCORES MODE
+   ========================================== */
+
+.edit-scores-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.edit-scores-table th,
+.edit-scores-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.edit-scores-table th {
+  background: var(--cds-layer-02);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cds-text-secondary);
+}
+
+.edit-scores-table tbody tr:hover {
+  background: var(--cds-layer-hover-01);
+}
+
+.edit-score-input {
+  width: 60px;
+  padding: 6px 10px;
+  border: 1px solid var(--cds-border-strong-01);
+  border-radius: 4px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.edit-score-input:focus {
+  outline: none;
+  border-color: var(--cds-interactive);
+  box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.2);
+}
+
+.edit-score-input.changed {
+  border-color: var(--cds-support-warning);
+  background: rgba(241, 194, 27, 0.1);
+}
+
+.score-change-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.score-change-indicator--up {
+  color: var(--cds-support-success);
+}
+
+.score-change-indicator--down {
+  color: var(--cds-support-error);
+}
+
+/* ==========================================
+   AUDIT TRAIL
+   ========================================== */
+
+.audit-trail {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.audit-entry {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.audit-entry:last-child {
+  border-bottom: none;
+}
+
+.audit-entry__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--cds-layer-02);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--cds-text-secondary);
+}
+
+.audit-entry__content {
+  flex: 1;
+}
+
+.audit-entry__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.audit-entry__user {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.audit-entry__time {
+  font-size: 11px;
+  color: var(--cds-text-secondary);
+}
+
+.audit-entry__change {
+  font-size: 13px;
+  color: var(--cds-text-secondary);
+  margin-bottom: 4px;
+}
+
+.audit-entry__change-values {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.audit-entry__old-value {
+  color: var(--cds-support-error);
+  text-decoration: line-through;
+}
+
+.audit-entry__new-value {
+  color: var(--cds-support-success);
+  font-weight: 500;
+}
+
+.audit-entry__reason {
+  font-size: 12px;
+  color: var(--cds-text-secondary);
+  font-style: italic;
+  background: var(--cds-layer-02);
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+/* ==========================================
+   GAP ANALYSIS
+   ========================================== */
+
+.gap-analysis-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--cds-border-subtle-01);
+}
+
+.gap-analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.gap-analysis-header__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.gap-analysis-header__target {
+  font-size: 13px;
+  color: var(--cds-text-secondary);
+}
+
+.gap-analysis-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gap-analysis-table th,
+.gap-analysis-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.gap-analysis-table th {
+  background: var(--cds-layer-02);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--cds-text-secondary);
+}
+
+.gap-value {
+  font-weight: 500;
+}
+
+.gap-value--positive {
+  color: var(--cds-support-error);
+}
+
+.gap-value--negative {
+  color: var(--cds-support-success);
+}
+
+.gap-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.gap-status--achieved {
+  background: rgba(36, 161, 72, 0.15);
+  color: var(--cds-support-success);
+}
+
+.gap-status--on-track {
+  background: rgba(15, 98, 254, 0.15);
+  color: var(--cds-interactive);
+}
+
+.gap-status--needs-attention {
+  background: rgba(241, 194, 27, 0.2);
+  color: #8e6a00;
+}
+
+.gap-status--at-risk {
+  background: rgba(218, 30, 40, 0.15);
+  color: var(--cds-support-error);
+}
+
+/* Target overlay legend styling in radar chart */
+.comparison-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.comparison-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.comparison-legend-color {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.comparison-legend-color--dashed {
+  background: transparent !important;
+  border-bottom: 2px dashed currentColor;
 }

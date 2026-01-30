@@ -227,3 +227,111 @@ class ExcelResponseUploadResult(BaseModel):
     assessment_id: Optional[int] = None
     responses_saved: int = 0
     errors: List[str] = []
+
+
+# === Response Editing Schemas ===
+
+class AssessmentAnswerUpdate(BaseModel):
+    """Update an existing response score or notes"""
+    score: Optional[int] = None
+    notes: Optional[str] = None
+    change_reason: str  # Required explanation for the change
+    edited_by_id: int  # User making the change
+
+
+class AssessmentAnswerWithEditInfo(AssessmentAnswerResponse):
+    """Response with edit tracking info"""
+    last_edited_at: Optional[datetime] = None
+    last_edited_by: Optional[UserInfo] = None
+    question: Optional[AssessmentQuestionResponse] = None
+
+
+# === Audit Trail Schemas ===
+
+class AssessmentAuditEntry(BaseModel):
+    """Single audit trail entry"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    response_id: int
+    customer_assessment_id: int
+    question_id: int
+    field_changed: str  # 'score' or 'notes'
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    change_reason: Optional[str] = None
+    changed_by: Optional[UserInfo] = None
+    changed_at: datetime
+
+
+class AssessmentAuditListResponse(BaseModel):
+    """List of audit entries for an assessment"""
+    items: List[AssessmentAuditEntry]
+    total: int
+
+
+# === Target Schemas ===
+
+class TargetBase(BaseModel):
+    """Base target fields"""
+    name: str
+    description: Optional[str] = None
+    target_date: Optional[date] = None
+    target_scores: dict[str, float] = {}  # {"Organization": 4.0, "Strategic Planning": 4.5}
+    overall_target: Optional[float] = None
+    is_active: bool = True
+
+
+class TargetCreate(TargetBase):
+    """Create a new target"""
+    created_by_id: Optional[int] = None
+
+
+class TargetUpdate(BaseModel):
+    """Update an existing target"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    target_date: Optional[date] = None
+    target_scores: Optional[dict[str, float]] = None
+    overall_target: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
+class TargetResponse(TargetBase):
+    """Target response with metadata"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    customer_id: int
+    created_by_id: Optional[int] = None
+    created_by: Optional[UserInfo] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TargetListResponse(BaseModel):
+    """List of targets for a customer"""
+    items: List[TargetResponse]
+    total: int
+
+
+# === Gap Analysis Schemas ===
+
+class DimensionGap(BaseModel):
+    """Gap analysis for a single dimension"""
+    dimension_name: str
+    current_score: Optional[float] = None
+    target_score: Optional[float] = None
+    gap: Optional[float] = None  # target - current (positive = needs improvement)
+    status: str  # 'achieved', 'on_track', 'needs_attention', 'at_risk'
+
+
+class GapAnalysisResponse(BaseModel):
+    """Full gap analysis between current assessment and target"""
+    target: TargetResponse
+    current_overall: Optional[float] = None
+    target_overall: Optional[float] = None
+    overall_gap: Optional[float] = None
+    overall_status: str
+    dimension_gaps: List[DimensionGap] = []
+    days_to_target: Optional[int] = None

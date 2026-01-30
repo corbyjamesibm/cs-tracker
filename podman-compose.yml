@@ -52,6 +52,7 @@ services:
       - APP_ENV=development
       - DEBUG=true
       - SECRET_KEY=change-me-in-production
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:

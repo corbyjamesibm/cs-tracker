@@ -3834,6 +3834,235 @@ function updateComparisonLegend(datasets) {
     legendContainer.innerHTML = html;
 }
 
+// ============================================================
+// RADAR CHART MODAL & CLIPBOARD
+// ============================================================
+
+let largeRadarChart = null;
+
+function openRadarChartModal() {
+    if (!currentAssessment || !currentAssessment.dimension_scores) {
+        return;
+    }
+
+    const modal = document.getElementById('radarChartModal');
+    modal.classList.add('open');
+
+    // Render larger chart after modal is visible
+    setTimeout(() => {
+        renderLargeRadarChart();
+    }, 100);
+}
+
+function closeRadarChartModal() {
+    const modal = document.getElementById('radarChartModal');
+    modal.classList.remove('open');
+
+    if (largeRadarChart) {
+        largeRadarChart.destroy();
+        largeRadarChart = null;
+    }
+}
+
+function renderLargeRadarChart() {
+    const ctx = document.getElementById('spmRadarChartLarge');
+    if (!ctx) return;
+
+    if (largeRadarChart) {
+        largeRadarChart.destroy();
+    }
+
+    const dimensionScores = currentAssessment.dimension_scores;
+    if (!dimensionScores || Object.keys(dimensionScores).length === 0) {
+        return;
+    }
+
+    const labels = Object.keys(dimensionScores);
+    const data = Object.values(dimensionScores);
+
+    // Build datasets - include target if active
+    const datasets = [{
+        label: 'Current Assessment',
+        data: data,
+        backgroundColor: 'rgba(15, 98, 254, 0.2)',
+        borderColor: 'rgba(15, 98, 254, 1)',
+        borderWidth: 2,
+        pointBackgroundColor: 'rgba(15, 98, 254, 1)',
+        pointRadius: 5
+    }];
+
+    // Add target overlay if there's an active target
+    const activeTarget = customerTargets.find(t => t.is_active);
+    if (activeTarget && activeTarget.target_scores) {
+        const targetData = labels.map(label => activeTarget.target_scores[label] || 0);
+        datasets.push({
+            label: `Target: ${activeTarget.name}`,
+            data: targetData,
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            borderColor: 'rgba(245, 158, 11, 1)',
+            borderWidth: 2,
+            borderDash: [8, 4],
+            pointBackgroundColor: 'rgba(245, 158, 11, 1)',
+            pointRadius: 4
+        });
+    }
+
+    // Add comparison assessments if any
+    selectedAssessmentsForComparison.forEach((assessment, index) => {
+        if (assessment.dimension_scores) {
+            const colorIndex = (index + 1) % comparisonColors.length;
+            const comparisonData = labels.map(label => assessment.dimension_scores[label] || 0);
+            const assessmentDate = new Date(assessment.assessment_date).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+
+            datasets.push({
+                label: assessmentDate,
+                data: comparisonData,
+                backgroundColor: comparisonColors[colorIndex].bg,
+                borderColor: comparisonColors[colorIndex].border,
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointBackgroundColor: comparisonColors[colorIndex].point,
+                pointRadius: 4
+            });
+        }
+    });
+
+    largeRadarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+                padding: {
+                    left: 80,
+                    right: 80,
+                    top: 20,
+                    bottom: 20
+                }
+            },
+            scales: {
+                r: {
+                    min: 0,
+                    max: 5,
+                    ticks: {
+                        stepSize: 1,
+                        color: '#525252',
+                        backdropColor: 'transparent',
+                        font: { size: 12 }
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    angleLines: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    pointLabels: {
+                        color: '#171717',
+                        font: { size: 13, weight: '500' },
+                        padding: 20
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        color: '#525252',
+                        padding: 20,
+                        font: { size: 12 }
+                    }
+                }
+            }
+        }
+    });
+}
+
+async function copyRadarChartToClipboard() {
+    const canvas = document.getElementById('spmRadarChartLarge');
+    if (!canvas) {
+        alert('No chart to copy');
+        return;
+    }
+
+    try {
+        // Create a temporary canvas with white background
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        // Fill with white background
+        tempCtx.fillStyle = '#ffffff';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+        // Draw the chart on top
+        tempCtx.drawImage(canvas, 0, 0);
+
+        // Convert to blob and copy to clipboard
+        tempCanvas.toBlob(async (blob) => {
+            try {
+                const item = new ClipboardItem({ 'image/png': blob });
+                await navigator.clipboard.write([item]);
+
+                // Show success feedback
+                const btn = event.target.closest('button');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><polyline points="20 6 9 17 4 12"></polyline></svg>Copied!';
+                btn.classList.add('btn--success');
+
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.classList.remove('btn--success');
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy to clipboard:', err);
+                alert('Failed to copy to clipboard. Try using the Download button instead.');
+            }
+        }, 'image/png');
+    } catch (err) {
+        console.error('Failed to create image:', err);
+        alert('Failed to create image');
+    }
+}
+
+function downloadRadarChart() {
+    const canvas = document.getElementById('spmRadarChartLarge');
+    if (!canvas) {
+        alert('No chart to download');
+        return;
+    }
+
+    // Create a temporary canvas with white background
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Fill with white background
+    tempCtx.fillStyle = '#ffffff';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Draw the chart on top
+    tempCtx.drawImage(canvas, 0, 0);
+
+    // Create download link
+    const link = document.createElement('a');
+    const customerName = currentCustomer ? currentCustomer.name.replace(/[^a-z0-9]/gi, '_') : 'assessment';
+    const date = new Date().toISOString().split('T')[0];
+    link.download = `${customerName}_spm_maturity_${date}.png`;
+    link.href = tempCanvas.toDataURL('image/png');
+    link.click();
+}
+
 // Toggle assessment selection for comparison
 function toggleAssessmentComparison(assessmentId, checkbox) {
     const assessment = customerAssessments.find(a => a.id === assessmentId);
@@ -6004,3 +6233,994 @@ window.openAssessmentReport = openAssessmentReport;
 window.closeAssessmentReportModal = closeAssessmentReportModal;
 window.exportAssessmentExcel = exportAssessmentExcel;
 window.printAssessmentReport = printAssessmentReport;
+
+
+// ============================================================
+// ASSESSMENT TARGETS
+// ============================================================
+
+let customerTargets = [];
+let currentEditingTargetId = null;
+let activeTarget = null;
+
+// Load targets for the customer
+async function loadTargets(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/targets`);
+        if (!response.ok) throw new Error('Failed to load targets');
+        const data = await response.json();
+        customerTargets = data.items || [];
+        renderTargetsList();
+
+        // Find active target
+        activeTarget = customerTargets.find(t => t.is_active);
+
+        // Update radar chart if we have a target and assessment
+        if (activeTarget && currentAssessment) {
+            renderRadarChartWithTarget(currentAssessment.dimension_scores, activeTarget);
+        }
+    } catch (error) {
+        console.error('Failed to load targets:', error);
+        customerTargets = [];
+        renderTargetsList();
+    }
+}
+
+// Render targets list
+function renderTargetsList() {
+    const container = document.getElementById('targetsListContainer');
+    if (!container) return;
+
+    if (customerTargets.length === 0) {
+        container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">No targets set. Set a target to track progress toward goals.</div>';
+        return;
+    }
+
+    let html = '';
+    for (const target of customerTargets) {
+        const status = calculateTargetStatus(target);
+        const statusClass = `target-card__status--${status.replace('_', '-')}`;
+        const statusLabel = formatTargetStatus(status);
+        const targetDate = target.target_date ? formatDate(target.target_date) : 'No date set';
+        const daysRemaining = target.target_date ? getDaysRemaining(target.target_date) : null;
+
+        html += `
+            <div class="target-card ${target.is_active ? 'active' : ''}" data-target-id="${target.id}">
+                <div class="target-card__header">
+                    <div>
+                        <div class="target-card__name">${escapeHtml(target.name)}</div>
+                        <div class="target-card__date">
+                            Target: ${targetDate}
+                            ${daysRemaining !== null ? `(${daysRemaining > 0 ? daysRemaining + ' days remaining' : daysRemaining === 0 ? 'Due today' : Math.abs(daysRemaining) + ' days overdue'})` : ''}
+                        </div>
+                    </div>
+                    <span class="target-card__status ${statusClass}">${statusLabel}</span>
+                </div>
+                <div class="target-card__scores">
+                    ${Object.entries(target.target_scores || {}).slice(0, 5).map(([dim, score]) => `
+                        <span class="target-score-chip">
+                            <span class="target-score-chip__name">${escapeHtml(dim)}</span>
+                            <span class="target-score-chip__value">${score.toFixed(1)}</span>
+                        </span>
+                    `).join('')}
+                    ${Object.keys(target.target_scores || {}).length > 5 ? `<span class="target-score-chip">+${Object.keys(target.target_scores).length - 5} more</span>` : ''}
+                </div>
+                <div class="target-card__actions">
+                    <button class="btn btn--ghost btn--sm" onclick="viewGapAnalysis(${target.id})">
+                        <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+                        Gap Analysis
+                    </button>
+                    ${target.is_active ? `
+                        <button class="btn btn--ghost btn--sm" onclick="overlayTargetOnChart(${target.id})" title="Show on chart">
+                            <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M16 8a5 5 0 105 5 5 5 0 00-5-5zm0 8a3 3 0 113-3 3.003 3.003 0 01-3 3z"/><path d="M16 4a12 12 0 00-7.9 21l1.3-1.5a10 10 0 1113.2 0l1.3 1.5A12 12 0 0016 4z"/></svg>
+                        </button>
+                    ` : `
+                        <button class="btn btn--ghost btn--sm" onclick="setActiveTarget(${target.id})" title="Set as active">
+                            <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M16 2a14 14 0 1014 14A14.016 14.016 0 0016 2zm0 26a12 12 0 1112-12 12.014 12.014 0 01-12 12z"/><path d="M14 21.5l-5-4.96L10.59 15 14 18.35 21.41 11 23 12.58 14 21.5z"/></svg>
+                        </button>
+                    `}
+                    <button class="btn btn--ghost btn--sm" onclick="editTarget(${target.id})" title="Edit">
+                        <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15z"/></svg>
+                    </button>
+                    <button class="btn btn--ghost btn--sm" onclick="deleteTarget(${target.id})" title="Delete">
+                        <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M12 12h2v12h-2zm6 0h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/></svg>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+// Calculate target status based on current assessment
+function calculateTargetStatus(target) {
+    if (!currentAssessment || !currentAssessment.dimension_scores) {
+        return 'at_risk';
+    }
+
+    const currentScores = currentAssessment.dimension_scores;
+    const targetScores = target.target_scores || {};
+
+    let totalGap = 0;
+    let dimensionsCount = 0;
+
+    for (const [dim, targetScore] of Object.entries(targetScores)) {
+        const currentScore = currentScores[dim];
+        if (currentScore !== undefined) {
+            totalGap += targetScore - currentScore;
+            dimensionsCount++;
+        }
+    }
+
+    if (dimensionsCount === 0) return 'at_risk';
+
+    const avgGap = totalGap / dimensionsCount;
+
+    if (avgGap <= 0) return 'achieved';
+    if (avgGap <= 0.5) return 'on_track';
+    if (avgGap <= 1.0) return 'needs_attention';
+    return 'at_risk';
+}
+
+function formatTargetStatus(status) {
+    const labels = {
+        'achieved': 'Achieved',
+        'on_track': 'On Track',
+        'needs_attention': 'Needs Attention',
+        'at_risk': 'At Risk'
+    };
+    return labels[status] || status;
+}
+
+function getDaysRemaining(dateStr) {
+    const targetDate = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    targetDate.setHours(0, 0, 0, 0);
+    return Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24));
+}
+
+// Open target modal
+async function openTargetModal(targetId = null) {
+    currentEditingTargetId = targetId;
+    const modal = document.getElementById('targetModal');
+    const title = document.getElementById('targetModalTitle');
+
+    title.textContent = targetId ? 'Edit Target' : 'Set Assessment Target';
+
+    // Reset form
+    document.getElementById('targetName').value = '';
+    document.getElementById('targetDescription').value = '';
+    document.getElementById('targetDate').value = '';
+    document.getElementById('targetOverallScore').value = '';
+
+    // Load dimensions from current template
+    await loadTargetDimensions();
+
+    // If editing, populate with existing data
+    if (targetId) {
+        const target = customerTargets.find(t => t.id === targetId);
+        if (target) {
+            document.getElementById('targetName').value = target.name || '';
+            document.getElementById('targetDescription').value = target.description || '';
+            document.getElementById('targetDate').value = target.target_date || '';
+            document.getElementById('targetOverallScore').value = target.overall_target || '';
+
+            // Populate dimension scores
+            for (const [dim, score] of Object.entries(target.target_scores || {})) {
+                const input = document.querySelector(`input[data-dimension="${dim}"]`);
+                const slider = document.querySelector(`input[data-dimension-slider="${dim}"]`);
+                if (input) input.value = score;
+                if (slider) slider.value = score;
+            }
+        }
+    }
+
+    modal.classList.add('open');
+}
+
+function closeTargetModal() {
+    document.getElementById('targetModal').classList.remove('open');
+    currentEditingTargetId = null;
+}
+
+async function loadTargetDimensions() {
+    const container = document.getElementById('targetDimensionScores');
+
+    // Get dimensions from current assessment or template
+    let dimensions = [];
+
+    if (currentAssessment && currentAssessment.dimension_scores) {
+        dimensions = Object.keys(currentAssessment.dimension_scores);
+    } else {
+        // Try to get from active template
+        try {
+            const response = await fetch(`${API_BASE_URL}/assessments/templates/active`);
+            if (response.ok) {
+                const template = await response.json();
+                if (template && template.dimensions) {
+                    dimensions = template.dimensions.map(d => d.name);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load template dimensions:', error);
+        }
+    }
+
+    if (dimensions.length === 0) {
+        container.innerHTML = '<div class="text-secondary">No dimensions found. Complete an assessment first.</div>';
+        return;
+    }
+
+    let html = '';
+    for (const dim of dimensions) {
+        const currentScore = currentAssessment?.dimension_scores?.[dim] || 0;
+        html += `
+            <div class="target-dimension-row">
+                <span class="target-dimension-row__name">${escapeHtml(dim)}</span>
+                <input type="range" class="target-dimension-row__slider"
+                    min="1" max="5" step="0.1" value="${Math.max(currentScore, 1)}"
+                    data-dimension-slider="${dim}"
+                    oninput="syncTargetSlider(this, '${dim}')">
+                <input type="number" class="form-input target-dimension-row__input"
+                    min="1" max="5" step="0.1" value="${currentScore > 0 ? currentScore.toFixed(1) : '3.0'}"
+                    data-dimension="${dim}"
+                    oninput="syncTargetInput(this, '${dim}')">
+                <span class="text-secondary" style="font-size: 11px; width: 60px;">
+                    (Current: ${currentScore > 0 ? currentScore.toFixed(1) : 'N/A'})
+                </span>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function syncTargetSlider(slider, dimension) {
+    const input = document.querySelector(`input[data-dimension="${dimension}"]`);
+    if (input) input.value = parseFloat(slider.value).toFixed(1);
+}
+
+function syncTargetInput(input, dimension) {
+    const slider = document.querySelector(`input[data-dimension-slider="${dimension}"]`);
+    if (slider) slider.value = input.value;
+}
+
+async function saveTarget() {
+    const customerId = getCustomerId();
+    const name = document.getElementById('targetName').value.trim();
+    const description = document.getElementById('targetDescription').value.trim();
+    const targetDate = document.getElementById('targetDate').value;
+    const overallTarget = document.getElementById('targetOverallScore').value;
+
+    if (!name) {
+        alert('Please enter a target name');
+        return;
+    }
+
+    // Collect dimension scores
+    const targetScores = {};
+    document.querySelectorAll('input[data-dimension]').forEach(input => {
+        const dim = input.getAttribute('data-dimension');
+        const score = parseFloat(input.value);
+        if (!isNaN(score) && score >= 1 && score <= 5) {
+            targetScores[dim] = score;
+        }
+    });
+
+    const targetData = {
+        name,
+        description: description || null,
+        target_date: targetDate || null,
+        target_scores: targetScores,
+        overall_target: overallTarget ? parseFloat(overallTarget) : null,
+        is_active: customerTargets.length === 0 // First target is active by default
+    };
+
+    try {
+        let response;
+        if (currentEditingTargetId) {
+            response = await fetch(`${API_BASE_URL}/assessments/targets/${currentEditingTargetId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(targetData)
+            });
+        } else {
+            response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/targets`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(targetData)
+            });
+        }
+
+        if (!response.ok) throw new Error('Failed to save target');
+
+        closeTargetModal();
+        await loadTargets(customerId);
+
+    } catch (error) {
+        console.error('Failed to save target:', error);
+        alert('Failed to save target. Please try again.');
+    }
+}
+
+function editTarget(targetId) {
+    openTargetModal(targetId);
+}
+
+async function deleteTarget(targetId) {
+    if (!confirm('Are you sure you want to delete this target?')) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/targets/${targetId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) throw new Error('Failed to delete target');
+
+        await loadTargets(getCustomerId());
+
+    } catch (error) {
+        console.error('Failed to delete target:', error);
+        alert('Failed to delete target. Please try again.');
+    }
+}
+
+async function setActiveTarget(targetId) {
+    // Deactivate all other targets first
+    for (const target of customerTargets) {
+        if (target.is_active && target.id !== targetId) {
+            await fetch(`${API_BASE_URL}/assessments/targets/${target.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: false })
+            });
+        }
+    }
+
+    // Activate this target
+    await fetch(`${API_BASE_URL}/assessments/targets/${targetId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: true })
+    });
+
+    await loadTargets(getCustomerId());
+}
+
+function overlayTargetOnChart(targetId) {
+    const target = customerTargets.find(t => t.id === targetId);
+    if (target && currentAssessment) {
+        renderRadarChartWithTarget(currentAssessment.dimension_scores, target);
+    }
+}
+
+async function viewGapAnalysis(targetId) {
+    const customerId = getCustomerId();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/targets/${targetId}/gap-analysis`);
+        if (!response.ok) throw new Error('Failed to load gap analysis');
+
+        const gapData = await response.json();
+        showGapAnalysisModal(gapData);
+
+    } catch (error) {
+        console.error('Failed to load gap analysis:', error);
+        alert('Failed to load gap analysis. Please try again.');
+    }
+}
+
+function showGapAnalysisModal(gapData) {
+    // Create or show gap analysis in a modal
+    let modal = document.getElementById('gapAnalysisModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'gapAnalysisModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal__overlay" onclick="closeGapAnalysisModal()"></div>
+            <div class="modal__container" style="max-width: 700px;">
+                <div class="modal__header">
+                    <h2 class="modal__title">Gap Analysis</h2>
+                    <button class="modal__close" onclick="closeGapAnalysisModal()">&times;</button>
+                </div>
+                <div class="modal__body" id="gapAnalysisContent"></div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    const content = document.getElementById('gapAnalysisContent');
+    const daysText = gapData.days_to_target !== null ?
+        (gapData.days_to_target > 0 ? `${gapData.days_to_target} days remaining` :
+         gapData.days_to_target === 0 ? 'Due today' : `${Math.abs(gapData.days_to_target)} days overdue`) : '';
+
+    content.innerHTML = `
+        <div class="gap-analysis-header">
+            <div>
+                <div class="gap-analysis-header__title">${escapeHtml(gapData.target.name)}</div>
+                <div class="gap-analysis-header__target">${daysText}</div>
+            </div>
+            <span class="gap-status gap-status--${gapData.overall_status.replace('_', '-')}">${formatTargetStatus(gapData.overall_status)}</span>
+        </div>
+
+        <div style="margin: 16px 0; padding: 16px; background: var(--cds-layer-02); border-radius: 8px;">
+            <div class="flex flex-between items-center">
+                <div>
+                    <div class="text-secondary" style="font-size: 12px;">Current Overall</div>
+                    <div style="font-size: 24px; font-weight: 600;">${gapData.current_overall?.toFixed(2) || 'N/A'}</div>
+                </div>
+                <div style="font-size: 24px; color: var(--cds-text-secondary);">→</div>
+                <div>
+                    <div class="text-secondary" style="font-size: 12px;">Target Overall</div>
+                    <div style="font-size: 24px; font-weight: 600; color: var(--cds-interactive);">${gapData.target_overall?.toFixed(2) || 'N/A'}</div>
+                </div>
+                <div>
+                    <div class="text-secondary" style="font-size: 12px;">Gap</div>
+                    <div style="font-size: 24px; font-weight: 600;" class="${gapData.overall_gap > 0 ? 'gap-value--positive' : 'gap-value--negative'}">
+                        ${gapData.overall_gap !== null ? (gapData.overall_gap > 0 ? '+' : '') + gapData.overall_gap.toFixed(2) : 'N/A'}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <table class="gap-analysis-table">
+            <thead>
+                <tr>
+                    <th>Dimension</th>
+                    <th>Current</th>
+                    <th>Target</th>
+                    <th>Gap</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${gapData.dimension_gaps.map(gap => `
+                    <tr>
+                        <td>${escapeHtml(gap.dimension_name)}</td>
+                        <td>${gap.current_score?.toFixed(2) || 'N/A'}</td>
+                        <td>${gap.target_score?.toFixed(2) || 'N/A'}</td>
+                        <td class="${gap.gap > 0 ? 'gap-value--positive' : 'gap-value--negative'}">
+                            ${gap.gap !== null ? (gap.gap > 0 ? '+' : '') + gap.gap.toFixed(2) : 'N/A'}
+                        </td>
+                        <td><span class="gap-status gap-status--${gap.status.replace('_', '-')}">${formatTargetStatus(gap.status)}</span></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+
+    modal.classList.add('open');
+}
+
+function closeGapAnalysisModal() {
+    const modal = document.getElementById('gapAnalysisModal');
+    if (modal) modal.classList.remove('open');
+}
+
+
+// ============================================================
+// RADAR CHART WITH TARGET OVERLAY
+// ============================================================
+
+function renderRadarChartWithTarget(dimensionScores, target) {
+    const ctx = document.getElementById('spmRadarChart');
+    if (!ctx) return;
+
+    // Destroy existing chart if any
+    if (spmRadarChart) {
+        spmRadarChart.destroy();
+    }
+
+    if (!dimensionScores || Object.keys(dimensionScores).length === 0) {
+        return;
+    }
+
+    const labels = Object.keys(dimensionScores);
+    const data = Object.values(dimensionScores);
+
+    // Build datasets - current assessment
+    const datasets = [{
+        label: 'Current Assessment',
+        data: data,
+        backgroundColor: 'rgba(15, 98, 254, 0.2)',
+        borderColor: 'rgba(15, 98, 254, 1)',
+        borderWidth: 2,
+        pointBackgroundColor: 'rgba(15, 98, 254, 1)',
+        pointRadius: 4
+    }];
+
+    // Add target dataset if provided
+    if (target && target.target_scores) {
+        const targetData = labels.map(label => target.target_scores[label] || 0);
+        datasets.push({
+            label: `Target: ${target.name}`,
+            data: targetData,
+            backgroundColor: 'rgba(255, 131, 0, 0.1)',
+            borderColor: 'rgba(255, 131, 0, 1)',
+            borderWidth: 2,
+            borderDash: [8, 4],
+            pointBackgroundColor: 'rgba(255, 131, 0, 1)',
+            pointRadius: 3,
+            pointStyle: 'triangle'
+        });
+    }
+
+    spmRadarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            layout: {
+                padding: {
+                    left: 120,
+                    right: 120,
+                    top: 20,
+                    bottom: 20
+                }
+            },
+            scales: {
+                r: {
+                    min: 0,
+                    max: 5,
+                    ticks: {
+                        stepSize: 1,
+                        color: '#525252',
+                        backdropColor: 'transparent',
+                        font: { size: 10 },
+                        showLabelBackdrop: false
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    angleLines: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    pointLabels: {
+                        color: '#161616',
+                        font: {
+                            size: 13,
+                            weight: 'bold'
+                        },
+                        padding: 20
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        color: '#161616',
+                        usePointStyle: true,
+                        padding: 16,
+                        font: { size: 12 }
+                    }
+                }
+            }
+        }
+    });
+}
+
+
+// ============================================================
+// SCORE EDITING
+// ============================================================
+
+let pendingEdits = {};
+
+async function openEditScoresModal() {
+    if (!currentAssessment) {
+        alert('No assessment selected');
+        return;
+    }
+
+    pendingEdits = {};
+
+    const modal = document.getElementById('editScoresModal');
+    const container = document.getElementById('editScoresContainer');
+
+    container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Loading responses...</div>';
+    modal.classList.add('open');
+
+    try {
+        // Load full assessment details
+        const response = await fetch(`${API_BASE_URL}/assessments/${currentAssessment.id}`);
+        if (!response.ok) throw new Error('Failed to load assessment');
+
+        const assessment = await response.json();
+        assessmentResponses = assessment.responses || [];
+
+        renderEditScoresTable();
+
+    } catch (error) {
+        console.error('Failed to load responses:', error);
+        container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Failed to load responses</div>';
+    }
+}
+
+function closeEditScoresModal() {
+    document.getElementById('editScoresModal').classList.remove('open');
+    pendingEdits = {};
+}
+
+function renderEditScoresTable() {
+    const container = document.getElementById('editScoresContainer');
+
+    if (assessmentResponses.length === 0) {
+        container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">No responses to edit</div>';
+        return;
+    }
+
+    // Group by dimension
+    const byDimension = {};
+    for (const response of assessmentResponses) {
+        const dimName = response.question?.dimension?.name || 'General';
+        if (!byDimension[dimName]) byDimension[dimName] = [];
+        byDimension[dimName].push(response);
+    }
+
+    let html = '';
+    for (const [dimName, responses] of Object.entries(byDimension)) {
+        html += `
+            <div style="margin-bottom: 24px;">
+                <h4 style="margin-bottom: 12px; color: var(--cds-text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">${escapeHtml(dimName)}</h4>
+                <table class="edit-scores-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">#</th>
+                            <th>Question</th>
+                            <th style="width: 80px;">Score</th>
+                            <th style="width: 100px;">Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${responses.map(r => {
+                            const pending = pendingEdits[r.id];
+                            const currentScore = pending?.score ?? r.score;
+                            const hasChange = pending?.score !== undefined && pending.score !== r.score;
+
+                            return `
+                                <tr>
+                                    <td>${r.question?.question_number || '-'}</td>
+                                    <td style="font-size: 13px;">${escapeHtml(r.question?.question_text || '')}</td>
+                                    <td>
+                                        <input type="number" class="edit-score-input ${hasChange ? 'changed' : ''}"
+                                            value="${currentScore}" min="${r.question?.min_score || 1}" max="${r.question?.max_score || 5}"
+                                            data-response-id="${r.id}" data-original="${r.score}"
+                                            onchange="trackScoreChange(${r.id}, this.value, ${r.score})">
+                                    </td>
+                                    <td>
+                                        ${hasChange ? `
+                                            <span class="score-change-indicator ${pending.score > r.score ? 'score-change-indicator--up' : 'score-change-indicator--down'}">
+                                                ${pending.score > r.score ? '↑' : '↓'} ${r.score} → ${pending.score}
+                                            </span>
+                                        ` : '-'}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function trackScoreChange(responseId, newValue, originalValue) {
+    const score = parseInt(newValue);
+
+    if (score === originalValue) {
+        delete pendingEdits[responseId];
+    } else {
+        pendingEdits[responseId] = { score, originalValue };
+    }
+
+    renderEditScoresTable();
+}
+
+async function saveEditedScores() {
+    const editCount = Object.keys(pendingEdits).length;
+
+    if (editCount === 0) {
+        closeEditScoresModal();
+        return;
+    }
+
+    // Open reason modal
+    document.getElementById('editReasonModal').classList.add('open');
+}
+
+function closeEditReasonModal() {
+    document.getElementById('editReasonModal').classList.remove('open');
+}
+
+async function confirmScoreEdit() {
+    const reason = document.getElementById('editChangeReason').value.trim();
+
+    if (!reason) {
+        alert('Please provide a reason for the changes');
+        return;
+    }
+
+    closeEditReasonModal();
+
+    const saveBtn = document.getElementById('saveEditedScoresBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+        // Save each edit
+        const userId = 1; // TODO: Get current user ID
+
+        for (const [responseId, edit] of Object.entries(pendingEdits)) {
+            await fetch(`${API_BASE_URL}/assessments/${currentAssessment.id}/responses/${responseId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    score: edit.score,
+                    change_reason: reason,
+                    edited_by_id: userId
+                })
+            });
+        }
+
+        closeEditScoresModal();
+        document.getElementById('editChangeReason').value = '';
+
+        // Reload assessment
+        await loadAssessments(getCustomerId());
+
+    } catch (error) {
+        console.error('Failed to save edits:', error);
+        alert('Failed to save some changes. Please try again.');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+    }
+}
+
+
+// ============================================================
+// AUDIT TRAIL
+// ============================================================
+
+async function viewAuditTrail() {
+    closeEditScoresModal();
+
+    const section = document.getElementById('auditTrailSection');
+    const container = document.getElementById('auditTrailContainer');
+
+    section.style.display = 'block';
+    container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Loading change history...</div>';
+
+    // Scroll to audit section
+    section.scrollIntoView({ behavior: 'smooth' });
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/${currentAssessment.id}/audit`);
+        if (!response.ok) throw new Error('Failed to load audit trail');
+
+        const auditData = await response.json();
+        renderAuditTrail(auditData.items || []);
+
+    } catch (error) {
+        console.error('Failed to load audit trail:', error);
+        container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Failed to load change history</div>';
+    }
+}
+
+function renderAuditTrail(entries) {
+    const container = document.getElementById('auditTrailContainer');
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">No changes have been made to this assessment</div>';
+        return;
+    }
+
+    container.innerHTML = entries.map(entry => `
+        <div class="audit-entry">
+            <div class="audit-entry__icon">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15z"/></svg>
+            </div>
+            <div class="audit-entry__content">
+                <div class="audit-entry__header">
+                    <span class="audit-entry__user">${entry.changed_by ? `${entry.changed_by.first_name} ${entry.changed_by.last_name}` : 'Unknown'}</span>
+                    <span class="audit-entry__time">${formatDateTime(entry.changed_at)}</span>
+                </div>
+                <div class="audit-entry__change">
+                    Changed <strong>${entry.field_changed}</strong> for Q${entry.question_id}
+                </div>
+                <div class="audit-entry__change-values">
+                    <span class="audit-entry__old-value">${entry.old_value || 'empty'}</span>
+                    <span>→</span>
+                    <span class="audit-entry__new-value">${entry.new_value || 'empty'}</span>
+                </div>
+                ${entry.change_reason ? `<div class="audit-entry__reason">"${escapeHtml(entry.change_reason)}"</div>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+function hideAuditTrail() {
+    document.getElementById('auditTrailSection').style.display = 'none';
+}
+
+function formatDateTime(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+
+// ============================================================
+// UPDATED REPORT WITH GAP ANALYSIS
+// ============================================================
+
+// Update the renderAssessmentReport function to include gap analysis
+const originalRenderAssessmentReport = window.renderAssessmentReport || renderAssessmentReport;
+
+function renderAssessmentReportWithGap(report) {
+    // First render the original report
+    originalRenderAssessmentReport(report);
+
+    // Then add gap analysis if there's an active target
+    if (activeTarget && report.dimension_scores) {
+        addGapAnalysisToReport(report, activeTarget);
+    }
+}
+
+function addGapAnalysisToReport(report, target) {
+    const content = document.getElementById('assessmentReportContent');
+    const reportDiv = content.querySelector('.assessment-report');
+
+    if (!reportDiv) return;
+
+    // Calculate gap data
+    const dimensionGaps = [];
+    for (const [dim, targetScore] of Object.entries(target.target_scores || {})) {
+        const currentScore = report.dimension_scores[dim];
+        const gap = currentScore !== undefined ? targetScore - currentScore : null;
+        let status = 'at_risk';
+
+        if (gap !== null) {
+            if (gap <= 0) status = 'achieved';
+            else if (gap <= 0.5) status = 'on_track';
+            else if (gap <= 1.0) status = 'needs_attention';
+        }
+
+        dimensionGaps.push({
+            dimension_name: dim,
+            current_score: currentScore,
+            target_score: targetScore,
+            gap,
+            status
+        });
+    }
+
+    // Calculate overall gap
+    const overallGap = target.overall_target && report.overall_score ?
+        target.overall_target - report.overall_score : null;
+    let overallStatus = 'at_risk';
+    if (overallGap !== null) {
+        if (overallGap <= 0) overallStatus = 'achieved';
+        else if (overallGap <= 0.5) overallStatus = 'on_track';
+        else if (overallGap <= 1.0) overallStatus = 'needs_attention';
+    }
+
+    const daysRemaining = target.target_date ? getDaysRemaining(target.target_date) : null;
+    const daysText = daysRemaining !== null ?
+        (daysRemaining > 0 ? `${daysRemaining} days remaining` :
+         daysRemaining === 0 ? 'Due today' : `${Math.abs(daysRemaining)} days overdue`) : '';
+
+    const gapSectionHtml = `
+        <div class="gap-analysis-section">
+            <div class="gap-analysis-header">
+                <div>
+                    <div class="gap-analysis-header__title">Target: ${escapeHtml(target.name)}</div>
+                    <div class="gap-analysis-header__target">${target.target_date ? formatDate(target.target_date) : 'No target date'} ${daysText ? `(${daysText})` : ''}</div>
+                </div>
+                <span class="gap-status gap-status--${overallStatus.replace('_', '-')}">${formatTargetStatus(overallStatus)}</span>
+            </div>
+
+            <table class="gap-analysis-table">
+                <thead>
+                    <tr>
+                        <th>Dimension</th>
+                        <th>Current</th>
+                        <th>Target</th>
+                        <th>Gap</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${dimensionGaps.map(gap => `
+                        <tr>
+                            <td>${escapeHtml(gap.dimension_name)}</td>
+                            <td>${gap.current_score?.toFixed(2) || 'N/A'}</td>
+                            <td>${gap.target_score?.toFixed(2) || 'N/A'}</td>
+                            <td class="gap-value ${gap.gap > 0 ? 'gap-value--positive' : 'gap-value--negative'}">
+                                ${gap.gap !== null ? (gap.gap > 0 ? '+' : '') + gap.gap.toFixed(2) : 'N/A'}
+                            </td>
+                            <td><span class="gap-status gap-status--${gap.status.replace('_', '-')}">${formatTargetStatus(gap.status)}</span></td>
+                        </tr>
+                    `).join('')}
+                    <tr style="font-weight: 600; background: var(--cds-layer-02);">
+                        <td>Overall</td>
+                        <td>${report.overall_score?.toFixed(2) || 'N/A'}</td>
+                        <td>${target.overall_target?.toFixed(2) || 'N/A'}</td>
+                        <td class="gap-value ${overallGap > 0 ? 'gap-value--positive' : 'gap-value--negative'}">
+                            ${overallGap !== null ? (overallGap > 0 ? '+' : '') + overallGap.toFixed(2) : 'N/A'}
+                        </td>
+                        <td><span class="gap-status gap-status--${overallStatus.replace('_', '-')}">${formatTargetStatus(overallStatus)}</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Insert after dimension scores section
+    const dimensionSection = reportDiv.querySelector('.report-section');
+    if (dimensionSection) {
+        dimensionSection.insertAdjacentHTML('afterend', gapSectionHtml);
+    } else {
+        reportDiv.insertAdjacentHTML('beforeend', gapSectionHtml);
+    }
+}
+
+
+// ============================================================
+// INITIALIZATION UPDATES
+// ============================================================
+
+// Update displayAssessment to load targets and show edit button
+const originalDisplayAssessment = displayAssessment;
+displayAssessment = function(assessment, comparison) {
+    originalDisplayAssessment(assessment, comparison);
+
+    // Show edit scores button for completed assessments
+    const editBtn = document.getElementById('editScoresBtn');
+    if (editBtn && assessment.status === 'completed') {
+        editBtn.style.display = 'inline-flex';
+    }
+
+    // Load targets
+    loadTargets(getCustomerId());
+};
+
+
+// Export new functions
+window.openTargetModal = openTargetModal;
+window.closeTargetModal = closeTargetModal;
+window.saveTarget = saveTarget;
+window.editTarget = editTarget;
+window.deleteTarget = deleteTarget;
+window.setActiveTarget = setActiveTarget;
+window.overlayTargetOnChart = overlayTargetOnChart;
+window.viewGapAnalysis = viewGapAnalysis;
+window.closeGapAnalysisModal = closeGapAnalysisModal;
+window.openEditScoresModal = openEditScoresModal;
+window.closeEditScoresModal = closeEditScoresModal;
+window.trackScoreChange = trackScoreChange;
+window.saveEditedScores = saveEditedScores;
+window.closeEditReasonModal = closeEditReasonModal;
+window.confirmScoreEdit = confirmScoreEdit;
+window.viewAuditTrail = viewAuditTrail;
+window.hideAuditTrail = hideAuditTrail;
+window.syncTargetSlider = syncTargetSlider;
+window.syncTargetInput = syncTargetInput;
+window.loadTargets = loadTargets;

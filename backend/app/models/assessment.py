@@ -180,12 +180,74 @@ class AssessmentResponse(Base):
 
     answered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # Edit tracking fields
+    last_edited_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_edited_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+
     # Relationships
     customer_assessment: Mapped["CustomerAssessment"] = relationship(back_populates="responses")
     question: Mapped["AssessmentQuestion"] = relationship(back_populates="responses")
+    last_edited_by: Mapped[Optional["User"]] = relationship(foreign_keys=[last_edited_by_id])
+    audit_entries: Mapped[List["AssessmentResponseAudit"]] = relationship(back_populates="response", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<AssessmentResponse Q{self.question_id}={self.score}>"
+
+
+class AssessmentResponseAudit(Base):
+    """Audit trail for changes to assessment responses"""
+    __tablename__ = "assessment_response_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    response_id: Mapped[int] = mapped_column(ForeignKey("assessment_responses.id"))
+    customer_assessment_id: Mapped[int] = mapped_column(ForeignKey("customer_assessments.id"))
+    question_id: Mapped[int] = mapped_column(ForeignKey("assessment_questions.id"))
+
+    field_changed: Mapped[str] = mapped_column(String(50))  # 'score' or 'notes'
+    old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    change_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    changed_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    response: Mapped["AssessmentResponse"] = relationship(back_populates="audit_entries")
+    customer_assessment: Mapped["CustomerAssessment"] = relationship()
+    question: Mapped["AssessmentQuestion"] = relationship()
+    changed_by: Mapped["User"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<AssessmentResponseAudit {self.id} - {self.field_changed}>"
+
+
+class CustomerAssessmentTarget(Base):
+    """Target scores for customer assessments"""
+    __tablename__ = "customer_assessment_targets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+
+    name: Mapped[str] = mapped_column(String(255))  # "Q4 2024 Target", "Year-End Goals"
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # When they want to achieve it
+
+    # Target scores per dimension: {"Organization": 4.0, "Strategic Planning": 4.5, ...}
+    target_scores: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    overall_target: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    customer: Mapped["Customer"] = relationship()
+    created_by: Mapped[Optional["User"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<CustomerAssessmentTarget {self.name} for Customer {self.customer_id}>"
 
 
 # Import at bottom to avoid circular imports

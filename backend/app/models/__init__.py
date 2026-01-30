@@ -9,7 +9,8 @@ from .settings import AppSetting, SettingValueType
 from .risk import Risk, RiskSeverity, RiskStatus, RiskCategory
 from .assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
-    CustomerAssessment, AssessmentResponse, AssessmentStatus
+    CustomerAssessment, AssessmentResponse, AssessmentStatus,
+    AssessmentResponseAudit, CustomerAssessmentTarget
 )
 from .lookup import LookupValue
 from .meeting_note import MeetingNote
@@ -31,6 +32,7 @@ __all__ = [
     "Risk", "RiskSeverity", "RiskStatus", "RiskCategory",
     "AssessmentTemplate", "AssessmentDimension", "AssessmentQuestion",
     "CustomerAssessment", "AssessmentResponse", "AssessmentStatus",
+    "AssessmentResponseAudit", "CustomerAssessmentTarget",
     "LookupValue",
     "MeetingNote",
     "Document",

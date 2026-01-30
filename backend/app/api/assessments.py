@@ -14,7 +14,8 @@ from openpyxl.utils import get_column_letter
 from app.core.database import get_db
 from app.models.assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
-    CustomerAssessment, AssessmentResponse, AssessmentStatus
+    CustomerAssessment, AssessmentResponse, AssessmentStatus,
+    AssessmentResponseAudit, CustomerAssessmentTarget
 )
 from app.schemas.assessment import (
     AssessmentTemplateCreate, AssessmentTemplateUpdate, AssessmentTemplateResponse,
@@ -23,7 +24,10 @@ from app.schemas.assessment import (
     CustomerAssessmentDetailResponse, CustomerAssessmentListResponse,
     AssessmentAnswerCreate, AssessmentAnswerResponse, AssessmentAnswerWithQuestion,
     BatchResponseSubmit, AssessmentHistoryResponse, AssessmentComparison,
-    ExcelUploadResult, ExcelResponseUploadResult
+    ExcelUploadResult, ExcelResponseUploadResult,
+    AssessmentAnswerUpdate, AssessmentAuditEntry, AssessmentAuditListResponse,
+    TargetCreate, TargetUpdate, TargetResponse, TargetListResponse,
+    DimensionGap, GapAnalysisResponse
 )
 
 router = APIRouter()
@@ -1166,3 +1170,352 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
         "total_questions": len(assessment.template.questions) if assessment.template else 0,
         "answered_questions": len(assessment.responses)
     }
+
+
+# ============================================================
+# RESPONSE EDITING ENDPOINTS
+# ============================================================
+
+@router.patch("/{assessment_id}/responses/{response_id}", response_model=AssessmentAnswerResponse)
+async def update_response(
+    assessment_id: int,
+    response_id: int,
+    update_data: AssessmentAnswerUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Edit a response score or notes with audit trail."""
+    # Get the response
+    query = select(AssessmentResponse).where(
+        and_(
+            AssessmentResponse.id == response_id,
+            AssessmentResponse.customer_assessment_id == assessment_id
+        )
+    ).options(selectinload(AssessmentResponse.question))
+    result = await db.execute(query)
+    response = result.scalar_one_or_none()
+
+    if not response:
+        raise HTTPException(status_code=404, detail="Response not found")
+
+    # Track changes for audit
+    audit_entries = []
+
+    if update_data.score is not None and update_data.score != response.score:
+        audit_entries.append(AssessmentResponseAudit(
+            response_id=response.id,
+            customer_assessment_id=assessment_id,
+            question_id=response.question_id,
+            field_changed="score",
+            old_value=str(response.score),
+            new_value=str(update_data.score),
+            change_reason=update_data.change_reason,
+            changed_by_id=update_data.edited_by_id
+        ))
+        response.score = update_data.score
+
+    if update_data.notes is not None and update_data.notes != response.notes:
+        audit_entries.append(AssessmentResponseAudit(
+            response_id=response.id,
+            customer_assessment_id=assessment_id,
+            question_id=response.question_id,
+            field_changed="notes",
+            old_value=response.notes,
+            new_value=update_data.notes,
+            change_reason=update_data.change_reason,
+            changed_by_id=update_data.edited_by_id
+        ))
+        response.notes = update_data.notes
+
+    # Update edit tracking
+    if audit_entries:
+        response.last_edited_at = datetime.utcnow()
+        response.last_edited_by_id = update_data.edited_by_id
+        for entry in audit_entries:
+            db.add(entry)
+
+    await db.flush()
+
+    # Recalculate assessment scores
+    await recalculate_assessment_scores(assessment_id, db)
+
+    return AssessmentAnswerResponse.model_validate(response)
+
+
+async def recalculate_assessment_scores(assessment_id: int, db: AsyncSession):
+    """Recalculate dimension and overall scores for an assessment."""
+    score_query = select(
+        AssessmentDimension.name,
+        func.avg(AssessmentResponse.score).label('avg_score')
+    ).select_from(AssessmentResponse).join(
+        AssessmentQuestion, AssessmentResponse.question_id == AssessmentQuestion.id
+    ).join(
+        AssessmentDimension, AssessmentQuestion.dimension_id == AssessmentDimension.id
+    ).where(
+        AssessmentResponse.customer_assessment_id == assessment_id
+    ).group_by(AssessmentDimension.name)
+
+    score_result = await db.execute(score_query)
+    dimension_scores = {row.name: float(row.avg_score) for row in score_result}
+
+    # Calculate overall score
+    overall_score = sum(dimension_scores.values()) / len(dimension_scores) if dimension_scores else None
+
+    # Update assessment
+    assessment = await db.get(CustomerAssessment, assessment_id)
+    if assessment:
+        assessment.dimension_scores = dimension_scores
+        assessment.overall_score = overall_score
+        await db.flush()
+
+
+# ============================================================
+# AUDIT TRAIL ENDPOINTS
+# ============================================================
+
+@router.get("/{assessment_id}/audit", response_model=AssessmentAuditListResponse)
+async def get_assessment_audit(
+    assessment_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get audit trail for all changes made to an assessment's responses."""
+    query = select(AssessmentResponseAudit).where(
+        AssessmentResponseAudit.customer_assessment_id == assessment_id
+    ).options(
+        selectinload(AssessmentResponseAudit.changed_by),
+        selectinload(AssessmentResponseAudit.question)
+    ).order_by(AssessmentResponseAudit.changed_at.desc())
+
+    result = await db.execute(query)
+    audit_entries = result.scalars().all()
+
+    return AssessmentAuditListResponse(
+        items=[AssessmentAuditEntry.model_validate(entry) for entry in audit_entries],
+        total=len(audit_entries)
+    )
+
+
+# ============================================================
+# TARGET ENDPOINTS
+# ============================================================
+
+@router.get("/customer/{customer_id}/targets", response_model=TargetListResponse)
+async def list_customer_targets(
+    customer_id: int,
+    active_only: bool = Query(True, description="Only return active targets"),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all assessment targets for a customer."""
+    query = select(CustomerAssessmentTarget).where(
+        CustomerAssessmentTarget.customer_id == customer_id
+    )
+
+    if active_only:
+        query = query.where(CustomerAssessmentTarget.is_active == True)
+
+    query = query.order_by(CustomerAssessmentTarget.target_date.desc().nullslast())
+    query = query.options(selectinload(CustomerAssessmentTarget.created_by))
+
+    result = await db.execute(query)
+    targets = result.scalars().all()
+
+    return TargetListResponse(
+        items=[TargetResponse.model_validate(t) for t in targets],
+        total=len(targets)
+    )
+
+
+@router.post("/customer/{customer_id}/targets", response_model=TargetResponse, status_code=201)
+async def create_customer_target(
+    customer_id: int,
+    target_in: TargetCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new assessment target for a customer."""
+    # Calculate overall target if not provided
+    overall_target = target_in.overall_target
+    if overall_target is None and target_in.target_scores:
+        overall_target = sum(target_in.target_scores.values()) / len(target_in.target_scores)
+
+    target = CustomerAssessmentTarget(
+        customer_id=customer_id,
+        name=target_in.name,
+        description=target_in.description,
+        target_date=target_in.target_date,
+        target_scores=target_in.target_scores,
+        overall_target=overall_target,
+        is_active=target_in.is_active,
+        created_by_id=target_in.created_by_id
+    )
+    db.add(target)
+    await db.flush()
+    await db.refresh(target)
+
+    return TargetResponse.model_validate(target)
+
+
+@router.get("/targets/{target_id}", response_model=TargetResponse)
+async def get_target(
+    target_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific target."""
+    query = select(CustomerAssessmentTarget).where(
+        CustomerAssessmentTarget.id == target_id
+    ).options(selectinload(CustomerAssessmentTarget.created_by))
+
+    result = await db.execute(query)
+    target = result.scalar_one_or_none()
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    return TargetResponse.model_validate(target)
+
+
+@router.patch("/targets/{target_id}", response_model=TargetResponse)
+async def update_target(
+    target_id: int,
+    target_in: TargetUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update an existing target."""
+    query = select(CustomerAssessmentTarget).where(
+        CustomerAssessmentTarget.id == target_id
+    )
+    result = await db.execute(query)
+    target = result.scalar_one_or_none()
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    update_data = target_in.model_dump(exclude_unset=True)
+
+    # Recalculate overall target if target_scores changed
+    if 'target_scores' in update_data and update_data['target_scores']:
+        if 'overall_target' not in update_data:
+            update_data['overall_target'] = sum(update_data['target_scores'].values()) / len(update_data['target_scores'])
+
+    for field, value in update_data.items():
+        setattr(target, field, value)
+
+    await db.flush()
+    await db.refresh(target)
+
+    return TargetResponse.model_validate(target)
+
+
+@router.delete("/targets/{target_id}", status_code=204)
+async def delete_target(
+    target_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a target."""
+    query = select(CustomerAssessmentTarget).where(
+        CustomerAssessmentTarget.id == target_id
+    )
+    result = await db.execute(query)
+    target = result.scalar_one_or_none()
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    await db.delete(target)
+
+
+@router.get("/customer/{customer_id}/targets/{target_id}/gap-analysis", response_model=GapAnalysisResponse)
+async def get_gap_analysis(
+    customer_id: int,
+    target_id: int,
+    assessment_id: Optional[int] = Query(None, description="Specific assessment to compare against"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get gap analysis between a target and current/specified assessment."""
+    # Get target
+    target_query = select(CustomerAssessmentTarget).where(
+        and_(
+            CustomerAssessmentTarget.id == target_id,
+            CustomerAssessmentTarget.customer_id == customer_id
+        )
+    ).options(selectinload(CustomerAssessmentTarget.created_by))
+
+    target_result = await db.execute(target_query)
+    target = target_result.scalar_one_or_none()
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    # Get assessment (most recent completed if not specified)
+    if assessment_id:
+        assessment_query = select(CustomerAssessment).where(
+            CustomerAssessment.id == assessment_id
+        )
+    else:
+        assessment_query = select(CustomerAssessment).where(
+            and_(
+                CustomerAssessment.customer_id == customer_id,
+                CustomerAssessment.status == AssessmentStatus.COMPLETED
+            )
+        ).order_by(CustomerAssessment.assessment_date.desc(), CustomerAssessment.id.desc())
+
+    assessment_result = await db.execute(assessment_query)
+    assessment = assessment_result.scalar_one_or_none()
+
+    # Calculate dimension gaps
+    dimension_gaps = []
+    current_scores = assessment.dimension_scores if assessment else {}
+
+    for dim_name, target_score in (target.target_scores or {}).items():
+        current_score = current_scores.get(dim_name)
+        gap = None
+        status = "at_risk"
+
+        if current_score is not None:
+            gap = target_score - current_score
+            if gap <= 0:
+                status = "achieved"
+            elif gap <= 0.5:
+                status = "on_track"
+            elif gap <= 1.0:
+                status = "needs_attention"
+            else:
+                status = "at_risk"
+
+        dimension_gaps.append(DimensionGap(
+            dimension_name=dim_name,
+            current_score=current_score,
+            target_score=target_score,
+            gap=gap,
+            status=status
+        ))
+
+    # Calculate overall gap
+    current_overall = assessment.overall_score if assessment else None
+    target_overall = target.overall_target
+    overall_gap = None
+    overall_status = "at_risk"
+
+    if current_overall is not None and target_overall is not None:
+        overall_gap = target_overall - current_overall
+        if overall_gap <= 0:
+            overall_status = "achieved"
+        elif overall_gap <= 0.5:
+            overall_status = "on_track"
+        elif overall_gap <= 1.0:
+            overall_status = "needs_attention"
+        else:
+            overall_status = "at_risk"
+
+    # Calculate days to target
+    days_to_target = None
+    if target.target_date:
+        days_to_target = (target.target_date - date.today()).days
+
+    return GapAnalysisResponse(
+        target=TargetResponse.model_validate(target),
+        current_overall=current_overall,
+        target_overall=target_overall,
+        overall_gap=overall_gap,
+        overall_status=overall_status,
+        dimension_gaps=dimension_gaps,
+        days_to_target=days_to_target
+    )
