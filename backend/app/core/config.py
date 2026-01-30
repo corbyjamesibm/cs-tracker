@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     salesforce_client_id: Optional[str] = None
     salesforce_client_secret: Optional[str] = None
     gainsight_api_key: Optional[str] = None
+
+    # TargetProcess Integration
     targetprocess_api_token: Optional[str] = None
+    targetprocess_base_url: str = "https://tpondemand.tpondemand.com"  # Default TP instance
 
     # LLM Configuration
     llm_provider: str = "ollama"  # "ollama" or "anthropic"

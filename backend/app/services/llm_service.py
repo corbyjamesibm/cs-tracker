@@ -18,6 +18,7 @@ from app.models.risk import Risk, RiskSeverity, RiskStatus, RiskCategory
 from app.models.meeting_note import MeetingNote
 from app.schemas.chat import ChatRequest, ChatResponse, ChatContext, ActionResult
 from app.services.ai_provider import get_ai_provider, AIMessage, AIProvider
+from app.services.targetprocess import get_tp_service
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +364,238 @@ TOOLS = [
                 }
             }
         }
+    },
+    # TargetProcess Integration Tools
+    {
+        "name": "tp_search",
+        "description": "Search TargetProcess for work items (UserStory, Bug, Task, Feature, Epic). Returns matching items with basic info.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["UserStory", "Bug", "Task", "Feature", "Epic", "Request"],
+                    "description": "Type of TP entity to search"
+                },
+                "filter": {
+                    "type": "string",
+                    "description": "Filter expression (e.g., \"EntityState.Name eq 'Open'\", \"Project.Name eq 'MyProject'\")"
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Maximum results to return"
+                }
+            },
+            "required": ["entity_type"]
+        }
+    },
+    {
+        "name": "tp_get_details",
+        "description": "Get detailed information about a specific TargetProcess item by ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["UserStory", "Bug", "Task", "Feature", "Epic", "Request"],
+                    "description": "Type of TP entity"
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "description": "The TP entity ID"
+                }
+            },
+            "required": ["entity_type", "entity_id"]
+        }
+    },
+    {
+        "name": "tp_create",
+        "description": "Create a new item in TargetProcess (UserStory, Bug, Task, Feature).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["UserStory", "Bug", "Task", "Feature", "Request"],
+                    "description": "Type of entity to create"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Name/title of the item"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of the item"
+                },
+                "project_id": {
+                    "type": "integer",
+                    "description": "TP Project ID to create the item in"
+                }
+            },
+            "required": ["entity_type", "name", "project_id"]
+        }
+    },
+    {
+        "name": "tp_update",
+        "description": "Update an existing TargetProcess item (change name, description, state, etc.).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity_type": {
+                    "type": "string",
+                    "enum": ["UserStory", "Bug", "Task", "Feature", "Epic", "Request"],
+                    "description": "Type of entity"
+                },
+                "entity_id": {
+                    "type": "integer",
+                    "description": "Entity ID to update"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "New name (optional)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "New description (optional)"
+                },
+                "state_id": {
+                    "type": "integer",
+                    "description": "New state ID (optional)"
+                }
+            },
+            "required": ["entity_type", "entity_id"]
+        }
+    },
+    {
+        "name": "tp_add_comment",
+        "description": "Add a comment to a TargetProcess item.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity_id": {
+                    "type": "integer",
+                    "description": "Entity ID to comment on"
+                },
+                "comment": {
+                    "type": "string",
+                    "description": "Comment text"
+                }
+            },
+            "required": ["entity_id", "comment"]
+        }
+    },
+    {
+        "name": "tp_get_comments",
+        "description": "Get comments from a TargetProcess item.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "entity_id": {
+                    "type": "integer",
+                    "description": "Entity ID to get comments for"
+                },
+                "limit": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Maximum comments to return"
+                }
+            },
+            "required": ["entity_id"]
+        }
+    },
+    # Write/Update Tools for CS Tracker data
+    {
+        "name": "update_customer",
+        "description": "Update customer information (health status, notes, adoption stage, etc.).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "customer_id": {
+                    "type": "integer",
+                    "description": "Customer ID to update"
+                },
+                "health_status": {
+                    "type": "string",
+                    "enum": ["green", "yellow", "red"],
+                    "description": "New health status"
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Notes to add"
+                },
+                "adoption_stage": {
+                    "type": "string",
+                    "enum": ["onboarding", "adoption", "value_realization", "expansion", "renewal"],
+                    "description": "New adoption stage"
+                }
+            },
+            "required": ["customer_id"]
+        }
+    },
+    {
+        "name": "update_task",
+        "description": "Update an existing task (change status, priority, due date, assignee).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "Task ID to update"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["open", "in_progress", "completed", "cancelled"],
+                    "description": "New status"
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "urgent"],
+                    "description": "New priority"
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": "New due date (YYYY-MM-DD)"
+                },
+                "assignee_id": {
+                    "type": "integer",
+                    "description": "New assignee user ID"
+                }
+            },
+            "required": ["task_id"]
+        }
+    },
+    {
+        "name": "update_risk",
+        "description": "Update a risk (change severity, status, mitigation plan).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "risk_id": {
+                    "type": "integer",
+                    "description": "Risk ID to update"
+                },
+                "severity": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "critical"],
+                    "description": "New severity"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["open", "mitigating", "resolved", "accepted"],
+                    "description": "New status"
+                },
+                "mitigation_plan": {
+                    "type": "string",
+                    "description": "Updated mitigation plan"
+                },
+                "resolution_notes": {
+                    "type": "string",
+                    "description": "Resolution notes (when resolving)"
+                }
+            },
+            "required": ["risk_id"]
+        }
     }
 ]
 
@@ -509,6 +742,26 @@ Can create/modify data: {self._can_write()}
                 return await self._create_meeting_note(**tool_input)
             elif tool_name == "get_renewals_upcoming":
                 return await self._get_renewals_upcoming(**tool_input)
+            # TargetProcess tools
+            elif tool_name == "tp_search":
+                return await self._tp_search(**tool_input)
+            elif tool_name == "tp_get_details":
+                return await self._tp_get_details(**tool_input)
+            elif tool_name == "tp_create":
+                return await self._tp_create(**tool_input)
+            elif tool_name == "tp_update":
+                return await self._tp_update(**tool_input)
+            elif tool_name == "tp_add_comment":
+                return await self._tp_add_comment(**tool_input)
+            elif tool_name == "tp_get_comments":
+                return await self._tp_get_comments(**tool_input)
+            # Update tools
+            elif tool_name == "update_customer":
+                return await self._update_customer(**tool_input)
+            elif tool_name == "update_task":
+                return await self._update_task(**tool_input)
+            elif tool_name == "update_risk":
+                return await self._update_risk(**tool_input)
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
         except Exception as e:
@@ -1063,6 +1316,368 @@ Can create/modify data: {self._can_write()}
             ],
             "count": len(customers),
             "total_arr": sum(float(c.arr) for c in customers if c.arr)
+        }
+
+    # ================================================================
+    # TargetProcess Tool Handlers
+    # ================================================================
+
+    async def _tp_search(
+        self,
+        entity_type: str,
+        filter: str = None,
+        limit: int = 10
+    ) -> dict:
+        """Search TargetProcess entities."""
+        tp_service = get_tp_service()
+        if not tp_service.is_available():
+            return {"error": "TargetProcess is not configured"}
+
+        include = ["Project", "AssignedUser", "EntityState"]
+        result = await tp_service.search_entities(
+            entity_type=entity_type,
+            where=filter,
+            include=include,
+            take=limit
+        )
+
+        if "error" in result:
+            return result
+
+        # Format items for response
+        items = []
+        for item in result.get("items", []):
+            items.append({
+                "id": item.get("Id"),
+                "name": item.get("Name"),
+                "state": item.get("EntityState", {}).get("Name") if item.get("EntityState") else None,
+                "project": item.get("Project", {}).get("Name") if item.get("Project") else None,
+                "assigned_to": item.get("AssignedUser", {}).get("FirstName", "") + " " + item.get("AssignedUser", {}).get("LastName", "") if item.get("AssignedUser") else None
+            })
+
+        return {
+            "items": items,
+            "count": len(items),
+            "entity_type": entity_type
+        }
+
+    async def _tp_get_details(
+        self,
+        entity_type: str,
+        entity_id: int
+    ) -> dict:
+        """Get detailed TP entity information."""
+        tp_service = get_tp_service()
+        if not tp_service.is_available():
+            return {"error": "TargetProcess is not configured"}
+
+        include = ["Project", "AssignedUser", "EntityState", "Description"]
+        result = await tp_service.get_entity(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            include=include
+        )
+
+        if "error" in result:
+            return result
+
+        return {
+            "id": result.get("Id"),
+            "name": result.get("Name"),
+            "description": result.get("Description"),
+            "state": result.get("EntityState", {}).get("Name") if result.get("EntityState") else None,
+            "project": result.get("Project", {}).get("Name") if result.get("Project") else None,
+            "assigned_to": result.get("AssignedUser", {}).get("FirstName", "") + " " + result.get("AssignedUser", {}).get("LastName", "") if result.get("AssignedUser") else None,
+            "create_date": result.get("CreateDate"),
+            "modify_date": result.get("ModifyDate"),
+            "entity_type": entity_type
+        }
+
+    async def _tp_create(
+        self,
+        entity_type: str,
+        name: str,
+        project_id: int,
+        description: str = None
+    ) -> dict:
+        """Create a new TP entity."""
+        if not self._can_write():
+            return {"error": "You don't have permission to create TargetProcess items"}
+
+        tp_service = get_tp_service()
+        if not tp_service.is_available():
+            return {"error": "TargetProcess is not configured"}
+
+        data = {
+            "Name": name,
+            "Project": {"Id": project_id}
+        }
+        if description:
+            data["Description"] = description
+
+        result = await tp_service.create_entity(entity_type, data)
+
+        if "error" in result:
+            return result
+
+        self.actions_taken.append(ActionResult(
+            action_type="tp_entity_created",
+            entity_type=entity_type,
+            entity_id=result.get("id"),
+            summary=f"Created TP {entity_type}: {name}"
+        ))
+
+        return {
+            "success": True,
+            "id": result.get("id"),
+            "message": f"Created {entity_type} '{name}' in TargetProcess"
+        }
+
+    async def _tp_update(
+        self,
+        entity_type: str,
+        entity_id: int,
+        name: str = None,
+        description: str = None,
+        state_id: int = None
+    ) -> dict:
+        """Update a TP entity."""
+        if not self._can_write():
+            return {"error": "You don't have permission to update TargetProcess items"}
+
+        tp_service = get_tp_service()
+        if not tp_service.is_available():
+            return {"error": "TargetProcess is not configured"}
+
+        data = {}
+        if name:
+            data["Name"] = name
+        if description:
+            data["Description"] = description
+        if state_id:
+            data["EntityState"] = {"Id": state_id}
+
+        if not data:
+            return {"error": "No fields to update"}
+
+        result = await tp_service.update_entity(entity_type, entity_id, data)
+
+        if "error" in result:
+            return result
+
+        self.actions_taken.append(ActionResult(
+            action_type="tp_entity_updated",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            summary=f"Updated TP {entity_type} #{entity_id}"
+        ))
+
+        return {
+            "success": True,
+            "message": f"Updated {entity_type} #{entity_id} in TargetProcess"
+        }
+
+    async def _tp_add_comment(
+        self,
+        entity_id: int,
+        comment: str
+    ) -> dict:
+        """Add a comment to a TP entity."""
+        if not self._can_write():
+            return {"error": "You don't have permission to add comments"}
+
+        tp_service = get_tp_service()
+        if not tp_service.is_available():
+            return {"error": "TargetProcess is not configured"}
+
+        result = await tp_service.add_comment("General", entity_id, comment)
+
+        if "error" in result:
+            return result
+
+        self.actions_taken.append(ActionResult(
+            action_type="tp_comment_added",
+            entity_type="Comment",
+            entity_id=result.get("comment_id"),
+            summary=f"Added comment to TP item #{entity_id}"
+        ))
+
+        return {
+            "success": True,
+            "comment_id": result.get("comment_id"),
+            "message": f"Added comment to TP item #{entity_id}"
+        }
+
+    async def _tp_get_comments(
+        self,
+        entity_id: int,
+        limit: int = 10
+    ) -> dict:
+        """Get comments from a TP entity."""
+        tp_service = get_tp_service()
+        if not tp_service.is_available():
+            return {"error": "TargetProcess is not configured"}
+
+        result = await tp_service.get_comments(entity_id, limit)
+
+        if "error" in result:
+            return result
+
+        return result
+
+    # ================================================================
+    # CS Tracker Update Tool Handlers
+    # ================================================================
+
+    async def _update_customer(
+        self,
+        customer_id: int,
+        health_status: str = None,
+        notes: str = None,
+        adoption_stage: str = None
+    ) -> dict:
+        """Update customer information."""
+        if not self._can_write():
+            return {"error": "You don't have permission to update customers"}
+
+        customer = await self.db.get(Customer, customer_id)
+        if not customer:
+            return {"error": "Customer not found"}
+
+        # Check access
+        if self.current_user.role == UserRole.CSM and customer.csm_owner_id != self.current_user.id:
+            return {"error": "You don't have access to this customer"}
+        if self.current_user.role == UserRole.ACCOUNT_MANAGER and customer.account_manager_id != self.current_user.id:
+            return {"error": "You don't have access to this customer"}
+
+        updates = []
+        if health_status:
+            customer.health_status = HealthStatus(health_status)
+            updates.append(f"health status to {health_status}")
+        if notes:
+            # Append to existing notes
+            existing = customer.notes or ""
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+            customer.notes = f"{existing}\n\n[{timestamp}] {notes}".strip()
+            updates.append("added notes")
+        if adoption_stage:
+            from app.models.customer import AdoptionStage
+            customer.adoption_stage = AdoptionStage(adoption_stage)
+            updates.append(f"adoption stage to {adoption_stage}")
+
+        if not updates:
+            return {"error": "No fields to update"}
+
+        await self.db.flush()
+
+        self.actions_taken.append(ActionResult(
+            action_type="customer_updated",
+            entity_type="customer",
+            entity_id=customer_id,
+            summary=f"Updated customer: {', '.join(updates)}"
+        ))
+
+        return {
+            "success": True,
+            "message": f"Updated customer '{customer.name}': {', '.join(updates)}"
+        }
+
+    async def _update_task(
+        self,
+        task_id: int,
+        status: str = None,
+        priority: str = None,
+        due_date: str = None,
+        assignee_id: int = None
+    ) -> dict:
+        """Update a task."""
+        if not self._can_write():
+            return {"error": "You don't have permission to update tasks"}
+
+        task = await self.db.get(Task, task_id)
+        if not task:
+            return {"error": "Task not found"}
+
+        updates = []
+        if status:
+            task.status = TaskStatus(status)
+            updates.append(f"status to {status}")
+            if status == "completed":
+                task.completed_at = datetime.utcnow()
+        if priority:
+            task.priority = TaskPriority(priority)
+            updates.append(f"priority to {priority}")
+        if due_date:
+            task.due_date = datetime.fromisoformat(due_date)
+            updates.append(f"due date to {due_date}")
+        if assignee_id:
+            task.assignee_id = assignee_id
+            updates.append(f"assignee to user #{assignee_id}")
+
+        if not updates:
+            return {"error": "No fields to update"}
+
+        await self.db.flush()
+
+        self.actions_taken.append(ActionResult(
+            action_type="task_updated",
+            entity_type="task",
+            entity_id=task_id,
+            summary=f"Updated task: {', '.join(updates)}"
+        ))
+
+        return {
+            "success": True,
+            "message": f"Updated task '{task.title}': {', '.join(updates)}"
+        }
+
+    async def _update_risk(
+        self,
+        risk_id: int,
+        severity: str = None,
+        status: str = None,
+        mitigation_plan: str = None,
+        resolution_notes: str = None
+    ) -> dict:
+        """Update a risk."""
+        if not self._can_write():
+            return {"error": "You don't have permission to update risks"}
+
+        risk = await self.db.get(Risk, risk_id)
+        if not risk:
+            return {"error": "Risk not found"}
+
+        updates = []
+        if severity:
+            risk.severity = RiskSeverity(severity)
+            updates.append(f"severity to {severity}")
+        if status:
+            risk.status = RiskStatus(status)
+            updates.append(f"status to {status}")
+            if status == "resolved":
+                risk.resolved_at = datetime.utcnow()
+        if mitigation_plan:
+            risk.mitigation_plan = mitigation_plan
+            updates.append("mitigation plan")
+        if resolution_notes:
+            risk.resolution_notes = resolution_notes
+            updates.append("resolution notes")
+
+        if not updates:
+            return {"error": "No fields to update"}
+
+        await self.db.flush()
+
+        self.actions_taken.append(ActionResult(
+            action_type="risk_updated",
+            entity_type="risk",
+            entity_id=risk_id,
+            summary=f"Updated risk: {', '.join(updates)}"
+        ))
+
+        return {
+            "success": True,
+            "message": f"Updated risk '{risk.title}': {', '.join(updates)}"
         }
 
     def _generate_suggestions(self, request: ChatRequest, response: str) -> List[str]:
