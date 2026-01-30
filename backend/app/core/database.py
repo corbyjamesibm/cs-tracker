@@ -50,6 +50,6 @@ async def get_db() -> AsyncSession:
 async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
-        # Import models to register them
-        from app.models import customer, user, task, engagement, settings, document
+        # Import all models to register them with Base.metadata
+        from app import models  # This imports all models via models/__init__.py
         await conn.run_sync(Base.metadata.create_all)

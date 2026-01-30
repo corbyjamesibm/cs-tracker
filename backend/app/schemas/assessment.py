@@ -54,6 +54,8 @@ class AssessmentQuestionBase(BaseModel):
     min_score: int = 1
     max_score: int = 5
     score_labels: Optional[dict[str, Any]] = None
+    score_descriptions: Optional[dict[str, Any]] = None
+    score_evidence: Optional[dict[str, Any]] = None
     display_order: int = 0
     is_required: bool = True
 
@@ -189,6 +191,7 @@ class BatchResponseSubmit(BaseModel):
     """Submit multiple responses at once"""
     responses: List[AssessmentAnswerCreate]
     complete: bool = False  # If true, mark assessment as completed
+    completed_by_id: Optional[int] = None  # User ID who completed the assessment
 
 
 # === History & Comparison ===

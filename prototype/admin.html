@@ -6,6 +6,7 @@
   <title>Admin - Customer Status Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css?v=9">
+  <link rel="stylesheet" href="css/chat.css">
 </head>
 <body>
   <div class="app-container">
@@ -388,6 +389,83 @@
                 <tbody id="assessmentTemplatesTableBody">
                   <tr>
                     <td colspan="6" class="text-center text-secondary">Loading templates...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dimension → Use Case Mappings -->
+        <div class="card mt-5">
+          <div class="card__header">
+            <h2 class="card__title">Dimension → Use Case Mappings</h2>
+            <button class="btn btn--primary" onclick="openDimensionUseCaseMappingModal()">
+              <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+              Add Mapping
+            </button>
+          </div>
+          <div class="card__body">
+            <p class="text-secondary mb-4">
+              Define which use cases improve specific assessment dimensions. This enables automatic roadmap recommendations based on customer assessment scores.
+            </p>
+            <div class="data-table-container" style="max-height: 400px; overflow-y: auto;">
+              <table class="data-table" id="dimensionUseCaseMappingsTable">
+                <thead>
+                  <tr>
+                    <th>Dimension</th>
+                    <th>Use Case</th>
+                    <th>Solution Area</th>
+                    <th>Impact Weight</th>
+                    <th>Threshold</th>
+                    <th>Priority</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dimensionUseCaseMappingsTableBody">
+                  <tr>
+                    <td colspan="7" class="text-center text-secondary">Loading mappings...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Use Case → TP Feature Mappings -->
+        <div class="card mt-5">
+          <div class="card__header">
+            <h2 class="card__title">Use Case → TP Feature Mappings</h2>
+            <button class="btn btn--primary" onclick="openUseCaseTPMappingModal()">
+              <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+              Add Mapping
+            </button>
+          </div>
+          <div class="card__body">
+            <p class="text-secondary mb-4">
+              Link use cases to Targetprocess features. When a use case is recommended, the associated TP features will be shown for inclusion in the customer's roadmap.
+            </p>
+            <div class="flex gap-3 mb-4">
+              <select class="form-select" id="tpMappingUseCaseFilter" onchange="loadUseCaseTPMappings()" style="width: auto; min-width: 200px;">
+                <option value="">All Use Cases</option>
+              </select>
+            </div>
+            <div class="data-table-container" style="max-height: 400px; overflow-y: auto;">
+              <table class="data-table" id="useCaseTPMappingsTable">
+                <thead>
+                  <tr>
+                    <th>Use Case</th>
+                    <th>TP Feature</th>
+                    <th>Type</th>
+                    <th>State</th>
+                    <th>Required</th>
+                    <th>Last Synced</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="useCaseTPMappingsTableBody">
+                  <tr>
+                    <td colspan="7" class="text-center text-secondary">Loading mappings...</td>
                   </tr>
                 </tbody>
               </table>
@@ -833,12 +911,166 @@
     </div>
   </div>
 
+  <!-- Dimension → Use Case Mapping Modal -->
+  <div class="modal-overlay" id="dimensionUseCaseMappingModal">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title" id="dimUcMappingModalTitle">Add Dimension → Use Case Mapping</h2>
+        <button class="modal__close" onclick="closeDimensionUseCaseMappingModal()">
+          <svg width="20" height="20" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+        </button>
+      </div>
+      <form id="dimUcMappingForm" onsubmit="handleDimUcMappingSubmit(event)">
+        <input type="hidden" id="dimUcMappingEditId" value="">
+        <div class="modal__body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="dimUcMappingDimension">Assessment Dimension *</label>
+              <select class="form-select" id="dimUcMappingDimension" name="dimension_id" required>
+                <option value="">Select dimension...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dimUcMappingUseCase">Use Case *</label>
+              <select class="form-select" id="dimUcMappingUseCase" name="use_case_id" required>
+                <option value="">Select use case...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dimUcMappingImpact">Impact Weight (0-1)</label>
+              <input type="number" class="form-input" id="dimUcMappingImpact" name="impact_weight" value="0.5" min="0" max="1" step="0.1">
+              <span class="form-hint">How much this use case improves the dimension (0=none, 1=full)</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dimUcMappingThreshold">Threshold Score (1-5)</label>
+              <input type="number" class="form-input" id="dimUcMappingThreshold" name="threshold_score" value="3.0" min="1" max="5" step="0.5">
+              <span class="form-hint">Recommend if dimension score is below this</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dimUcMappingPriority">Priority</label>
+              <input type="number" class="form-input" id="dimUcMappingPriority" name="priority" value="0" min="0">
+              <span class="form-hint">Lower numbers = higher priority in recommendations</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--secondary" onclick="closeDimensionUseCaseMappingModal()">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="dimUcMappingSubmitBtn">Add Mapping</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Use Case → TP Feature Mapping Modal -->
+  <div class="modal-overlay" id="useCaseTPMappingModal">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title" id="ucTpMappingModalTitle">Add Use Case → TP Feature Mapping</h2>
+        <button class="modal__close" onclick="closeUseCaseTPMappingModal()">
+          <svg width="20" height="20" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+        </button>
+      </div>
+      <form id="ucTpMappingForm" onsubmit="handleUcTpMappingSubmit(event)">
+        <input type="hidden" id="ucTpMappingEditId" value="">
+        <div class="modal__body">
+          <div class="form-grid">
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label class="form-label" for="ucTpMappingUseCase">Use Case *</label>
+              <select class="form-select" id="ucTpMappingUseCase" name="use_case_id" required>
+                <option value="">Select use case...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ucTpMappingFeatureId">TP Feature ID *</label>
+              <input type="number" class="form-input" id="ucTpMappingFeatureId" name="tp_feature_id" required placeholder="e.g., 12345">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ucTpMappingFeatureName">TP Feature Name *</label>
+              <input type="text" class="form-input" id="ucTpMappingFeatureName" name="tp_feature_name" required placeholder="e.g., Capacity Planning Dashboard">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ucTpMappingEntityType">Entity Type</label>
+              <select class="form-select" id="ucTpMappingEntityType" name="tp_entity_type">
+                <option value="Feature" selected>Feature</option>
+                <option value="Epic">Epic</option>
+                <option value="UserStory">UserStory</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ucTpMappingState">State</label>
+              <input type="text" class="form-input" id="ucTpMappingState" name="tp_state" placeholder="e.g., Open, In Progress">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ucTpMappingProject">TP Project</label>
+              <input type="text" class="form-input" id="ucTpMappingProject" name="tp_project_name" placeholder="e.g., TP Product">
+            </div>
+            <div class="form-group">
+              <label class="checkbox-wrapper" style="margin-top: 24px;">
+                <input type="checkbox" id="ucTpMappingRequired" name="is_required">
+                <span class="checkbox-label">Required for use case</span>
+              </label>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label class="form-label" for="ucTpMappingNotes">Notes</label>
+              <textarea class="form-input" id="ucTpMappingNotes" name="notes" rows="2" placeholder="Optional notes about this mapping"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--secondary" onclick="closeUseCaseTPMappingModal()">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="ucTpMappingSubmitBtn">Add Mapping</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast container -->
   <div id="toastContainer" class="toast-container"></div>
 
+  <!-- Chat Widget -->
+  <button class="chat-trigger" id="chatTrigger" onclick="toggleChatPanel()" title="CS Assistant">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+      <path d="M7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/>
+    </svg>
+  </button>
+
+  <div class="chat-panel" id="chatPanel">
+    <div class="chat-header">
+      <div class="chat-header__title">
+        <div class="chat-header__status"></div>
+        <h3>CS Assistant</h3>
+      </div>
+      <div class="chat-header__actions">
+        <button class="chat-header__btn" onclick="clearChat()" title="Clear chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+        </button>
+        <button class="chat-header__btn" onclick="toggleChatPanel()" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-area">
+      <div class="chat-input-wrapper">
+        <textarea id="chatInput" placeholder="Ask about customers, tasks, risks..." rows="1"></textarea>
+      </div>
+      <button id="chatSendBtn" onclick="sendMessage()" title="Send">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=12"></script>
+  <script src="js/api.js?v=13"></script>
+  <script src="js/chat.js?v=1"></script>
   <script src="js/table-sort.js?v=3"></script>
   <script src="js/admin.js?v=17"></script>
   <script>

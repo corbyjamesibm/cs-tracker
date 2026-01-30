@@ -67,3 +67,12 @@ yarn-error.log*
 *.tmp
 *.temp
 .cache/
+
+# Test artifacts
+tests/e2e/reports/
+tests/e2e/.auth/user.json
+tests/backend/coverage/
+test-results/
+playwright-report/
+coverage.xml
+.coverage

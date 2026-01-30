@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     await loadUseCases();
     await loadAuthSettings();
     await loadAdoptionStats();
+    await loadDimensionUseCaseMappings();
+    await loadUseCaseTPMappings();
 });
 
 /**
@@ -2035,3 +2037,518 @@ window.editLookupValue = editLookupValue;
 window.handleLookupValueSubmit = handleLookupValueSubmit;
 window.toggleLookupValueStatus = toggleLookupValueStatus;
 window.deleteLookupValue = deleteLookupValue;
+
+// ==================== DIMENSION → USE CASE MAPPING MANAGEMENT ====================
+
+let dimensionUseCaseMappingsCache = [];
+let assessmentDimensionsCache = [];
+
+/**
+ * Load dimension → use case mappings
+ */
+async function loadDimensionUseCaseMappings() {
+    const tableBody = document.getElementById('dimensionUseCaseMappingsTableBody');
+    if (!tableBody) return;
+
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/mappings/dimension-use-case`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        dimensionUseCaseMappingsCache = data.items || [];
+
+        if (dimensionUseCaseMappingsCache.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary">No mappings found. Create mappings to enable recommendations.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = dimensionUseCaseMappingsCache.map(m => `
+            <tr>
+                <td><strong>${m.dimension_name || '-'}</strong></td>
+                <td>${m.use_case_name || '-'}</td>
+                <td><span class="tag tag--blue">${m.solution_area || '-'}</span></td>
+                <td>${m.impact_weight}</td>
+                <td>${m.threshold_score}</td>
+                <td>${m.priority}</td>
+                <td>
+                    <div class="flex gap-2">
+                        <button class="btn btn--ghost btn--small" onclick="editDimensionUseCaseMapping(${m.id})" title="Edit">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                        </button>
+                        <button class="btn btn--ghost btn--small btn--danger" onclick="deleteDimensionUseCaseMapping(${m.id})" title="Delete">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 12h2v12h-2zM18 12h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zM12 2h8v2h-8z"/></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        // Initialize table sorting
+        if (window.TableSort) {
+            TableSort.init('dimensionUseCaseMappingsTable', [0, 1, 2, 3, 4, 5]);
+        }
+    } catch (error) {
+        console.error('Failed to load dimension-use case mappings:', error);
+        tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Failed to load mappings</td></tr>';
+    }
+}
+
+/**
+ * Load assessment dimensions for dropdown
+ */
+async function loadAssessmentDimensions() {
+    try {
+        // Get the active template
+        const templatesResponse = await window.API.AssessmentAPI.getTemplates();
+        const activeTemplate = templatesResponse.items.find(t => t.is_active);
+
+        if (!activeTemplate) {
+            assessmentDimensionsCache = [];
+            return;
+        }
+
+        // Get template details with dimensions
+        const template = await window.API.AssessmentAPI.getTemplate(activeTemplate.id);
+        assessmentDimensionsCache = template.dimensions || [];
+    } catch (error) {
+        console.error('Failed to load assessment dimensions:', error);
+        assessmentDimensionsCache = [];
+    }
+}
+
+/**
+ * Open dimension → use case mapping modal
+ */
+async function openDimensionUseCaseMappingModal() {
+    const modal = document.getElementById('dimensionUseCaseMappingModal');
+    if (!modal) return;
+
+    // Load dimensions if not loaded
+    if (assessmentDimensionsCache.length === 0) {
+        await loadAssessmentDimensions();
+    }
+
+    // Populate dimension dropdown
+    const dimensionSelect = document.getElementById('dimUcMappingDimension');
+    dimensionSelect.innerHTML = '<option value="">Select dimension...</option>';
+    assessmentDimensionsCache.forEach(d => {
+        const option = document.createElement('option');
+        option.value = d.id;
+        option.textContent = d.name;
+        dimensionSelect.appendChild(option);
+    });
+
+    // Populate use case dropdown
+    const useCaseSelect = document.getElementById('dimUcMappingUseCase');
+    useCaseSelect.innerHTML = '<option value="">Select use case...</option>';
+    useCasesCache.forEach(uc => {
+        const option = document.createElement('option');
+        option.value = uc.id;
+        option.textContent = `${uc.name} (${uc.solution_area || '-'})`;
+        useCaseSelect.appendChild(option);
+    });
+
+    // Reset form
+    document.getElementById('dimUcMappingForm').reset();
+    document.getElementById('dimUcMappingEditId').value = '';
+    document.getElementById('dimUcMappingImpact').value = '0.5';
+    document.getElementById('dimUcMappingThreshold').value = '3.0';
+    document.getElementById('dimUcMappingPriority').value = '0';
+    document.getElementById('dimUcMappingModalTitle').textContent = 'Add Dimension → Use Case Mapping';
+    document.getElementById('dimUcMappingSubmitBtn').textContent = 'Add Mapping';
+
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Close dimension → use case mapping modal
+ */
+function closeDimensionUseCaseMappingModal() {
+    const modal = document.getElementById('dimensionUseCaseMappingModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Edit dimension → use case mapping
+ */
+function editDimensionUseCaseMapping(mappingId) {
+    const mapping = dimensionUseCaseMappingsCache.find(m => m.id === mappingId);
+    if (!mapping) return;
+
+    openDimensionUseCaseMappingModal().then(() => {
+        document.getElementById('dimUcMappingEditId').value = mapping.id;
+        document.getElementById('dimUcMappingDimension').value = mapping.dimension_id;
+        document.getElementById('dimUcMappingUseCase').value = mapping.use_case_id;
+        document.getElementById('dimUcMappingImpact').value = mapping.impact_weight;
+        document.getElementById('dimUcMappingThreshold').value = mapping.threshold_score;
+        document.getElementById('dimUcMappingPriority').value = mapping.priority;
+        document.getElementById('dimUcMappingModalTitle').textContent = 'Edit Dimension → Use Case Mapping';
+        document.getElementById('dimUcMappingSubmitBtn').textContent = 'Update Mapping';
+    });
+}
+
+/**
+ * Handle dimension → use case mapping form submit
+ */
+async function handleDimUcMappingSubmit(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('dimUcMappingSubmitBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Saving...';
+
+    const editId = document.getElementById('dimUcMappingEditId').value;
+    const isEdit = editId && editId !== '';
+
+    try {
+        const formData = {
+            dimension_id: parseInt(document.getElementById('dimUcMappingDimension').value),
+            use_case_id: parseInt(document.getElementById('dimUcMappingUseCase').value),
+            impact_weight: parseFloat(document.getElementById('dimUcMappingImpact').value),
+            threshold_score: parseFloat(document.getElementById('dimUcMappingThreshold').value),
+            priority: parseInt(document.getElementById('dimUcMappingPriority').value),
+        };
+
+        const url = isEdit
+            ? `${ADMIN_API_URL}/mappings/dimension-use-case/${editId}`
+            : `${ADMIN_API_URL}/mappings/dimension-use-case`;
+        const method = isEdit ? 'PATCH' : 'POST';
+
+        // For PATCH, only send update fields
+        const body = isEdit ? {
+            impact_weight: formData.impact_weight,
+            threshold_score: formData.threshold_score,
+            priority: formData.priority,
+        } : formData;
+
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `Failed to ${isEdit ? 'update' : 'create'} mapping`);
+        }
+
+        closeDimensionUseCaseMappingModal();
+        showToast(`Mapping ${isEdit ? 'updated' : 'created'} successfully`, 'success');
+        await loadDimensionUseCaseMappings();
+
+    } catch (error) {
+        console.error('Failed to save mapping:', error);
+        showToast(error.message || 'Failed to save mapping', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Delete dimension → use case mapping
+ */
+async function deleteDimensionUseCaseMapping(mappingId) {
+    if (!confirm('Are you sure you want to delete this mapping?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/mappings/dimension-use-case/${mappingId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete mapping');
+        }
+
+        showToast('Mapping deleted successfully', 'success');
+        await loadDimensionUseCaseMappings();
+
+    } catch (error) {
+        console.error('Failed to delete mapping:', error);
+        showToast(error.message || 'Failed to delete mapping', 'error');
+    }
+}
+
+// Export dimension-use case mapping functions
+window.loadDimensionUseCaseMappings = loadDimensionUseCaseMappings;
+window.openDimensionUseCaseMappingModal = openDimensionUseCaseMappingModal;
+window.closeDimensionUseCaseMappingModal = closeDimensionUseCaseMappingModal;
+window.editDimensionUseCaseMapping = editDimensionUseCaseMapping;
+window.handleDimUcMappingSubmit = handleDimUcMappingSubmit;
+window.deleteDimensionUseCaseMapping = deleteDimensionUseCaseMapping;
+
+// ==================== USE CASE → TP FEATURE MAPPING MANAGEMENT ====================
+
+let useCaseTPMappingsCache = [];
+
+/**
+ * Load use case → TP feature mappings
+ */
+async function loadUseCaseTPMappings() {
+    const tableBody = document.getElementById('useCaseTPMappingsTableBody');
+    if (!tableBody) return;
+
+    // Populate use case filter dropdown
+    const filterSelect = document.getElementById('tpMappingUseCaseFilter');
+    if (filterSelect && filterSelect.options.length <= 1) {
+        useCasesCache.forEach(uc => {
+            const option = document.createElement('option');
+            option.value = uc.id;
+            option.textContent = `${uc.name} (${uc.solution_area || '-'})`;
+            filterSelect.appendChild(option);
+        });
+    }
+
+    try {
+        const useCaseFilter = document.getElementById('tpMappingUseCaseFilter')?.value || '';
+        let url = `${ADMIN_API_URL}/mappings/use-case-tp`;
+        if (useCaseFilter) {
+            url += `?use_case_id=${useCaseFilter}`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        useCaseTPMappingsCache = data.items || [];
+
+        if (useCaseTPMappingsCache.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary">No mappings found. Add TP features to use cases.</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = useCaseTPMappingsCache.map(m => `
+            <tr>
+                <td>${m.use_case_name || '-'}</td>
+                <td>
+                    <a href="https://targetprocess.com/entity/${m.tp_feature_id}" target="_blank" title="Open in TP">
+                        ${m.tp_feature_name} (#${m.tp_feature_id})
+                    </a>
+                </td>
+                <td><span class="tag tag--blue">${m.tp_entity_type || 'Feature'}</span></td>
+                <td>${m.tp_state || '-'}</td>
+                <td>${m.is_required ? '<span class="tag tag--purple">Required</span>' : '<span class="tag tag--gray">Optional</span>'}</td>
+                <td>${m.last_synced_at ? formatDate(m.last_synced_at) : '-'}</td>
+                <td>
+                    <div class="flex gap-2">
+                        <button class="btn btn--ghost btn--small" onclick="syncTPMapping(${m.id})" title="Sync from TP">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zM20 22h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
+                        </button>
+                        <button class="btn btn--ghost btn--small" onclick="editUseCaseTPMapping(${m.id})" title="Edit">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                        </button>
+                        <button class="btn btn--ghost btn--small btn--danger" onclick="deleteUseCaseTPMapping(${m.id})" title="Delete">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 12h2v12h-2zM18 12h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zM12 2h8v2h-8z"/></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        // Initialize table sorting
+        if (window.TableSort) {
+            TableSort.init('useCaseTPMappingsTable', [0, 1, 2, 3, 4, 5]);
+        }
+    } catch (error) {
+        console.error('Failed to load use case-TP mappings:', error);
+        tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Failed to load mappings</td></tr>';
+    }
+}
+
+/**
+ * Open use case → TP feature mapping modal
+ */
+function openUseCaseTPMappingModal() {
+    const modal = document.getElementById('useCaseTPMappingModal');
+    if (!modal) return;
+
+    // Populate use case dropdown
+    const useCaseSelect = document.getElementById('ucTpMappingUseCase');
+    useCaseSelect.innerHTML = '<option value="">Select use case...</option>';
+    useCasesCache.forEach(uc => {
+        const option = document.createElement('option');
+        option.value = uc.id;
+        option.textContent = `${uc.name} (${uc.solution_area || '-'})`;
+        useCaseSelect.appendChild(option);
+    });
+
+    // Reset form
+    document.getElementById('ucTpMappingForm').reset();
+    document.getElementById('ucTpMappingEditId').value = '';
+    document.getElementById('ucTpMappingModalTitle').textContent = 'Add Use Case → TP Feature Mapping';
+    document.getElementById('ucTpMappingSubmitBtn').textContent = 'Add Mapping';
+
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+/**
+ * Close use case → TP feature mapping modal
+ */
+function closeUseCaseTPMappingModal() {
+    const modal = document.getElementById('useCaseTPMappingModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Edit use case → TP feature mapping
+ */
+function editUseCaseTPMapping(mappingId) {
+    const mapping = useCaseTPMappingsCache.find(m => m.id === mappingId);
+    if (!mapping) return;
+
+    openUseCaseTPMappingModal();
+
+    setTimeout(() => {
+        document.getElementById('ucTpMappingEditId').value = mapping.id;
+        document.getElementById('ucTpMappingUseCase').value = mapping.use_case_id;
+        document.getElementById('ucTpMappingFeatureId').value = mapping.tp_feature_id;
+        document.getElementById('ucTpMappingFeatureName').value = mapping.tp_feature_name;
+        document.getElementById('ucTpMappingEntityType').value = mapping.tp_entity_type || 'Feature';
+        document.getElementById('ucTpMappingState').value = mapping.tp_state || '';
+        document.getElementById('ucTpMappingProject').value = mapping.tp_project_name || '';
+        document.getElementById('ucTpMappingRequired').checked = mapping.is_required;
+        document.getElementById('ucTpMappingNotes').value = mapping.notes || '';
+        document.getElementById('ucTpMappingModalTitle').textContent = 'Edit Use Case → TP Feature Mapping';
+        document.getElementById('ucTpMappingSubmitBtn').textContent = 'Update Mapping';
+    }, 100);
+}
+
+/**
+ * Handle use case → TP feature mapping form submit
+ */
+async function handleUcTpMappingSubmit(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('ucTpMappingSubmitBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Saving...';
+
+    const editId = document.getElementById('ucTpMappingEditId').value;
+    const isEdit = editId && editId !== '';
+
+    try {
+        const formData = {
+            use_case_id: parseInt(document.getElementById('ucTpMappingUseCase').value),
+            tp_feature_id: parseInt(document.getElementById('ucTpMappingFeatureId').value),
+            tp_feature_name: document.getElementById('ucTpMappingFeatureName').value.trim(),
+            tp_entity_type: document.getElementById('ucTpMappingEntityType').value,
+            tp_state: document.getElementById('ucTpMappingState').value.trim() || null,
+            tp_project_name: document.getElementById('ucTpMappingProject').value.trim() || null,
+            is_required: document.getElementById('ucTpMappingRequired').checked,
+            is_recommended: true,
+            notes: document.getElementById('ucTpMappingNotes').value.trim() || null,
+        };
+
+        const url = isEdit
+            ? `${ADMIN_API_URL}/mappings/use-case-tp/${editId}`
+            : `${ADMIN_API_URL}/mappings/use-case-tp`;
+        const method = isEdit ? 'PATCH' : 'POST';
+
+        // For PATCH, remove use_case_id and tp_feature_id
+        const body = isEdit ? {
+            tp_feature_name: formData.tp_feature_name,
+            tp_entity_type: formData.tp_entity_type,
+            tp_state: formData.tp_state,
+            tp_project_name: formData.tp_project_name,
+            is_required: formData.is_required,
+            is_recommended: formData.is_recommended,
+            notes: formData.notes,
+        } : formData;
+
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `Failed to ${isEdit ? 'update' : 'create'} mapping`);
+        }
+
+        closeUseCaseTPMappingModal();
+        showToast(`Mapping ${isEdit ? 'updated' : 'created'} successfully`, 'success');
+        await loadUseCaseTPMappings();
+
+    } catch (error) {
+        console.error('Failed to save mapping:', error);
+        showToast(error.message || 'Failed to save mapping', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Sync TP feature mapping to refresh metadata
+ */
+async function syncTPMapping(mappingId) {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/mappings/use-case-tp/${mappingId}/sync`, {
+            method: 'POST',
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to sync mapping');
+        }
+
+        showToast('Mapping synced successfully', 'success');
+        await loadUseCaseTPMappings();
+
+    } catch (error) {
+        console.error('Failed to sync mapping:', error);
+        showToast(error.message || 'Failed to sync mapping', 'error');
+    }
+}
+
+/**
+ * Delete use case → TP feature mapping
+ */
+async function deleteUseCaseTPMapping(mappingId) {
+    if (!confirm('Are you sure you want to delete this mapping?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/mappings/use-case-tp/${mappingId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete mapping');
+        }
+
+        showToast('Mapping deleted successfully', 'success');
+        await loadUseCaseTPMappings();
+
+    } catch (error) {
+        console.error('Failed to delete mapping:', error);
+        showToast(error.message || 'Failed to delete mapping', 'error');
+    }
+}
+
+// Export use case-TP mapping functions
+window.loadUseCaseTPMappings = loadUseCaseTPMappings;
+window.openUseCaseTPMappingModal = openUseCaseTPMappingModal;
+window.closeUseCaseTPMappingModal = closeUseCaseTPMappingModal;
+window.editUseCaseTPMapping = editUseCaseTPMapping;
+window.handleUcTpMappingSubmit = handleUcTpMappingSubmit;
+window.syncTPMapping = syncTPMapping;
+window.deleteUseCaseTPMapping = deleteUseCaseTPMapping;

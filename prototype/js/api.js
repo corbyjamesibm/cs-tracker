@@ -499,10 +499,14 @@ const AssessmentAPI = {
     },
 
     // Responses
-    async saveResponses(assessmentId, responses, complete = false) {
+    async saveResponses(assessmentId, responses, complete = false, completedById = null) {
+        const body = { responses, complete };
+        if (completedById) {
+            body.completed_by_id = completedById;
+        }
         return apiRequest(`/assessments/${assessmentId}/responses`, {
             method: 'POST',
-            body: JSON.stringify({ responses, complete }),
+            body: JSON.stringify(body),
         });
     },
 
@@ -659,6 +663,20 @@ const DocumentAPI = {
     },
 };
 
+// Chat API - LLM-powered assistant
+const ChatAPI = {
+    async send(message, context = null, conversationId = null) {
+        return apiRequest('/chat', {
+            method: 'POST',
+            body: JSON.stringify({
+                message: message,
+                context: context,
+                conversation_id: conversationId
+            }),
+        });
+    }
+};
+
 // Meeting Note API
 const MeetingNoteAPI = {
     async getAll(params = {}) {
@@ -695,6 +713,161 @@ const MeetingNoteAPI = {
     },
 };
 
+// ============================================
+// Mappings API
+// ============================================
+const MappingsAPI = {
+    // Dimension -> Use Case mappings
+    getDimensionUseCaseMappings: async (dimensionId = null, useCaseId = null) => {
+        let url = `${API_BASE_URL}/mappings/dimension-use-case`;
+        const params = new URLSearchParams();
+        if (dimensionId) params.append('dimension_id', dimensionId);
+        if (useCaseId) params.append('use_case_id', useCaseId);
+        if (params.toString()) url += '?' + params.toString();
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    },
+
+    createDimensionUseCaseMapping: async (data) => {
+        const response = await fetch(`${API_BASE_URL}/mappings/dimension-use-case`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create mapping');
+        }
+        return response.json();
+    },
+
+    deleteDimensionUseCaseMapping: async (id) => {
+        const response = await fetch(`${API_BASE_URL}/mappings/dimension-use-case/${id}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete mapping');
+        }
+    },
+
+    // Use Case -> TP Feature mappings
+    getUseCaseTPMappings: async (useCaseId = null) => {
+        let url = `${API_BASE_URL}/mappings/use-case-tp`;
+        if (useCaseId) url += `?use_case_id=${useCaseId}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    },
+
+    createUseCaseTPMapping: async (data) => {
+        const response = await fetch(`${API_BASE_URL}/mappings/use-case-tp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create mapping');
+        }
+        return response.json();
+    },
+
+    deleteUseCaseTPMapping: async (id) => {
+        const response = await fetch(`${API_BASE_URL}/mappings/use-case-tp/${id}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete mapping');
+        }
+    },
+
+    syncTPMapping: async (id) => {
+        const response = await fetch(`${API_BASE_URL}/mappings/use-case-tp/${id}/sync`, {
+            method: 'POST',
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to sync mapping');
+        }
+        return response.json();
+    },
+};
+
+// ============================================
+// Recommendations API
+// ============================================
+const RecommendationsAPI = {
+    getCustomerRecommendations: async (customerId, includeDismissed = false, includeAccepted = true) => {
+        const params = new URLSearchParams({
+            include_dismissed: includeDismissed,
+            include_accepted: includeAccepted,
+        });
+        const response = await fetch(`${API_BASE_URL}/recommendations/customer/${customerId}?${params}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    },
+
+    generate: async (customerId, threshold = 3.5, limit = 20, regenerate = false) => {
+        const response = await fetch(`${API_BASE_URL}/recommendations/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                customer_id: customerId,
+                threshold,
+                limit,
+                regenerate,
+            }),
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to generate recommendations');
+        }
+        return response.json();
+    },
+
+    accept: async (recommendationId, targetQuarter, targetYear, notes = null) => {
+        const response = await fetch(`${API_BASE_URL}/recommendations/${recommendationId}/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target_quarter: targetQuarter,
+                target_year: targetYear,
+                notes,
+            }),
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to accept recommendation');
+        }
+        return response.json();
+    },
+
+    dismiss: async (recommendationId) => {
+        const response = await fetch(`${API_BASE_URL}/recommendations/${recommendationId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to dismiss recommendation');
+        }
+        return response.json();
+    },
+
+    restore: async (recommendationId) => {
+        const response = await fetch(`${API_BASE_URL}/recommendations/${recommendationId}/restore`, {
+            method: 'POST',
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to restore recommendation');
+        }
+        return response.json();
+    },
+};
+
 // Export for use in other files
 window.API = {
     CustomerAPI,
@@ -708,7 +881,13 @@ window.API = {
     LookupAPI,
     MeetingNoteAPI,
     DocumentAPI,
+    ChatAPI,
+    MappingsAPI,
+    RecommendationsAPI,
 };
+
+// Also export ChatAPI directly for chat.js
+window.ChatAPI = ChatAPI;
 
 window.Utils = {
     formatCurrency,

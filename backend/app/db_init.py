@@ -16,6 +16,7 @@ from app.models.partner import Partner, PartnerUser
 from app.models.use_case import UseCase, CustomerUseCase
 from app.models.roadmap import Roadmap, RoadmapItem, RoadmapItemCategory, RoadmapItemStatus
 from app.models.settings import AppSetting, SettingValueType
+from app.models.mapping import DimensionUseCaseMapping, UseCaseTPFeatureMapping, RoadmapRecommendation
 
 
 async def init_db():

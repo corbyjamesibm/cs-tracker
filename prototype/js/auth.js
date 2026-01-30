@@ -8,7 +8,7 @@ const AUTH_API_BASE = 'http://localhost:8000/api/v1/auth';
 
 // Default user when auth is disabled
 const DEFAULT_USER = {
-    id: 14,
+    id: 17,
     email: 'Corby.James@ibm.com',
     first_name: 'Corby',
     last_name: 'James',
@@ -79,7 +79,7 @@ const Auth = {
      */
     getCurrentUser() {
         const auth = this.getStoredAuth();
-        return auth ? auth.user : null;
+        return auth ? auth.user : DEFAULT_USER;
     },
 
     /**

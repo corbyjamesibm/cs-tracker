@@ -14,6 +14,10 @@ from .assessment import (
 from .lookup import LookupValue
 from .meeting_note import MeetingNote
 from .document import Document
+from .roadmap import Roadmap, RoadmapItem, RoadmapUpdate, RoadmapItemStatus, RoadmapItemCategory
+from .mapping import (
+    DimensionUseCaseMapping, UseCaseTPFeatureMapping, RoadmapRecommendation
+)
 
 __all__ = [
     "User", "UserRole",
@@ -30,4 +34,6 @@ __all__ = [
     "LookupValue",
     "MeetingNote",
     "Document",
+    "Roadmap", "RoadmapItem", "RoadmapUpdate", "RoadmapItemStatus", "RoadmapItemCategory",
+    "DimensionUseCaseMapping", "UseCaseTPFeatureMapping", "RoadmapRecommendation",
 ]

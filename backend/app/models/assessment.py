@@ -78,6 +78,8 @@ class AssessmentQuestion(Base):
     min_score: Mapped[int] = mapped_column(Integer, default=1)
     max_score: Mapped[int] = mapped_column(Integer, default=5)
     score_labels: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, default=dict)  # {"1": "Not Started", "2": "Initial", ...}
+    score_descriptions: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, default=dict)  # {"1": "No formal process...", "2": "Ad-hoc...", ...}
+    score_evidence: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, default=dict)  # {"1": "No documentation", "2": "Some records...", ...}
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     is_required: Mapped[bool] = mapped_column(Boolean, default=True)
 

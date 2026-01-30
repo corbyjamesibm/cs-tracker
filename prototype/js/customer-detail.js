@@ -473,6 +473,9 @@ async function loadRecentEngagements(customerId) {
 
 // Show error message
 function showError(message) {
+    // Update page title
+    document.title = 'Error - CS Tracker';
+
     const content = document.querySelector('.page-content');
     if (content) {
         content.innerHTML = `
@@ -3754,10 +3757,10 @@ function renderRadarChart(dimensionScores, comparisonAssessments = []) {
             maintainAspectRatio: true,
             layout: {
                 padding: {
-                    left: 20,
-                    right: 20,
-                    top: 10,
-                    bottom: 10
+                    left: 120,
+                    right: 120,
+                    top: 20,
+                    bottom: 20
                 }
             },
             scales: {
@@ -3983,7 +3986,14 @@ function renderAssessmentHistory(assessments) {
                <button class="btn btn--ghost btn--sm" onclick="deleteAssessment(${assessment.id})" title="Delete">
                    <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 12h2v12h-2zm6 0h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/></svg>
                </button>`
-            : `<button class="btn btn--ghost btn--sm" onclick="viewAssessmentDetail(${assessment.id})">View</button>`;
+            : `<button class="btn btn--ghost btn--sm" onclick="viewAssessmentDetail(${assessment.id})">View</button>
+               <button class="btn btn--secondary btn--sm" onclick="openAssessmentReport(${assessment.id})" title="View Report">
+                   <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 4px;">
+                       <path d="M10 18h8v2h-8zm0-5h12v2H10zm0 10h5v2h-5z"/>
+                       <path d="M25 5h-3V4a2 2 0 00-2-2h-8a2 2 0 00-2 2v1H7a2 2 0 00-2 2v21a2 2 0 002 2h18a2 2 0 002-2V7a2 2 0 00-2-2zm-13-1h8v4h-8zm13 24H7V7h3v3h12V7h3z"/>
+                   </svg>
+                   Report
+               </button>`;
 
         html += `
             <tr${isIncomplete ? ' class="assessment-row--incomplete"' : ''}>
@@ -4305,16 +4315,29 @@ function displayQuestion(index) {
     const minScore = question.min_score || 1;
     const maxScore = question.max_score || 5;
     const scoreLabels = question.score_labels || {};
+    const scoreDescriptions = question.score_descriptions || {};
+    const scoreEvidence = question.score_evidence || {};
 
     let ratingHtml = '';
     for (let i = minScore; i <= maxScore; i++) {
         const label = scoreLabels[String(i)] || `Level ${i}`;
+        const description = scoreDescriptions[String(i)] || '';
+        const evidence = scoreEvidence[String(i)] || '';
         const selected = assessmentResponses[question.id]?.score === i ? 'selected' : '';
+        const hasDetails = description || evidence;
 
         ratingHtml += `
             <div class="rating-option ${selected}" onclick="selectRating(${question.id}, ${i})">
-                <div class="rating-option__score">${i}</div>
-                <div class="rating-option__label">${label}</div>
+                <div class="rating-option__header">
+                    <div class="rating-option__score">${i}</div>
+                    <div class="rating-option__label">${escapeHtml(label)}</div>
+                </div>
+                ${hasDetails ? `
+                <div class="rating-option__details">
+                    ${description ? `<div class="rating-option__description">${escapeHtml(description)}</div>` : ''}
+                    ${evidence ? `<div class="rating-option__evidence"><strong>Evidence:</strong> ${escapeHtml(evidence)}</div>` : ''}
+                </div>
+                ` : ''}
             </div>
         `;
     }
@@ -4355,6 +4378,12 @@ function previousQuestion() {
 
     if (currentQuestionIndex > 0) {
         displayQuestion(currentQuestionIndex - 1);
+
+        // Scroll modal body to top so user sees the question
+        const modalBody = document.querySelector('#newAssessmentModal .modal__body');
+        if (modalBody) {
+            modalBody.scrollTop = 0;
+        }
     }
 }
 
@@ -4372,6 +4401,12 @@ function nextQuestion() {
 
     if (currentQuestionIndex < assessmentQuestions.length - 1) {
         displayQuestion(currentQuestionIndex + 1);
+
+        // Scroll modal body to top so user sees the question
+        const modalBody = document.querySelector('#newAssessmentModal .modal__body');
+        if (modalBody) {
+            modalBody.scrollTop = 0;
+        }
     }
 }
 
@@ -4413,9 +4448,12 @@ async function submitAssessment() {
             assessmentId = assessment.id;
         }
 
-        // Submit all responses
+        // Submit all responses with current user as the assessor
         const responses = Object.values(assessmentResponses);
-        await API.AssessmentAPI.saveResponses(assessmentId, responses, true);
+        const currentUser = Auth.getCurrentUser();
+        const completedById = currentUser ? currentUser.id : null;
+        console.log('Submitting assessment - currentUser:', currentUser, 'completedById:', completedById);
+        await API.AssessmentAPI.saveResponses(assessmentId, responses, true, completedById);
 
         closeNewAssessmentModal();
         alert('Assessment completed successfully!');
@@ -4536,6 +4574,7 @@ function setupTabSwitching() {
     const documentsSection = document.getElementById('documentsSection');
     const usageFrameworkSection = document.getElementById('usageFrameworkSection');
     const spmAssessmentSection = document.getElementById('spmAssessmentSection');
+    const recommendationsSection = document.getElementById('recommendationsSection');
     const overviewGrid = document.querySelector('.grid.grid--2');
 
     // Helper to hide all tab sections
@@ -4548,6 +4587,7 @@ function setupTabSwitching() {
         if (documentsSection) documentsSection.style.display = 'none';
         if (usageFrameworkSection) usageFrameworkSection.style.display = 'none';
         if (spmAssessmentSection) spmAssessmentSection.style.display = 'none';
+        if (recommendationsSection) recommendationsSection.style.display = 'none';
         if (overviewGrid) overviewGrid.style.display = 'none';
     }
 
@@ -4584,6 +4624,9 @@ function setupTabSwitching() {
                 loadTargetProcessData(customerId);
             } else if (tabName === 'Roadmap') {
                 if (roadmapSection) roadmapSection.style.display = 'block';
+            } else if (tabName === 'Recommendations') {
+                if (recommendationsSection) recommendationsSection.style.display = 'block';
+                loadRecommendations(customerId);
             } else if (tabName === 'Documents') {
                 if (documentsSection) documentsSection.style.display = 'block';
                 loadDocuments(customerId);
@@ -4610,6 +4653,7 @@ function showSection(sectionName) {
         'spmAssessment': 'SPM Assessment',
         'targetprocess': 'TargetProcess',
         'roadmap': 'Roadmap',
+        'recommendations': 'Recommendations',
         'documents': 'Documents'
     };
 
@@ -5347,3 +5391,591 @@ window.saveDropAsDocument = saveDropAsDocument;
 window.closeBrowserWarningModal = closeBrowserWarningModal;
 
 // ==================== END DRAG & DROP ====================
+
+// ==================== RECOMMENDATIONS ====================
+
+// Store recommendations data
+let recommendationsCache = [];
+
+/**
+ * Load recommendations for the customer
+ */
+async function loadRecommendations(customerId) {
+    const noState = document.getElementById('noRecommendationsState');
+    const content = document.getElementById('recommendationsContent');
+    const listEl = document.getElementById('recommendationsList');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/recommendations/customer/${customerId}?include_accepted=true&include_dismissed=false`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        recommendationsCache = data.items || [];
+
+        if (recommendationsCache.length === 0) {
+            noState.style.display = 'block';
+            content.style.display = 'none';
+            return;
+        }
+
+        noState.style.display = 'none';
+        content.style.display = 'block';
+
+        // Render weak dimensions
+        if (data.weak_dimensions && data.weak_dimensions.length > 0) {
+            const chipsEl = document.getElementById('weakDimensionsChips');
+            chipsEl.innerHTML = data.weak_dimensions.map(d => `
+                <span class="weak-dimension-chip">
+                    ${escapeHtml(d.name)}
+                    <span class="weak-dimension-chip__score">${d.score.toFixed(1)}</span>
+                </span>
+            `).join('');
+            document.getElementById('weakDimensionsSummary').style.display = 'block';
+        } else {
+            document.getElementById('weakDimensionsSummary').style.display = 'none';
+        }
+
+        // Render recommendations
+        listEl.innerHTML = recommendationsCache.map(r => renderRecommendationCard(r)).join('');
+
+    } catch (error) {
+        console.error('Failed to load recommendations:', error);
+        listEl.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Failed to load recommendations</div>';
+    }
+}
+
+/**
+ * Render a single recommendation card
+ */
+function renderRecommendationCard(rec) {
+    const priorityScore = Math.round(rec.priority_score);
+    const isAccepted = rec.is_accepted;
+
+    return `
+        <div class="recommendation-card ${isAccepted ? 'accepted' : ''}" data-rec-id="${rec.id}">
+            <div class="recommendation-card__header">
+                <div>
+                    <div class="recommendation-card__title">${escapeHtml(rec.title)}</div>
+                    <div class="recommendation-card__meta">
+                        ${rec.solution_area ? `<span class="tag tag--blue">${escapeHtml(rec.solution_area)}</span>` : ''}
+                        ${rec.tp_feature_name ? `<span>TP: ${escapeHtml(rec.tp_feature_name)}</span>` : ''}
+                    </div>
+                </div>
+                <span class="recommendation-card__priority">Score: ${priorityScore}</span>
+            </div>
+            <div class="recommendation-card__description">${escapeHtml(rec.description)}</div>
+            <div class="recommendation-card__footer">
+                <span class="recommendation-card__improvement">
+                    Potential improvement: +${rec.improvement_potential.toFixed(1)} in ${escapeHtml(rec.dimension_name)}
+                </span>
+                <div class="recommendation-card__actions">
+                    ${isAccepted ? `
+                        <span class="tag tag--green">Added to Roadmap</span>
+                    ` : `
+                        <button class="btn btn--ghost btn--small" onclick="dismissRecommendation(${rec.id})" title="Dismiss">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+                        </button>
+                        <button class="btn btn--primary btn--small" onclick="openAcceptRecommendationModal(${rec.id})">
+                            Add to Roadmap
+                        </button>
+                    `}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Generate recommendations for the customer
+ */
+async function generateRecommendations() {
+    const customerId = getCustomerId();
+    const btn = document.getElementById('generateRecsBtn');
+    const originalText = btn.innerHTML;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Generating...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/recommendations/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                customer_id: parseInt(customerId),
+                threshold: 3.5,
+                limit: 20,
+                regenerate: true
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to generate recommendations');
+        }
+
+        const data = await response.json();
+        showToast(`Generated ${data.total} recommendation(s)`, 'success');
+
+        // Reload recommendations
+        await loadRecommendations(customerId);
+
+    } catch (error) {
+        console.error('Failed to generate recommendations:', error);
+        showToast(error.message || 'Failed to generate recommendations', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Open accept recommendation modal
+ */
+function openAcceptRecommendationModal(recId) {
+    const rec = recommendationsCache.find(r => r.id === recId);
+    if (!rec) return;
+
+    const modal = document.getElementById('acceptRecommendationModal');
+    document.getElementById('acceptRecId').value = recId;
+    document.getElementById('acceptRecTitle').textContent = rec.title;
+
+    // Populate year options
+    const yearSelect = document.getElementById('acceptRecYear');
+    const currentYear = new Date().getFullYear();
+    yearSelect.innerHTML = '';
+    for (let y = currentYear; y <= currentYear + 3; y++) {
+        const option = document.createElement('option');
+        option.value = y;
+        option.textContent = y;
+        yearSelect.appendChild(option);
+    }
+
+    // Default to next quarter
+    const currentQuarter = Math.ceil((new Date().getMonth() + 1) / 3);
+    const nextQuarter = currentQuarter >= 4 ? 1 : currentQuarter + 1;
+    document.getElementById('acceptRecQuarter').value = `Q${nextQuarter}`;
+    if (nextQuarter === 1) {
+        document.getElementById('acceptRecYear').value = currentYear + 1;
+    }
+
+    document.getElementById('acceptRecNotes').value = '';
+
+    modal.classList.add('open');
+}
+
+/**
+ * Close accept recommendation modal
+ */
+function closeAcceptRecommendationModal() {
+    const modal = document.getElementById('acceptRecommendationModal');
+    modal.classList.remove('open');
+}
+
+/**
+ * Handle accept recommendation form submit
+ */
+async function handleAcceptRecommendation(event) {
+    event.preventDefault();
+
+    const recId = document.getElementById('acceptRecId').value;
+    const btn = document.getElementById('acceptRecSubmitBtn');
+    const originalText = btn.innerHTML;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Adding...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/recommendations/${recId}/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target_quarter: document.getElementById('acceptRecQuarter').value,
+                target_year: parseInt(document.getElementById('acceptRecYear').value),
+                notes: document.getElementById('acceptRecNotes').value || null
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to accept recommendation');
+        }
+
+        closeAcceptRecommendationModal();
+        showToast('Recommendation added to roadmap', 'success');
+
+        // Reload recommendations and roadmap
+        const customerId = getCustomerId();
+        await loadRecommendations(customerId);
+        loadRoadmap(customerId);
+
+    } catch (error) {
+        console.error('Failed to accept recommendation:', error);
+        showToast(error.message || 'Failed to accept recommendation', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Dismiss a recommendation
+ */
+async function dismissRecommendation(recId) {
+    if (!confirm('Dismiss this recommendation? It will not appear in the list.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/recommendations/${recId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to dismiss recommendation');
+        }
+
+        showToast('Recommendation dismissed', 'info');
+
+        // Reload recommendations
+        const customerId = getCustomerId();
+        await loadRecommendations(customerId);
+
+    } catch (error) {
+        console.error('Failed to dismiss recommendation:', error);
+        showToast(error.message || 'Failed to dismiss recommendation', 'error');
+    }
+}
+
+// Export recommendation functions
+window.loadRecommendations = loadRecommendations;
+window.generateRecommendations = generateRecommendations;
+window.openAcceptRecommendationModal = openAcceptRecommendationModal;
+window.closeAcceptRecommendationModal = closeAcceptRecommendationModal;
+window.handleAcceptRecommendation = handleAcceptRecommendation;
+window.dismissRecommendation = dismissRecommendation;
+
+// ==================== END RECOMMENDATIONS ====================
+
+
+// ==========================================
+// ASSESSMENT REPORT FUNCTIONS
+// ==========================================
+
+let currentReportAssessmentId = null;
+
+/**
+ * Open assessment report modal
+ */
+async function openAssessmentReport(assessmentId) {
+    currentReportAssessmentId = assessmentId;
+    const modal = document.getElementById('assessmentReportModal');
+    const content = document.getElementById('assessmentReportContent');
+
+    modal.classList.add('open');
+    content.innerHTML = '<div class="text-secondary text-center" style="padding: 48px;">Loading report...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/${assessmentId}/report`);
+        if (!response.ok) {
+            throw new Error('Failed to load report');
+        }
+
+        const report = await response.json();
+        renderAssessmentReport(report);
+
+    } catch (error) {
+        console.error('Failed to load assessment report:', error);
+        content.innerHTML = `
+            <div class="text-secondary text-center" style="padding: 48px;">
+                <p>Failed to load report</p>
+                <button class="btn btn--secondary" onclick="openAssessmentReport(${assessmentId})">Try Again</button>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Close assessment report modal
+ */
+function closeAssessmentReportModal() {
+    document.getElementById('assessmentReportModal').classList.remove('open');
+    currentReportAssessmentId = null;
+}
+
+/**
+ * Render assessment report
+ */
+function renderAssessmentReport(report) {
+    const content = document.getElementById('assessmentReportContent');
+
+    // Build dimension scores HTML
+    let dimensionScoresHtml = '';
+    if (report.dimension_scores && Object.keys(report.dimension_scores).length > 0) {
+        dimensionScoresHtml = Object.entries(report.dimension_scores)
+            .map(([dim, score]) => `
+                <div class="report-dimension-score">
+                    <span class="report-dimension-name">${escapeHtml(dim)}</span>
+                    <span class="report-dimension-value">${score.toFixed(2)}</span>
+                    <div class="report-dimension-bar">
+                        <div class="report-dimension-bar-fill" style="width: ${(score / 5) * 100}%"></div>
+                    </div>
+                </div>
+            `).join('');
+    }
+
+    // Build questions HTML grouped by dimension
+    let questionsHtml = '';
+    for (const dimension of report.dimensions) {
+        questionsHtml += `
+            <div class="report-dimension-section">
+                <h4 class="report-dimension-header">${escapeHtml(dimension.dimension_name)}</h4>
+                <table class="report-questions-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">#</th>
+                            <th>Question</th>
+                            <th style="width: 80px;">Score</th>
+                            <th style="width: 120px;">Rating</th>
+                            <th style="width: 200px;">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${dimension.questions.map(q => `
+                            <tr>
+                                <td>${escapeHtml(q.question_number)}</td>
+                                <td>${escapeHtml(q.question_text)}</td>
+                                <td class="text-center">
+                                    ${q.score !== null ? `
+                                        <span class="report-score-badge ${getScoreBadgeClass(q.score, q.max_score)}">${q.score}</span>
+                                    ` : '<span class="text-secondary">-</span>'}
+                                </td>
+                                <td>${q.score_label ? escapeHtml(q.score_label) : '<span class="text-secondary">-</span>'}</td>
+                                <td class="report-notes-cell">${q.notes ? escapeHtml(q.notes) : '<span class="text-secondary">-</span>'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    content.innerHTML = `
+        <div class="assessment-report" id="printableReport">
+            <!-- Header -->
+            <div class="report-header">
+                <div class="report-header-main">
+                    <h2 class="report-title">${escapeHtml(report.customer.name)}</h2>
+                    <p class="report-subtitle">${escapeHtml(report.template.name)} v${escapeHtml(report.template.version)}</p>
+                </div>
+                <div class="report-header-meta">
+                    <div class="report-overall-score ${getOverallScoreClass(report.overall_score)}">
+                        <span class="report-overall-label">Overall Score</span>
+                        <span class="report-overall-value">${report.overall_score ? report.overall_score.toFixed(2) : 'N/A'}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Meta Info -->
+            <div class="report-meta-grid">
+                <div class="report-meta-item">
+                    <span class="report-meta-label">Assessment Date</span>
+                    <span class="report-meta-value">${report.assessment_date ? formatDate(report.assessment_date) : 'N/A'}</span>
+                </div>
+                <div class="report-meta-item">
+                    <span class="report-meta-label">Status</span>
+                    <span class="report-meta-value">${report.status ? report.status.replace('_', ' ').toUpperCase() : 'N/A'}</span>
+                </div>
+                <div class="report-meta-item">
+                    <span class="report-meta-label">Assessed By</span>
+                    <span class="report-meta-value">${report.completed_by.name || 'N/A'}</span>
+                </div>
+                <div class="report-meta-item">
+                    <span class="report-meta-label">Completed At</span>
+                    <span class="report-meta-value">${report.completed_at ? formatDateTime(report.completed_at) : 'N/A'}</span>
+                </div>
+                <div class="report-meta-item">
+                    <span class="report-meta-label">Questions Answered</span>
+                    <span class="report-meta-value">${report.answered_questions} / ${report.total_questions}</span>
+                </div>
+            </div>
+
+            <!-- Dimension Scores Summary -->
+            ${dimensionScoresHtml ? `
+                <div class="report-section">
+                    <h3 class="report-section-title">Dimension Scores</h3>
+                    <div class="report-dimension-scores">
+                        ${dimensionScoresHtml}
+                    </div>
+                </div>
+            ` : ''}
+
+            <!-- Assessment Notes -->
+            ${report.notes ? `
+                <div class="report-section">
+                    <h3 class="report-section-title">Assessment Notes</h3>
+                    <div class="report-notes">${escapeHtml(report.notes)}</div>
+                </div>
+            ` : ''}
+
+            <!-- Questions by Dimension -->
+            <div class="report-section">
+                <h3 class="report-section-title">Detailed Responses</h3>
+                ${questionsHtml}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Get score badge class based on score
+ */
+function getScoreBadgeClass(score, maxScore = 5) {
+    const percentage = (score / maxScore) * 100;
+    if (percentage >= 80) return 'score-high';
+    if (percentage >= 60) return 'score-medium';
+    if (percentage >= 40) return 'score-low';
+    return 'score-critical';
+}
+
+/**
+ * Get overall score class
+ */
+function getOverallScoreClass(score) {
+    if (!score) return '';
+    if (score >= 4) return 'score-high';
+    if (score >= 3) return 'score-medium';
+    if (score >= 2) return 'score-low';
+    return 'score-critical';
+}
+
+/**
+ * Format datetime
+ */
+function formatDateTime(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+/**
+ * Export assessment to Excel
+ */
+function exportAssessmentExcel() {
+    if (!currentReportAssessmentId) return;
+
+    // Open download in new window
+    window.open(`${API_BASE_URL}/assessments/${currentReportAssessmentId}/export/excel`, '_blank');
+}
+
+/**
+ * Print assessment report (can save as PDF)
+ */
+function printAssessmentReport() {
+    const printContent = document.getElementById('printableReport');
+    if (!printContent) return;
+
+    // Create print window
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Assessment Report</title>
+            <style>
+                * { box-sizing: border-box; }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+                    line-height: 1.5;
+                    color: #161616;
+                    padding: 20px;
+                    max-width: 1000px;
+                    margin: 0 auto;
+                }
+                .report-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    margin-bottom: 24px;
+                    padding-bottom: 16px;
+                    border-bottom: 2px solid #161616;
+                }
+                .report-title { font-size: 24px; margin: 0 0 4px 0; }
+                .report-subtitle { color: #525252; margin: 0; }
+                .report-overall-score {
+                    text-align: center;
+                    padding: 12px 24px;
+                    background: #f4f4f4;
+                    border-radius: 8px;
+                }
+                .report-overall-label { display: block; font-size: 12px; color: #525252; }
+                .report-overall-value { display: block; font-size: 32px; font-weight: 600; }
+                .report-overall-score.score-high .report-overall-value { color: #198038; }
+                .report-overall-score.score-medium .report-overall-value { color: #f1c21b; }
+                .report-overall-score.score-low .report-overall-value { color: #ff832b; }
+                .report-overall-score.score-critical .report-overall-value { color: #da1e28; }
+                .report-meta-grid {
+                    display: grid;
+                    grid-template-columns: repeat(5, 1fr);
+                    gap: 16px;
+                    margin-bottom: 24px;
+                    padding: 16px;
+                    background: #f4f4f4;
+                    border-radius: 8px;
+                }
+                .report-meta-label { display: block; font-size: 11px; color: #525252; text-transform: uppercase; }
+                .report-meta-value { display: block; font-weight: 500; }
+                .report-section { margin-bottom: 24px; }
+                .report-section-title { font-size: 16px; margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #e0e0e0; }
+                .report-dimension-scores { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+                .report-dimension-score { display: flex; align-items: center; gap: 12px; }
+                .report-dimension-name { flex: 1; font-weight: 500; }
+                .report-dimension-value { font-weight: 600; width: 40px; text-align: right; }
+                .report-dimension-bar { flex: 1; height: 8px; background: #e0e0e0; border-radius: 4px; }
+                .report-dimension-bar-fill { height: 100%; background: #0f62fe; border-radius: 4px; }
+                .report-dimension-section { margin-bottom: 20px; }
+                .report-dimension-header { font-size: 14px; margin: 0 0 8px 0; padding: 8px 12px; background: #e0e0e0; }
+                .report-questions-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                .report-questions-table th, .report-questions-table td { padding: 8px; border: 1px solid #e0e0e0; text-align: left; vertical-align: top; }
+                .report-questions-table th { background: #f4f4f4; font-weight: 600; }
+                .report-score-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+                .score-high { background: #defbe6; color: #198038; }
+                .score-medium { background: #fcf4d6; color: #8a6d3b; }
+                .score-low { background: #fff1e1; color: #ba4e00; }
+                .score-critical { background: #fff1f1; color: #da1e28; }
+                .text-center { text-align: center; }
+                .text-secondary { color: #525252; }
+                .report-notes { padding: 12px; background: #f4f4f4; border-radius: 4px; white-space: pre-wrap; }
+                @media print {
+                    body { padding: 0; }
+                    .report-meta-grid { grid-template-columns: repeat(3, 1fr); }
+                }
+            </style>
+        </head>
+        <body>
+            ${printContent.innerHTML}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+
+    // Wait for content to load then print
+    printWindow.onload = function() {
+        printWindow.print();
+    };
+}
+
+// Export report functions
+window.openAssessmentReport = openAssessmentReport;
+window.closeAssessmentReportModal = closeAssessmentReportModal;
+window.exportAssessmentExcel = exportAssessmentExcel;
+window.printAssessmentReport = printAssessmentReport;

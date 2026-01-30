@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
@@ -6,6 +7,9 @@ from typing import Optional, List
 from datetime import datetime, date
 import io
 import csv
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
 
 from app.core.database import get_db
 from app.models.assessment import (
@@ -713,6 +717,8 @@ async def save_responses(
     if batch.complete:
         assessment.status = AssessmentStatus.COMPLETED
         assessment.completed_at = datetime.utcnow()
+        if batch.completed_by_id:
+            assessment.completed_by_id = batch.completed_by_id
     elif assessment.status == AssessmentStatus.DRAFT:
         assessment.status = AssessmentStatus.IN_PROGRESS
 
@@ -867,3 +873,265 @@ async def upload_assessment_responses(
         responses_saved=responses_saved,
         errors=errors
     )
+
+
+# ============================================================
+# EXPORT ENDPOINTS
+# ============================================================
+
+@router.get("/{assessment_id}/export/excel")
+async def export_assessment_excel(assessment_id: int, db: AsyncSession = Depends(get_db)):
+    """Export assessment report to Excel."""
+    # Get assessment with all related data
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.id == assessment_id
+    ).options(
+        selectinload(CustomerAssessment.customer),
+        selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.dimensions),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
+    )
+
+    result = await db.execute(query)
+    assessment = result.scalar_one_or_none()
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Create workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Assessment Report"
+
+    # Styles
+    header_font = Font(bold=True, size=14)
+    subheader_font = Font(bold=True, size=11)
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    header_font_white = Font(bold=True, color="FFFFFF")
+    dimension_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # Header section
+    ws['A1'] = "Assessment Report"
+    ws['A1'].font = Font(bold=True, size=18)
+    ws.merge_cells('A1:F1')
+
+    # Customer and assessment info
+    ws['A3'] = "Customer:"
+    ws['B3'] = assessment.customer.name if assessment.customer else "N/A"
+    ws['A3'].font = subheader_font
+
+    ws['A4'] = "Template:"
+    ws['B4'] = assessment.template.name if assessment.template else "N/A"
+    ws['A4'].font = subheader_font
+
+    ws['A5'] = "Assessment Date:"
+    ws['B5'] = assessment.assessment_date.strftime("%Y-%m-%d") if assessment.assessment_date else "N/A"
+    ws['A5'].font = subheader_font
+
+    ws['A6'] = "Status:"
+    ws['B6'] = assessment.status.value if assessment.status else "N/A"
+    ws['A6'].font = subheader_font
+
+    ws['A7'] = "Completed By:"
+    if assessment.completed_by:
+        ws['B7'] = f"{assessment.completed_by.first_name} {assessment.completed_by.last_name}"
+    else:
+        ws['B7'] = "N/A"
+    ws['A7'].font = subheader_font
+
+    ws['A8'] = "Completed At:"
+    ws['B8'] = assessment.completed_at.strftime("%Y-%m-%d %H:%M") if assessment.completed_at else "N/A"
+    ws['A8'].font = subheader_font
+
+    ws['A9'] = "Overall Score:"
+    ws['B9'] = f"{assessment.overall_score:.2f}" if assessment.overall_score else "N/A"
+    ws['A9'].font = subheader_font
+    ws['B9'].font = Font(bold=True, size=12)
+
+    # Dimension scores summary
+    ws['A11'] = "Dimension Scores"
+    ws['A11'].font = header_font
+    ws.merge_cells('A11:C11')
+
+    row = 12
+    if assessment.dimension_scores:
+        for dim_name, score in assessment.dimension_scores.items():
+            ws[f'A{row}'] = dim_name
+            ws[f'B{row}'] = f"{score:.2f}"
+            ws[f'A{row}'].font = subheader_font
+            row += 1
+
+    # Questions and responses header
+    row += 2
+    header_row = row
+    headers = ["#", "Dimension", "Question", "Score", "Label", "Notes"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=col, value=header)
+        cell.font = header_font_white
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    # Set column widths
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 20
+    ws.column_dimensions['C'].width = 50
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 15
+    ws.column_dimensions['F'].width = 40
+
+    # Build response lookup
+    response_lookup = {r.question_id: r for r in assessment.responses}
+
+    # Get all questions from template, sorted by dimension and display order
+    questions = sorted(
+        assessment.template.questions if assessment.template else [],
+        key=lambda q: (q.dimension.display_order if q.dimension else 0, q.display_order)
+    )
+
+    # Add question rows
+    row += 1
+    current_dimension = None
+    for question in questions:
+        response = response_lookup.get(question.id)
+
+        # Add dimension separator
+        dim_name = question.dimension.name if question.dimension else "General"
+        if dim_name != current_dimension:
+            current_dimension = dim_name
+
+        # Question number
+        ws.cell(row=row, column=1, value=question.question_number).border = thin_border
+
+        # Dimension
+        ws.cell(row=row, column=2, value=dim_name).border = thin_border
+
+        # Question text
+        q_cell = ws.cell(row=row, column=3, value=question.question_text)
+        q_cell.border = thin_border
+        q_cell.alignment = Alignment(wrap_text=True, vertical='top')
+
+        # Score
+        score_cell = ws.cell(row=row, column=4, value=response.score if response else "")
+        score_cell.border = thin_border
+        score_cell.alignment = Alignment(horizontal='center')
+
+        # Score label
+        score_label = ""
+        if response and question.score_labels:
+            score_label = question.score_labels.get(str(response.score), "")
+        ws.cell(row=row, column=5, value=score_label).border = thin_border
+
+        # Notes
+        notes_cell = ws.cell(row=row, column=6, value=response.notes if response else "")
+        notes_cell.border = thin_border
+        notes_cell.alignment = Alignment(wrap_text=True, vertical='top')
+
+        row += 1
+
+    # Save to buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    # Generate filename
+    customer_name = assessment.customer.name.replace(" ", "_") if assessment.customer else "assessment"
+    filename = f"{customer_name}_assessment_{assessment.assessment_date or 'draft'}.xlsx"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/{assessment_id}/report")
+async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(get_db)):
+    """Get assessment report data for display."""
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.id == assessment_id
+    ).options(
+        selectinload(CustomerAssessment.customer),
+        selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.dimensions),
+        selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.questions).selectinload(AssessmentQuestion.dimension),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
+    )
+
+    result = await db.execute(query)
+    assessment = result.scalar_one_or_none()
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Build response lookup
+    response_lookup = {r.question_id: r for r in assessment.responses}
+
+    # Build report data grouped by dimension
+    dimensions_data = []
+    questions_by_dimension = {}
+
+    for question in assessment.template.questions if assessment.template else []:
+        dim_name = question.dimension.name if question.dimension else "General"
+        if dim_name not in questions_by_dimension:
+            questions_by_dimension[dim_name] = {
+                "dimension_id": question.dimension.id if question.dimension else None,
+                "dimension_name": dim_name,
+                "display_order": question.dimension.display_order if question.dimension else 999,
+                "questions": []
+            }
+
+        response = response_lookup.get(question.id)
+        score_label = ""
+        if response and question.score_labels:
+            score_label = question.score_labels.get(str(response.score), "")
+
+        questions_by_dimension[dim_name]["questions"].append({
+            "question_id": question.id,
+            "question_number": question.question_number,
+            "question_text": question.question_text,
+            "score": response.score if response else None,
+            "score_label": score_label,
+            "notes": response.notes if response else None,
+            "min_score": question.min_score,
+            "max_score": question.max_score
+        })
+
+    # Sort dimensions by display order
+    dimensions_data = sorted(questions_by_dimension.values(), key=lambda d: d["display_order"])
+
+    # Sort questions within each dimension
+    for dim in dimensions_data:
+        dim["questions"].sort(key=lambda q: q["question_number"])
+
+    return {
+        "assessment_id": assessment.id,
+        "customer": {
+            "id": assessment.customer.id if assessment.customer else None,
+            "name": assessment.customer.name if assessment.customer else "N/A"
+        },
+        "template": {
+            "id": assessment.template.id if assessment.template else None,
+            "name": assessment.template.name if assessment.template else "N/A",
+            "version": assessment.template.version if assessment.template else "N/A"
+        },
+        "assessment_date": assessment.assessment_date.isoformat() if assessment.assessment_date else None,
+        "status": assessment.status.value if assessment.status else None,
+        "overall_score": assessment.overall_score,
+        "dimension_scores": assessment.dimension_scores or {},
+        "completed_by": {
+            "id": assessment.completed_by.id if assessment.completed_by else None,
+            "name": f"{assessment.completed_by.first_name} {assessment.completed_by.last_name}" if assessment.completed_by else None
+        },
+        "completed_at": assessment.completed_at.isoformat() if assessment.completed_at else None,
+        "notes": assessment.notes,
+        "dimensions": dimensions_data,
+        "total_questions": len(assessment.template.questions) if assessment.template else 0,
+        "answered_questions": len(assessment.responses)
+    }

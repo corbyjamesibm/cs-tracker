@@ -34,7 +34,11 @@ class Settings(BaseSettings):
     salesforce_client_secret: Optional[str] = None
     gainsight_api_key: Optional[str] = None
     targetprocess_api_token: Optional[str] = None
+
+    # LLM Configuration
     anthropic_api_key: Optional[str] = None
+    llm_model: str = "claude-sonnet-4-20250514"
+    llm_max_tokens: int = 4096
 
     class Config:
         env_file = ".env"

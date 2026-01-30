@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Acme Corporation - Customer Status Tracker</title>
+  <title>Customer Detail - CS Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=23">
+  <link rel="stylesheet" href="css/styles.css?v=25">
+  <link rel="stylesheet" href="css/chat.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     .customer-header {
@@ -172,6 +173,83 @@
         display: none;
       }
     }
+    /* Recommendation Cards */
+    .recommendation-card {
+      background: var(--cds-layer-02);
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: box-shadow 0.2s ease;
+    }
+    .recommendation-card:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .recommendation-card.accepted {
+      opacity: 0.6;
+      background: var(--cds-layer-01);
+    }
+    .recommendation-card__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .recommendation-card__priority {
+      background: var(--cds-interactive);
+      color: white;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .recommendation-card__title {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+    .recommendation-card__meta {
+      display: flex;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--cds-text-secondary);
+      margin-bottom: 12px;
+    }
+    .recommendation-card__description {
+      font-size: 14px;
+      color: var(--cds-text-secondary);
+      margin-bottom: 12px;
+    }
+    .recommendation-card__footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .recommendation-card__improvement {
+      font-size: 12px;
+      color: var(--cds-support-success);
+    }
+    .recommendation-card__actions {
+      display: flex;
+      gap: 8px;
+    }
+    .weak-dimension-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--cds-support-error-inverse);
+      color: var(--cds-support-error);
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-weight: 500;
+    }
+    .weak-dimension-chip__score {
+      background: rgba(0,0,0,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -305,6 +383,7 @@
             <li><a href="#" class="tabs__tab">SPM Assessment</a></li>
             <li><a href="#" class="tabs__tab">TargetProcess</a></li>
             <li><a href="#" class="tabs__tab">Roadmap</a></li>
+            <li><a href="#" class="tabs__tab">Recommendations</a></li>
             <li><a href="#" class="tabs__tab">Documents</a></li>
           </ul>
         </nav>
@@ -1068,6 +1147,90 @@
 
           <div id="documentsTabContainer" style="padding: 16px;">
             <div class="text-secondary text-center">Loading documents...</div>
+          </div>
+        </div>
+
+        <!-- Recommendations Section (shown when Recommendations tab is active) -->
+        <div class="card mt-5" id="recommendationsSection" style="display: none;">
+          <div class="card__header">
+            <h2 class="section-title" style="margin-bottom: 0;">
+              <svg width="20" height="20" viewBox="0 0 32 32"><path d="M16 2l4 8 8 1.5-6 5.5 1.5 8.5-7.5-4-7.5 4 1.5-8.5-6-5.5L12 10l4-8z"/></svg>
+              Roadmap Recommendations
+            </h2>
+            <div class="flex gap-3">
+              <button class="btn btn--secondary" onclick="generateRecommendations()" id="generateRecsBtn">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M16 2l4 8 8 1.5-6 5.5 1.5 8.5-7.5-4-7.5 4 1.5-8.5-6-5.5L12 10l4-8z"/></svg>
+                Generate Recommendations
+              </button>
+            </div>
+          </div>
+
+          <!-- No Recommendations State -->
+          <div id="noRecommendationsState" style="text-align: center; padding: 48px 24px;">
+            <svg width="64" height="64" viewBox="0 0 32 32" style="color: var(--cds-text-secondary); margin-bottom: 16px;"><path d="M16 2l4 8 8 1.5-6 5.5 1.5 8.5-7.5-4-7.5 4 1.5-8.5-6-5.5L12 10l4-8z"/></svg>
+            <h3 style="margin-bottom: 8px; font-size: 16px;">No Recommendations Yet</h3>
+            <p style="color: var(--cds-text-secondary); margin-bottom: 16px;">Complete an SPM Assessment to get AI-powered roadmap recommendations based on the customer's maturity scores.</p>
+            <button class="btn btn--primary" onclick="generateRecommendations()">Generate Recommendations</button>
+          </div>
+
+          <!-- Recommendations Content -->
+          <div id="recommendationsContent" style="display: none; padding: 16px;">
+            <!-- Weak Dimensions Summary -->
+            <div id="weakDimensionsSummary" style="margin-bottom: 24px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Areas for Improvement</h3>
+              <div id="weakDimensionsChips" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <!-- Chips populated by JS -->
+              </div>
+            </div>
+
+            <!-- Recommendations List -->
+            <div id="recommendationsList">
+              <!-- Recommendations populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Accept Recommendation Modal -->
+        <div class="modal" id="acceptRecommendationModal">
+          <div class="modal__overlay" onclick="closeAcceptRecommendationModal()"></div>
+          <div class="modal__container" style="max-width: 500px;">
+            <div class="modal__header">
+              <h2 class="modal__title">Add to Roadmap</h2>
+              <button class="modal__close" onclick="closeAcceptRecommendationModal()">&times;</button>
+            </div>
+            <form id="acceptRecommendationForm" onsubmit="handleAcceptRecommendation(event)">
+              <input type="hidden" id="acceptRecId" value="">
+              <div class="modal__body">
+                <p class="text-secondary mb-4" id="acceptRecTitle">Loading...</p>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label" for="acceptRecQuarter">Target Quarter *</label>
+                    <select id="acceptRecQuarter" class="select-input" required>
+                      <option value="Q1">Q1</option>
+                      <option value="Q2">Q2</option>
+                      <option value="Q3">Q3</option>
+                      <option value="Q4">Q4</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="acceptRecYear">Year *</label>
+                    <select id="acceptRecYear" class="select-input" required>
+                      <!-- Options populated by JS -->
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="acceptRecNotes">Notes (optional)</label>
+                  <textarea id="acceptRecNotes" class="text-input" rows="2" placeholder="Add any notes about this roadmap item..."></textarea>
+                </div>
+              </div>
+              <div class="modal__footer">
+                <button type="button" class="btn btn--ghost" onclick="closeAcceptRecommendationModal()">Cancel</button>
+                <button type="submit" class="btn btn--primary" id="acceptRecSubmitBtn">Add to Roadmap</button>
+              </div>
+            </form>
           </div>
         </div>
 
@@ -1974,9 +2137,78 @@
     </nav>
   </div>
 
+  <!-- Chat Widget -->
+  <button class="chat-trigger" id="chatTrigger" onclick="toggleChatPanel()" title="CS Assistant">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+      <path d="M7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/>
+    </svg>
+  </button>
+
+  <div class="chat-panel" id="chatPanel">
+    <div class="chat-header">
+      <div class="chat-header__title">
+        <div class="chat-header__status"></div>
+        <h3>CS Assistant</h3>
+      </div>
+      <div class="chat-header__actions">
+        <button class="chat-header__btn" onclick="clearChat()" title="Clear chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+        </button>
+        <button class="chat-header__btn" onclick="toggleChatPanel()" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-area">
+      <div class="chat-input-wrapper">
+        <textarea id="chatInput" placeholder="Ask about customers, tasks, risks..." rows="1"></textarea>
+      </div>
+      <button id="chatSendBtn" onclick="sendMessage()" title="Send">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Assessment Report Modal -->
+  <div class="modal" id="assessmentReportModal">
+    <div class="modal__overlay" onclick="closeAssessmentReportModal()"></div>
+    <div class="modal__container" style="max-width: 900px; max-height: 90vh;">
+      <div class="modal__header">
+        <h2 class="modal__title">Assessment Report</h2>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="btn btn--secondary btn--sm" onclick="exportAssessmentExcel()" title="Export to Excel">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 4px;">
+              <path d="M28.781 4.405h-10.13V2.018L2 4.588v22.527l16.651 2.868v-3.538h10.13A1.162 1.162 0 0030 25.349V5.5a1.162 1.162 0 00-1.219-1.095zm-12.282 2.81h1.544v5.395h-1.544zm0 6.165h1.544v5.395h-1.544zm-9.252 8.312l2.574-4.308-2.326-4.2h2.596l1.198 2.544c.11.237.193.44.251.606h.018c.088-.235.175-.44.261-.618l1.286-2.532h2.392l-2.392 4.262 2.492 4.246h-2.591l-1.426-2.858a2.078 2.078 0 01-.157-.387h-.023a1.81 1.81 0 01-.158.387l-1.405 2.858zm9.252-.77h1.544v5.395h-1.544zm2.522-13.707h1.544v5.395h-1.544zm0 6.165h1.544v5.395h-1.544zm0 6.165h1.544v5.395h-1.544zm2.522-12.33h1.544v5.395h-1.544zm0 6.165h1.544v5.395h-1.544zm0 6.165h1.544v5.395h-1.544zm2.522-12.33H26v5.395h-1.544zm0 6.165H26v5.395h-1.544zm0 6.165H26v5.395h-1.544z"/>
+            </svg>
+            Excel
+          </button>
+          <button class="btn btn--secondary btn--sm" onclick="printAssessmentReport()" title="Print / Save as PDF">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 4px;">
+              <path d="M28 9h-4V5H8v4H4a2 2 0 00-2 2v10a2 2 0 002 2h4v4h16v-4h4a2 2 0 002-2V11a2 2 0 00-2-2zM10 7h12v2H10zm12 18H10v-6h12zm4-8h-2v-2h2z"/>
+            </svg>
+            Print/PDF
+          </button>
+          <button class="modal__close" onclick="closeAssessmentReportModal()">&times;</button>
+        </div>
+      </div>
+      <div class="modal__body" id="assessmentReportContent" style="max-height: calc(90vh - 120px); overflow-y: auto;">
+        <div class="text-secondary text-center" style="padding: 48px;">Loading report...</div>
+      </div>
+    </div>
+  </div>
+
   <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=13"></script>
+  <script src="js/api.js?v=15"></script>
+  <script src="js/chat.js?v=1"></script>
   <script src="js/table-sort.js?v=1"></script>
-  <script src="js/customer-detail.js?v=34"></script>
+  <script src="js/customer-detail.js?v=40"></script>
 </body>
 </html>
