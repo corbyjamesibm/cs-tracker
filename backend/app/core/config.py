@@ -36,9 +36,17 @@ class Settings(BaseSettings):
     targetprocess_api_token: Optional[str] = None
 
     # LLM Configuration
+    llm_provider: str = "ollama"  # "ollama" or "anthropic"
     anthropic_api_key: Optional[str] = None
-    llm_model: str = "claude-sonnet-4-20250514"
     llm_max_tokens: int = 4096
+
+    # Ollama Configuration
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.1:8b"  # Default model, can be mistral, llama3.1:70b, etc.
+    ollama_timeout: int = 120  # Timeout in seconds for Ollama requests
+
+    # Anthropic Configuration (fallback)
+    anthropic_model: str = "claude-sonnet-4-20250514"
 
     class Config:
         env_file = ".env"
