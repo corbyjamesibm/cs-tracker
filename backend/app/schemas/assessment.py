@@ -335,3 +335,43 @@ class GapAnalysisResponse(BaseModel):
     overall_status: str
     dimension_gaps: List[DimensionGap] = []
     days_to_target: Optional[int] = None
+
+
+# === Flow Visualization Schemas ===
+
+class FlowNode(BaseModel):
+    """A node in the flow visualization (dimension, use case, or TP feature)"""
+    id: str
+    name: str
+    type: str  # 'dimension', 'use_case', 'tp_feature'
+    # Dimension-specific
+    score: Optional[float] = None
+    gap: Optional[float] = None
+    # Use case-specific
+    solution_area: Optional[str] = None
+    # TP feature-specific
+    tp_id: Optional[int] = None
+    is_required: Optional[bool] = None
+
+
+class FlowLink(BaseModel):
+    """A link between nodes in the flow visualization"""
+    source: str
+    target: str
+    value: float = 1.0
+    # For dimension -> use case
+    impact_weight: Optional[float] = None
+    # For use case -> TP feature
+    is_required: Optional[bool] = None
+
+
+class FlowVisualizationResponse(BaseModel):
+    """Flow visualization data for Sankey diagram"""
+    customer_id: int
+    assessment_id: Optional[int] = None
+    nodes: List[FlowNode] = []
+    links: List[FlowLink] = []
+    # Summary stats
+    weak_dimensions_count: int = 0
+    recommended_use_cases_count: int = 0
+    tp_features_count: int = 0

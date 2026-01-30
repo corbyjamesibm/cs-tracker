@@ -27,7 +27,8 @@ from app.schemas.assessment import (
     ExcelUploadResult, ExcelResponseUploadResult,
     AssessmentAnswerUpdate, AssessmentAuditEntry, AssessmentAuditListResponse,
     TargetCreate, TargetUpdate, TargetResponse, TargetListResponse,
-    DimensionGap, GapAnalysisResponse
+    DimensionGap, GapAnalysisResponse,
+    FlowNode, FlowLink, FlowVisualizationResponse
 )
 
 router = APIRouter()
@@ -1518,4 +1519,243 @@ async def get_gap_analysis(
         overall_status=overall_status,
         dimension_gaps=dimension_gaps,
         days_to_target=days_to_target
+    )
+
+
+# ============================================================
+# FLOW VISUALIZATION ENDPOINT
+# ============================================================
+
+@router.get("/customer/{customer_id}/flow-visualization", response_model=FlowVisualizationResponse)
+async def get_flow_visualization(
+    customer_id: int,
+    threshold: float = Query(3.5, ge=1.0, le=5.0, description="Score threshold for weak dimensions"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get flow visualization data showing:
+    Assessment dimensions (with gaps) -> Recommended use cases -> TP features to implement.
+
+    This provides data for a Sankey diagram visualization.
+    """
+    from app.models.mapping import DimensionUseCaseMapping, UseCaseTPFeatureMapping
+    from app.models.use_case import CustomerUseCase, UseCaseStatus
+
+    # 1. Get customer's latest completed assessment
+    assessment_query = select(CustomerAssessment).where(
+        and_(
+            CustomerAssessment.customer_id == customer_id,
+            CustomerAssessment.status == AssessmentStatus.COMPLETED
+        )
+    ).order_by(CustomerAssessment.completed_at.desc()).limit(1)
+
+    result = await db.execute(assessment_query)
+    assessment = result.scalar_one_or_none()
+
+    if not assessment or not assessment.dimension_scores:
+        return FlowVisualizationResponse(
+            customer_id=customer_id,
+            assessment_id=None,
+            nodes=[],
+            links=[],
+            weak_dimensions_count=0,
+            recommended_use_cases_count=0,
+            tp_features_count=0
+        )
+
+    # 2. Identify weak dimensions (below threshold)
+    weak_dims = []
+    for dim_name, score in assessment.dimension_scores.items():
+        if score < threshold:
+            gap = threshold - score
+            weak_dims.append((dim_name, score, gap))
+
+    # Sort by gap (worst first)
+    weak_dims.sort(key=lambda x: x[2], reverse=True)
+
+    if not weak_dims:
+        return FlowVisualizationResponse(
+            customer_id=customer_id,
+            assessment_id=assessment.id,
+            nodes=[],
+            links=[],
+            weak_dimensions_count=0,
+            recommended_use_cases_count=0,
+            tp_features_count=0
+        )
+
+    weak_dim_names = [wd[0] for wd in weak_dims]
+    weak_dim_lookup = {wd[0]: (wd[1], wd[2]) for wd in weak_dims}
+
+    # 3. Get dimension IDs from names
+    dim_query = select(AssessmentDimension).where(
+        AssessmentDimension.name.in_(weak_dim_names)
+    )
+    result = await db.execute(dim_query)
+    dimensions = result.scalars().all()
+    dim_id_to_name = {d.id: d.name for d in dimensions}
+    dim_ids = list(dim_id_to_name.keys())
+
+    if not dim_ids:
+        return FlowVisualizationResponse(
+            customer_id=customer_id,
+            assessment_id=assessment.id,
+            nodes=[],
+            links=[],
+            weak_dimensions_count=len(weak_dims),
+            recommended_use_cases_count=0,
+            tp_features_count=0
+        )
+
+    # 4. Get use cases mapped to weak dimensions
+    mapping_query = select(DimensionUseCaseMapping).where(
+        DimensionUseCaseMapping.dimension_id.in_(dim_ids)
+    ).options(
+        selectinload(DimensionUseCaseMapping.dimension),
+        selectinload(DimensionUseCaseMapping.use_case)
+    )
+
+    result = await db.execute(mapping_query)
+    dim_use_case_mappings = result.scalars().all()
+
+    # 5. Filter out already-implemented use cases
+    implemented_query = select(CustomerUseCase.use_case_id).where(
+        CustomerUseCase.customer_id == customer_id,
+        CustomerUseCase.status.in_([
+            UseCaseStatus.IMPLEMENTED,
+            UseCaseStatus.OPTIMIZED,
+            UseCaseStatus.IN_PROGRESS
+        ])
+    )
+    result = await db.execute(implemented_query)
+    implemented_ids = set(result.scalars().all())
+
+    candidate_mappings = [
+        m for m in dim_use_case_mappings
+        if m.use_case_id not in implemented_ids
+    ]
+
+    if not candidate_mappings:
+        # Return just the dimension nodes
+        nodes = []
+        for dim_name, score, gap in weak_dims:
+            nodes.append(FlowNode(
+                id=f"dim_{dim_name}",
+                name=dim_name,
+                type="dimension",
+                score=score,
+                gap=gap
+            ))
+
+        return FlowVisualizationResponse(
+            customer_id=customer_id,
+            assessment_id=assessment.id,
+            nodes=nodes,
+            links=[],
+            weak_dimensions_count=len(weak_dims),
+            recommended_use_cases_count=0,
+            tp_features_count=0
+        )
+
+    # 6. Get TP features for candidate use cases
+    use_case_ids = list(set(m.use_case_id for m in candidate_mappings))
+
+    tp_feature_query = select(UseCaseTPFeatureMapping).where(
+        UseCaseTPFeatureMapping.use_case_id.in_(use_case_ids)
+    ).options(
+        selectinload(UseCaseTPFeatureMapping.use_case)
+    )
+
+    result = await db.execute(tp_feature_query)
+    tp_features = result.scalars().all()
+
+    # Group TP features by use case
+    tp_by_use_case = {}
+    for tp in tp_features:
+        if tp.use_case_id not in tp_by_use_case:
+            tp_by_use_case[tp.use_case_id] = []
+        tp_by_use_case[tp.use_case_id].append(tp)
+
+    # 7. Build nodes and links
+    nodes = []
+    links = []
+    seen_dims = set()
+    seen_use_cases = set()
+    seen_tp_features = set()
+
+    # Add dimension nodes
+    for dim_name, score, gap in weak_dims:
+        dim_id = f"dim_{dim_name}"
+        if dim_id not in seen_dims:
+            nodes.append(FlowNode(
+                id=dim_id,
+                name=dim_name,
+                type="dimension",
+                score=score,
+                gap=gap
+            ))
+            seen_dims.add(dim_id)
+
+    # Add use case nodes and dimension->use case links
+    for mapping in candidate_mappings:
+        if not mapping.use_case:
+            continue
+
+        uc_id = f"uc_{mapping.use_case_id}"
+        dim_name = mapping.dimension.name if mapping.dimension else "Unknown"
+        dim_id = f"dim_{dim_name}"
+
+        # Add use case node if not already added
+        if uc_id not in seen_use_cases:
+            nodes.append(FlowNode(
+                id=uc_id,
+                name=mapping.use_case.name,
+                type="use_case",
+                solution_area=mapping.use_case.solution_area
+            ))
+            seen_use_cases.add(uc_id)
+
+        # Add dimension -> use case link
+        dim_score, dim_gap = weak_dim_lookup.get(dim_name, (0, 0))
+        links.append(FlowLink(
+            source=dim_id,
+            target=uc_id,
+            value=mapping.impact_weight,
+            impact_weight=mapping.impact_weight
+        ))
+
+    # Add TP feature nodes and use case->TP feature links
+    for uc_id_num, tp_list in tp_by_use_case.items():
+        uc_id = f"uc_{uc_id_num}"
+
+        for tp in tp_list:
+            tp_node_id = f"tp_{tp.tp_feature_id}"
+
+            # Add TP feature node if not already added
+            if tp_node_id not in seen_tp_features:
+                nodes.append(FlowNode(
+                    id=tp_node_id,
+                    name=tp.tp_feature_name,
+                    type="tp_feature",
+                    tp_id=tp.tp_feature_id,
+                    is_required=tp.is_required
+                ))
+                seen_tp_features.add(tp_node_id)
+
+            # Add use case -> TP feature link
+            links.append(FlowLink(
+                source=uc_id,
+                target=tp_node_id,
+                value=1.0 if tp.is_required else 0.5,
+                is_required=tp.is_required
+            ))
+
+    return FlowVisualizationResponse(
+        customer_id=customer_id,
+        assessment_id=assessment.id,
+        nodes=nodes,
+        links=links,
+        weak_dimensions_count=len(weak_dims),
+        recommended_use_cases_count=len(seen_use_cases),
+        tp_features_count=len(seen_tp_features)
     )

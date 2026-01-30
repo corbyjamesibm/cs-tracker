@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Implementation Flow Mockup - CS Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=27">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0/dist/chartjs-chart-sankey.min.js"></script>
+  <style>
+    body {
+      background: var(--cds-background);
+      padding: 24px;
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+    .mockup-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .mockup-header {
+      background: linear-gradient(135deg, #161616 0%, #393939 100%);
+      color: white;
+      padding: 24px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .mockup-header h1 {
+      margin: 0 0 8px 0;
+      font-size: 24px;
+    }
+    .mockup-header p {
+      margin: 0;
+      opacity: 0.8;
+      font-size: 14px;
+    }
+    .tabs-mockup {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+      margin-bottom: 24px;
+    }
+    .tab-mockup {
+      padding: 12px 20px;
+      font-size: 14px;
+      color: var(--cds-text-secondary);
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+    .tab-mockup.active {
+      color: var(--cds-interactive);
+      border-bottom: 2px solid var(--cds-interactive);
+      font-weight: 500;
+    }
+    .metric-card {
+      background: var(--cds-layer-01);
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+    .metric-card__label {
+      font-size: 12px;
+      color: var(--cds-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .metric-card__value {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--cds-text-primary);
+    }
+    .grid--3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .card {
+      background: var(--cds-layer-01);
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+    .card__header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card__header h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .card__body {
+      padding: 20px;
+    }
+    .flow-chart-container {
+      height: 400px;
+      border-radius: 8px;
+    }
+    .flow-legend {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 16px;
+      padding: 12px;
+      background: var(--cds-layer-02);
+      border-radius: 6px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table th {
+      text-align: left;
+      padding: 12px 16px;
+      background: var(--cds-layer-02);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--cds-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .data-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+      font-size: 14px;
+    }
+    .flow-status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .flow-status-badge--critical {
+      background: rgba(218, 30, 40, 0.15);
+      color: #da1e28;
+    }
+    .flow-status-badge--warning {
+      background: rgba(255, 131, 43, 0.15);
+      color: #ff832b;
+    }
+    .flow-status-badge--below-target {
+      background: rgba(241, 194, 27, 0.2);
+      color: #8e6a00;
+    }
+    .solution-area-chip {
+      display: inline-flex;
+      padding: 3px 8px;
+      background: var(--cds-layer-02);
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .tag {
+      display: inline-flex;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .tag--gray {
+      background: var(--cds-layer-02);
+      color: var(--cds-text-secondary);
+    }
+    .tag--blue {
+      background: rgba(15, 98, 254, 0.15);
+      color: #0f62fe;
+    }
+    .required-badge {
+      display: inline-flex;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .required-badge--yes {
+      background: rgba(15, 98, 254, 0.15);
+      color: #0f62fe;
+    }
+    .required-badge--no {
+      background: var(--cds-layer-02);
+      color: var(--cds-text-secondary);
+    }
+    .tp-link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: transparent;
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--cds-link-primary);
+      text-decoration: none;
+    }
+    h2.section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn--secondary {
+      background: var(--cds-layer-02);
+      color: var(--cds-text-primary);
+      border: 1px solid var(--cds-border-subtle-01);
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-container">
+    <!-- Header -->
+    <div class="mockup-header">
+      <h1>Acme Corporation</h1>
+      <p>Customer ID: 1 | ARR: $450K | Health: Green</p>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tabs-mockup">
+      <button class="tab-mockup">Overview</button>
+      <button class="tab-mockup">Usage Framework</button>
+      <button class="tab-mockup">Engagements</button>
+      <button class="tab-mockup">Tasks</button>
+      <button class="tab-mockup">SPM Assessment</button>
+      <button class="tab-mockup">Recommendations</button>
+      <button class="tab-mockup active">Flow</button>
+      <button class="tab-mockup">Documents</button>
+    </div>
+
+    <!-- Section Header -->
+    <div class="section-header">
+      <h2 class="section-title">
+        <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 2H4a2 2 0 00-2 2v24a2 2 0 002 2h24a2 2 0 002-2V4a2 2 0 00-2-2zM4 28V4h11v24zm13 0V4h11v24z"/><path d="M8 8h4v2H8zm0 4h4v2H8zm0 4h4v2H8zm12-8h4v2h-4zm0 4h4v2h-4zm0 4h4v2h-4z"/></svg>
+        Implementation Flow
+      </h2>
+      <button class="btn btn--secondary">
+        <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
+        Refresh
+      </button>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="grid--3" style="margin-bottom: 24px;">
+      <div class="metric-card">
+        <div class="metric-card__label">Weak Dimensions</div>
+        <div class="metric-card__value" style="color: #da1e28;">4</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card__label">Recommended Use Cases</div>
+        <div class="metric-card__value" style="color: #0f62fe;">6</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card__label">TP Features to Implement</div>
+        <div class="metric-card__value" style="color: #8a3ffc;">9</div>
+      </div>
+    </div>
+
+    <!-- Flow Visualization Card -->
+    <div class="card">
+      <div class="card__header">
+        <h3>Assessment Gap -> Use Case -> TP Feature Flow</h3>
+        <button class="btn btn--secondary" style="padding: 6px 12px; font-size: 12px;">
+          <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M28 4H10a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H10V6h18zM2 24V10H0v14a2 2 0 002 2h18v-2z"/></svg>
+          Expand
+        </button>
+      </div>
+      <div class="card__body">
+        <div class="flow-chart-container">
+          <canvas id="flowSankeyChart"></canvas>
+        </div>
+        <div class="flow-legend">
+          <span class="legend-item">
+            <span class="legend-dot" style="background: #da1e28;"></span> Critical (&lt; 2.0)
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot" style="background: #ff832b;"></span> Needs Work (&lt; 3.0)
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot" style="background: #f1c21b;"></span> Below Target (&lt; 4.0)
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot" style="background: #0f62fe;"></span> Use Cases
+          </span>
+          <span class="legend-item">
+            <span class="legend-dot" style="background: #8a3ffc;"></span> TP Features
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weak Dimensions Table -->
+    <div class="card">
+      <div class="card__header">
+        <h3>Weak Dimensions</h3>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Score</th>
+            <th>Gap to Target (3.5)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight: 500;">Organization</td>
+            <td><span style="color: #da1e28; font-weight: 600;">1.8</span></td>
+            <td><span style="color: #da1e28;">1.7</span></td>
+            <td><span class="flow-status-badge flow-status-badge--critical">Critical</span></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Strategic Planning</td>
+            <td><span style="color: #ff832b; font-weight: 600;">2.4</span></td>
+            <td><span style="color: #da1e28;">1.1</span></td>
+            <td><span class="flow-status-badge flow-status-badge--warning">Needs Work</span></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Portfolio Management</td>
+            <td><span style="color: #ff832b; font-weight: 600;">2.8</span></td>
+            <td><span style="color: #da1e28;">0.7</span></td>
+            <td><span class="flow-status-badge flow-status-badge--warning">Needs Work</span></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Resource Management</td>
+            <td><span style="color: #f1c21b; font-weight: 600;">3.2</span></td>
+            <td><span style="color: #da1e28;">0.3</span></td>
+            <td><span class="flow-status-badge flow-status-badge--below-target">Below Target</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Recommended Use Cases Table -->
+    <div class="card">
+      <div class="card__header">
+        <h3>Recommended Use Cases</h3>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Use Case</th>
+            <th>Solution Area</th>
+            <th>Improves</th>
+            <th>TP Features</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight: 500;">Strategic Resource Management</td>
+            <td><span class="solution-area-chip">WFM</span></td>
+            <td>
+              <span class="tag tag--gray" style="margin-right: 4px;">Organization</span>
+              <span class="tag tag--gray">Strategic Planning</span>
+            </td>
+            <td><span class="tag tag--blue">3 features</span></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Capacity Planning</td>
+            <td><span class="solution-area-chip">WFM</span></td>
+            <td>
+              <span class="tag tag--gray">Resource Management</span>
+            </td>
+            <td><span class="tag tag--blue">2 features</span></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Portfolio Prioritization</td>
+            <td><span class="solution-area-chip">HPM</span></td>
+            <td>
+              <span class="tag tag--gray" style="margin-right: 4px;">Portfolio Management</span>
+              <span class="tag tag--gray">Strategic Planning</span>
+            </td>
+            <td><span class="tag tag--blue">2 features</span></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Demand Forecasting</td>
+            <td><span class="solution-area-chip">WFM</span></td>
+            <td>
+              <span class="tag tag--gray">Resource Management</span>
+            </td>
+            <td><span class="tag tag--blue">2 features</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- TP Features Table -->
+    <div class="card">
+      <div class="card__header">
+        <h3>TP Features to Implement</h3>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Feature Name</th>
+            <th>For Use Case</th>
+            <th>Required</th>
+            <th>TP Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight: 500;">Resource Capacity Dashboard</td>
+            <td><span class="tag tag--gray">Strategic Resource Management</span></td>
+            <td><span class="required-badge required-badge--yes">Required</span></td>
+            <td><a href="#" class="tp-link-btn">TP #12345</a></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Skills Matrix</td>
+            <td><span class="tag tag--gray">Strategic Resource Management</span></td>
+            <td><span class="required-badge required-badge--yes">Required</span></td>
+            <td><a href="#" class="tp-link-btn">TP #12346</a></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Team Allocation View</td>
+            <td><span class="tag tag--gray">Strategic Resource Management</span></td>
+            <td><span class="required-badge required-badge--no">Recommended</span></td>
+            <td><a href="#" class="tp-link-btn">TP #12347</a></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Demand Forecasting Module</td>
+            <td><span class="tag tag--gray">Demand Forecasting</span></td>
+            <td><span class="required-badge required-badge--yes">Required</span></td>
+            <td><a href="#" class="tp-link-btn">TP #12350</a></td>
+          </tr>
+          <tr>
+            <td style="font-weight: 500;">Portfolio Scoring Model</td>
+            <td><span class="tag tag--gray">Portfolio Prioritization</span></td>
+            <td><span class="required-badge required-badge--yes">Required</span></td>
+            <td><a href="#" class="tp-link-btn">TP #12351</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Sample flow data for mockup
+    const mockData = [
+      { from: 'Organization (1.8)', to: 'Strategic Resource Mgmt', flow: 17 },
+      { from: 'Organization (1.8)', to: 'Capacity Planning', flow: 12 },
+      { from: 'Strategic Planning (2.4)', to: 'Strategic Resource Mgmt', flow: 14 },
+      { from: 'Strategic Planning (2.4)', to: 'Portfolio Prioritization', flow: 11 },
+      { from: 'Portfolio Mgmt (2.8)', to: 'Portfolio Prioritization', flow: 10 },
+      { from: 'Resource Mgmt (3.2)', to: 'Capacity Planning', flow: 8 },
+      { from: 'Resource Mgmt (3.2)', to: 'Demand Forecasting', flow: 7 },
+      { from: 'Strategic Resource Mgmt', to: 'Resource Capacity *', flow: 10 },
+      { from: 'Strategic Resource Mgmt', to: 'Skills Matrix *', flow: 10 },
+      { from: 'Strategic Resource Mgmt', to: 'Team Allocation', flow: 5 },
+      { from: 'Capacity Planning', to: 'Capacity Dashboard *', flow: 8 },
+      { from: 'Capacity Planning', to: 'What-If Scenarios', flow: 5 },
+      { from: 'Portfolio Prioritization', to: 'Portfolio Scoring *', flow: 8 },
+      { from: 'Portfolio Prioritization', to: 'Value Stream Map', flow: 5 },
+      { from: 'Demand Forecasting', to: 'Forecast Module *', flow: 8 },
+      { from: 'Demand Forecasting', to: 'Trend Analysis', flow: 5 },
+    ];
+
+    // Add sourceType for coloring
+    mockData.forEach(d => {
+      if (d.from.includes('(1.8)')) d.sourceScore = 1.8;
+      else if (d.from.includes('(2.4)')) d.sourceScore = 2.4;
+      else if (d.from.includes('(2.8)')) d.sourceScore = 2.8;
+      else if (d.from.includes('(3.2)')) d.sourceScore = 3.2;
+
+      d.sourceType = d.from.includes('(') ? 'dimension' : 'use_case';
+      d.targetType = d.to.includes('*') || (!d.from.includes('(') && !d.to.includes('Mgmt') && !d.to.includes('Prioritization') && !d.to.includes('Forecasting')) ? 'tp_feature' : 'use_case';
+    });
+
+    function getDimensionColor(score) {
+      if (score < 2.0) return '#da1e28';
+      if (score < 3.0) return '#ff832b';
+      if (score < 4.0) return '#f1c21b';
+      return '#24a148';
+    }
+
+    // Render Sankey chart
+    const ctx = document.getElementById('flowSankeyChart');
+    new Chart(ctx, {
+      type: 'sankey',
+      data: {
+        datasets: [{
+          data: mockData,
+          colorFrom: (ctx) => {
+            const item = ctx.dataset.data[ctx.dataIndex];
+            if (item.sourceType === 'dimension') {
+              return getDimensionColor(item.sourceScore);
+            }
+            return '#0f62fe';
+          },
+          colorTo: (ctx) => {
+            const item = ctx.dataset.data[ctx.dataIndex];
+            if (item.targetType === 'tp_feature') {
+              return '#8a3ffc';
+            }
+            return '#0f62fe';
+          },
+          colorMode: 'gradient',
+          size: 'max'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const item = context.dataset.data[context.dataIndex];
+                return `${item.from} → ${item.to}`;
+              }
+            }
+          },
+          legend: { display: false }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

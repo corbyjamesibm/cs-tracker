@@ -4804,6 +4804,7 @@ function setupTabSwitching() {
     const usageFrameworkSection = document.getElementById('usageFrameworkSection');
     const spmAssessmentSection = document.getElementById('spmAssessmentSection');
     const recommendationsSection = document.getElementById('recommendationsSection');
+    const implementationFlowSection = document.getElementById('implementationFlowSection');
     const overviewGrid = document.querySelector('.grid.grid--2');
 
     // Helper to hide all tab sections
@@ -4817,6 +4818,7 @@ function setupTabSwitching() {
         if (usageFrameworkSection) usageFrameworkSection.style.display = 'none';
         if (spmAssessmentSection) spmAssessmentSection.style.display = 'none';
         if (recommendationsSection) recommendationsSection.style.display = 'none';
+        if (implementationFlowSection) implementationFlowSection.style.display = 'none';
         if (overviewGrid) overviewGrid.style.display = 'none';
     }
 
@@ -4856,6 +4858,9 @@ function setupTabSwitching() {
             } else if (tabName === 'Recommendations') {
                 if (recommendationsSection) recommendationsSection.style.display = 'block';
                 loadRecommendations(customerId);
+            } else if (tabName === 'Flow') {
+                if (implementationFlowSection) implementationFlowSection.style.display = 'block';
+                loadFlowVisualization(customerId);
             } else if (tabName === 'Documents') {
                 if (documentsSection) documentsSection.style.display = 'block';
                 loadDocuments(customerId);
@@ -4883,6 +4888,7 @@ function showSection(sectionName) {
         'targetprocess': 'TargetProcess',
         'roadmap': 'Roadmap',
         'recommendations': 'Recommendations',
+        'implementationFlow': 'Flow',
         'documents': 'Documents'
     };
 
@@ -7224,3 +7230,382 @@ window.hideAuditTrail = hideAuditTrail;
 window.syncTargetSlider = syncTargetSlider;
 window.syncTargetInput = syncTargetInput;
 window.loadTargets = loadTargets;
+
+
+// ============================================================
+// FLOW VISUALIZATION (SANKEY DIAGRAM)
+// ============================================================
+
+let flowSankeyChart = null;
+let largeFlowSankeyChart = null;
+let flowVisualizationData = null;
+
+// Get color based on dimension score
+function getDimensionColor(score) {
+    if (score < 2.0) return '#da1e28';  // Red - Critical
+    if (score < 3.0) return '#ff832b';  // Orange - Needs Work
+    if (score < 4.0) return '#f1c21b';  // Yellow - Below Target
+    return '#24a148';                    // Green - On Target
+}
+
+// Get status badge class based on score
+function getDimensionStatusBadge(score) {
+    if (score < 2.0) return { class: 'flow-status-badge--critical', text: 'Critical' };
+    if (score < 3.0) return { class: 'flow-status-badge--warning', text: 'Needs Work' };
+    if (score < 4.0) return { class: 'flow-status-badge--below-target', text: 'Below Target' };
+    return { class: '', text: 'On Track' };
+}
+
+// Load flow visualization data
+async function loadFlowVisualization(customerId) {
+    const noFlowState = document.getElementById('noFlowState');
+    const flowContent = document.getElementById('flowVisualizationContent');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/flow-visualization?threshold=3.5`);
+
+        if (!response.ok) {
+            showNoFlowState();
+            return;
+        }
+
+        flowVisualizationData = await response.json();
+
+        if (flowVisualizationData.nodes.length === 0) {
+            showNoFlowState();
+            return;
+        }
+
+        // Hide no-data state, show content
+        if (noFlowState) noFlowState.style.display = 'none';
+        if (flowContent) flowContent.style.display = 'block';
+
+        // Update summary stats
+        document.getElementById('flowWeakDimensionsCount').textContent = flowVisualizationData.weak_dimensions_count;
+        document.getElementById('flowUseCasesCount').textContent = flowVisualizationData.recommended_use_cases_count;
+        document.getElementById('flowTPFeaturesCount').textContent = flowVisualizationData.tp_features_count;
+
+        // Render tables
+        renderFlowDimensionsTable();
+        renderFlowUseCasesTable();
+        renderFlowTPFeaturesTable();
+
+        // Render Sankey chart
+        renderFlowSankeyChart('flowSankeyChart', false);
+
+    } catch (error) {
+        console.error('Failed to load flow visualization:', error);
+        showNoFlowState();
+    }
+}
+
+function showNoFlowState() {
+    const noFlowState = document.getElementById('noFlowState');
+    const flowContent = document.getElementById('flowVisualizationContent');
+
+    if (noFlowState) noFlowState.style.display = 'block';
+    if (flowContent) flowContent.style.display = 'none';
+}
+
+// Render dimensions table
+function renderFlowDimensionsTable() {
+    const tbody = document.getElementById('flowDimensionsTableBody');
+    if (!tbody || !flowVisualizationData) return;
+
+    const dimNodes = flowVisualizationData.nodes.filter(n => n.type === 'dimension');
+
+    if (dimNodes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary">No weak dimensions found</td></tr>';
+        return;
+    }
+
+    // Sort by gap descending
+    dimNodes.sort((a, b) => (b.gap || 0) - (a.gap || 0));
+
+    tbody.innerHTML = dimNodes.map(node => {
+        const status = getDimensionStatusBadge(node.score);
+        return `
+            <tr>
+                <td style="font-weight: 500;">${escapeHtml(node.name)}</td>
+                <td>
+                    <span style="color: ${getDimensionColor(node.score)}; font-weight: 600;">${node.score?.toFixed(1) || '-'}</span>
+                </td>
+                <td>
+                    <span style="color: var(--cds-support-error);">${node.gap?.toFixed(1) || '-'}</span>
+                </td>
+                <td>
+                    <span class="flow-status-badge ${status.class}">${status.text}</span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Render use cases table
+function renderFlowUseCasesTable() {
+    const tbody = document.getElementById('flowUseCasesTableBody');
+    if (!tbody || !flowVisualizationData) return;
+
+    const ucNodes = flowVisualizationData.nodes.filter(n => n.type === 'use_case');
+
+    if (ucNodes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary">No recommended use cases</td></tr>';
+        return;
+    }
+
+    // Build a map of use case id -> dimensions it improves
+    const ucToDims = {};
+    const ucToTP = {};
+
+    flowVisualizationData.links.forEach(link => {
+        if (link.source.startsWith('dim_') && link.target.startsWith('uc_')) {
+            const dimName = link.source.replace('dim_', '');
+            const ucId = link.target;
+            if (!ucToDims[ucId]) ucToDims[ucId] = [];
+            ucToDims[ucId].push(dimName);
+        }
+        if (link.source.startsWith('uc_') && link.target.startsWith('tp_')) {
+            const ucId = link.source;
+            if (!ucToTP[ucId]) ucToTP[ucId] = 0;
+            ucToTP[ucId]++;
+        }
+    });
+
+    tbody.innerHTML = ucNodes.map(node => {
+        const dims = ucToDims[node.id] || [];
+        const tpCount = ucToTP[node.id] || 0;
+        return `
+            <tr>
+                <td style="font-weight: 500;">${escapeHtml(node.name)}</td>
+                <td>
+                    <span class="solution-area-chip">${node.solution_area || '-'}</span>
+                </td>
+                <td>
+                    ${dims.map(d => `<span class="tag tag--gray" style="font-size: 10px; margin-right: 4px;">${escapeHtml(d)}</span>`).join('')}
+                </td>
+                <td>
+                    ${tpCount > 0 ? `<span class="tag tag--blue" style="font-size: 10px;">${tpCount} feature${tpCount > 1 ? 's' : ''}</span>` : '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Render TP features table
+function renderFlowTPFeaturesTable() {
+    const tbody = document.getElementById('flowTPFeaturesTableBody');
+    if (!tbody || !flowVisualizationData) return;
+
+    const tpNodes = flowVisualizationData.nodes.filter(n => n.type === 'tp_feature');
+
+    if (tpNodes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary">No TP features to implement</td></tr>';
+        return;
+    }
+
+    // Build a map of TP feature id -> use case names
+    const tpToUC = {};
+    const ucNodeMap = {};
+
+    flowVisualizationData.nodes.forEach(n => {
+        if (n.type === 'use_case') {
+            ucNodeMap[n.id] = n.name;
+        }
+    });
+
+    flowVisualizationData.links.forEach(link => {
+        if (link.source.startsWith('uc_') && link.target.startsWith('tp_')) {
+            const ucName = ucNodeMap[link.source] || 'Unknown';
+            const tpId = link.target;
+            if (!tpToUC[tpId]) tpToUC[tpId] = [];
+            tpToUC[tpId].push(ucName);
+        }
+    });
+
+    tbody.innerHTML = tpNodes.map(node => {
+        const ucNames = tpToUC[node.id] || [];
+        return `
+            <tr>
+                <td style="font-weight: 500;">${escapeHtml(node.name)}</td>
+                <td>
+                    ${ucNames.map(uc => `<span class="tag tag--gray" style="font-size: 10px; margin-right: 4px;">${escapeHtml(uc)}</span>`).join('')}
+                </td>
+                <td>
+                    ${node.is_required
+                        ? '<span class="required-badge required-badge--yes">Required</span>'
+                        : '<span class="required-badge required-badge--no">Recommended</span>'}
+                </td>
+                <td>
+                    ${node.tp_id
+                        ? `<a href="https://targetprocess.com/entity/${node.tp_id}" target="_blank" class="tp-link-btn">
+                            <svg width="12" height="12" viewBox="0 0 32 32"><path d="M26 28H6a2 2 0 01-2-2V6a2 2 0 012-2h9v2H6v20h20v-9h2v9a2 2 0 01-2 2z"/><path d="M21 2v2h5.59l-9.3 9.29 1.42 1.42L28 5.41V11h2V2h-9z"/></svg>
+                            TP #${node.tp_id}
+                           </a>`
+                        : '-'}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Render Sankey chart
+function renderFlowSankeyChart(canvasId, isLarge = false) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx || !flowVisualizationData) return;
+
+    // Destroy existing chart
+    if (isLarge && largeFlowSankeyChart) {
+        largeFlowSankeyChart.destroy();
+    } else if (!isLarge && flowSankeyChart) {
+        flowSankeyChart.destroy();
+    }
+
+    // Check if chartjs-chart-sankey is loaded
+    if (typeof Chart.controllers.sankey === 'undefined') {
+        console.warn('chartjs-chart-sankey not loaded, skipping Sankey chart');
+        ctx.parentElement.innerHTML = '<div class="text-secondary text-center" style="padding: 48px;">Sankey chart library not loaded. Please refresh the page.</div>';
+        return;
+    }
+
+    // Transform data for Chart.js Sankey format
+    const chartData = flowVisualizationData.links.map(link => {
+        const sourceNode = flowVisualizationData.nodes.find(n => n.id === link.source);
+        const targetNode = flowVisualizationData.nodes.find(n => n.id === link.target);
+
+        if (!sourceNode || !targetNode) return null;
+
+        let fromLabel = sourceNode.name;
+        if (sourceNode.type === 'dimension' && sourceNode.score) {
+            fromLabel = `${sourceNode.name} (${sourceNode.score.toFixed(1)})`;
+        }
+
+        let toLabel = targetNode.name;
+        if (targetNode.type === 'tp_feature' && targetNode.is_required) {
+            toLabel = `${targetNode.name} *`;
+        }
+
+        return {
+            from: fromLabel,
+            to: toLabel,
+            flow: (link.value || 1) * 10,
+            sourceScore: sourceNode.score,
+            sourceType: sourceNode.type,
+            targetType: targetNode.type
+        };
+    }).filter(Boolean);
+
+    if (chartData.length === 0) {
+        ctx.parentElement.innerHTML = '<div class="text-secondary text-center" style="padding: 48px;">No flow data to display</div>';
+        return;
+    }
+
+    const chart = new Chart(ctx, {
+        type: 'sankey',
+        data: {
+            datasets: [{
+                data: chartData,
+                colorFrom: (ctx) => {
+                    const item = ctx.dataset.data[ctx.dataIndex];
+                    if (item.sourceType === 'dimension') {
+                        return getDimensionColor(item.sourceScore);
+                    }
+                    return '#0f62fe';  // Blue for use cases
+                },
+                colorTo: (ctx) => {
+                    const item = ctx.dataset.data[ctx.dataIndex];
+                    if (item.targetType === 'tp_feature') {
+                        return '#8a3ffc';  // Purple for TP features
+                    }
+                    return '#0f62fe';  // Blue for use cases
+                },
+                colorMode: 'gradient',
+                size: 'max'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: !isLarge,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const item = context.dataset.data[context.dataIndex];
+                            return `${item.from} → ${item.to}`;
+                        }
+                    }
+                },
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+
+    if (isLarge) {
+        largeFlowSankeyChart = chart;
+    } else {
+        flowSankeyChart = chart;
+    }
+}
+
+// Refresh flow visualization
+function refreshFlowVisualization() {
+    const customerId = getCustomerId();
+    if (customerId) {
+        loadFlowVisualization(customerId);
+    }
+}
+
+// Open flow chart modal
+function openFlowChartModal() {
+    document.getElementById('flowChartModal').classList.add('open');
+    // Render the large chart after modal opens
+    setTimeout(() => {
+        renderFlowSankeyChart('flowSankeyChartLarge', true);
+    }, 100);
+}
+
+// Close flow chart modal
+function closeFlowChartModal() {
+    document.getElementById('flowChartModal').classList.remove('open');
+    if (largeFlowSankeyChart) {
+        largeFlowSankeyChart.destroy();
+        largeFlowSankeyChart = null;
+    }
+}
+
+// Copy flow chart to clipboard
+async function copyFlowChartToClipboard() {
+    const canvas = document.getElementById('flowSankeyChartLarge');
+    if (!canvas) return;
+
+    try {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+        ]);
+        alert('Chart copied to clipboard!');
+    } catch (error) {
+        console.error('Failed to copy chart:', error);
+        alert('Failed to copy chart. Try downloading instead.');
+    }
+}
+
+// Download flow chart
+function downloadFlowChart() {
+    const canvas = document.getElementById('flowSankeyChartLarge');
+    if (!canvas) return;
+
+    const link = document.createElement('a');
+    link.download = `implementation-flow-${getCustomerId()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+}
+
+// Export flow visualization functions
+window.loadFlowVisualization = loadFlowVisualization;
+window.refreshFlowVisualization = refreshFlowVisualization;
+window.openFlowChartModal = openFlowChartModal;
+window.closeFlowChartModal = closeFlowChartModal;
+window.copyFlowChartToClipboard = copyFlowChartToClipboard;
+window.downloadFlowChart = downloadFlowChart;
