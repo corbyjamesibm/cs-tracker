@@ -91,6 +91,33 @@ CS Tracker/
 │                     │     └─────────────────────┘
 │                     │────<│ AssessmentQuestion  │
 └─────────────────────┘     └─────────────────────┘
+        │
+        │
+┌───────┴───────────────┐     ┌─────────────────────────┐
+│  CustomerAssessment   │────<│   AssessmentResponse    │
+│                       │     │                         │
+│                       │     │  - last_edited_at       │
+│                       │     │  - last_edited_by_id    │
+└───────────────────────┘     └───────────┬─────────────┘
+        │                                 │
+        │                                 │
+        │                     ┌───────────┴─────────────┐
+        │                     │ AssessmentResponseAudit │
+        │                     │                         │
+        │                     │  - field_changed        │
+        │                     │  - old_value/new_value  │
+        │                     │  - change_reason        │
+        │                     │  - changed_by/at        │
+        │                     └─────────────────────────┘
+        │
+┌───────┴───────────────────┐
+│ CustomerAssessmentTarget  │
+│                           │
+│  - name/description       │
+│  - target_date            │
+│  - target_scores (JSONB)  │
+│  - is_active              │
+└───────────────────────────┘
 ```
 
 ### Key Entity Descriptions
@@ -108,6 +135,9 @@ CS Tracker/
 | **Roadmap/RoadmapItem** | Product roadmap planning per customer |
 | **AssessmentTemplate** | SPM maturity assessment templates |
 | **CustomerAssessment** | Assessment instances completed for customers |
+| **AssessmentResponse** | Individual question responses with edit tracking |
+| **AssessmentResponseAudit** | Audit trail for score/notes changes |
+| **CustomerAssessmentTarget** | Target scores per customer with target date and gap analysis |
 | **Partner** | External partner organizations |
 
 ### Key Enumerations
@@ -149,7 +179,8 @@ All APIs follow RESTful conventions under `/api/v1/`:
 | Risks | `GET/POST /risks`, `GET/PATCH/DELETE /risks/{id}` |
 | Use Cases | `GET/POST /use-cases`, customer-specific: `/use-cases/customer/{id}` |
 | Roadmaps | `GET/POST /roadmaps`, items: `/roadmaps/{id}/items` |
-| Assessments | Templates & customer assessments management |
+| Assessments | Templates, customer assessments, responses, audit trail, targets |
+| Assessment Targets | `GET/POST /assessments/customer/{id}/targets`, gap analysis |
 | Partners | `GET/POST /partners`, partner user management |
 | Admin | Settings management, auth configuration |
 | Auth | Login, token refresh, w3id SSO callbacks |
@@ -180,6 +211,26 @@ All APIs follow RESTful conventions under `/api/v1/`:
     ...
 }
 ```
+
+### Assessment API Endpoints
+
+The assessment module provides comprehensive APIs for SPM maturity tracking:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/assessments/templates` | GET/POST | List and create assessment templates |
+| `/assessments/templates/{id}` | GET/PATCH/DELETE | Manage specific template |
+| `/assessments/templates/{id}/activate` | POST | Set template as active |
+| `/assessments/customer/{id}` | GET/POST | List and create customer assessments |
+| `/assessments/{id}` | GET/PATCH/DELETE | Manage specific assessment |
+| `/assessments/{id}/responses` | POST | Submit assessment responses |
+| `/assessments/{id}/responses/{rid}` | PATCH | Edit response with audit trail |
+| `/assessments/{id}/audit` | GET | Get audit trail for assessment |
+| `/assessments/{id}/report` | GET | Get assessment report data |
+| `/assessments/{id}/export/excel` | GET | Export assessment to Excel |
+| `/assessments/customer/{id}/targets` | GET/POST | List and create targets |
+| `/assessments/targets/{id}` | GET/PATCH/DELETE | Manage specific target |
+| `/assessments/customer/{id}/targets/{tid}/gap-analysis` | GET | Get gap analysis |
 
 ---
 
@@ -346,12 +397,21 @@ python3 -m app.db_init
 
 ### Environment Variables
 
-Create `.env` in backend directory:
+Create `.env` in backend directory or set in `podman-compose.yml`:
 ```
 DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/dbname
 SECRET_KEY=your-secret-key
+REDIS_URL=redis://redis:6379/0
 W3ID_CLIENT_ID=...
 W3ID_CLIENT_SECRET=...
+ANTHROPIC_API_KEY=sk-ant-...  # For AI chat features
+```
+
+**Docker/Podman Compose:**
+Environment variables can be passed to the backend container via `podman-compose.yml` or by exporting them before running compose:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-your-key
+docker-compose -f podman-compose.yml up -d
 ```
 
 ---
@@ -426,7 +486,8 @@ python3 db_backup.py restore backups/cstracker_data_YYYYMMDD_HHMMSS.json
 1. **Frontend Framework Migration**: Consider React/Vue for complex state management
 2. **Real-time Updates**: WebSocket support for live dashboards
 3. **Multi-tenancy**: Proper tenant isolation for SaaS deployment
-4. **Audit Logging**: Track all data changes with user attribution
+4. **Extended Audit Logging**: Track all data changes with user attribution (assessment audit trail implemented)
 5. **API Versioning**: Prepare for v2 API with breaking changes
 6. **Testing**: Expand unit and integration test coverage
 7. **CI/CD**: Automated testing and deployment pipeline
+8. **AI Enhancements**: Expand Anthropic Claude integration for insights and recommendations

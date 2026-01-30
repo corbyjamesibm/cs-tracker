@@ -18,6 +18,7 @@
 9. [Epic 9: Gainsight Integration](#epic-9-gainsight-integration)
 10. [Epic 10: TargetProcess Integration](#epic-10-targetprocess-integration)
 11. [Epic 11: Outlook Integration](#epic-11-outlook-integration)
+17. [Epic 17: SPM Maturity Assessments](#epic-17-spm-maturity-assessments)
 12. [Epic 12: Excel Integration](#epic-12-excel-integration)
 13. [Epic 13: PowerPoint Export](#epic-13-powerpoint-export)
 14. [Epic 14: Custom Fields](#epic-14-custom-fields)
@@ -499,6 +500,42 @@
 
 ---
 
+## Epic 17: SPM Maturity Assessments
+
+### Feature 17.1: Assessment Editing & Audit Trail
+**Description:** Edit assessment scores after completion with full change tracking.
+
+| ID | User Story | Priority | Acceptance Criteria |
+|----|------------|----------|---------------------|
+| US-17.1.1 | As a CSM, I want to edit scores on a completed assessment, so that I can correct errors or update based on new information. | P0 | - Edit button opens inline score editing<br>- Score changes validated (1-5 range) |
+| US-17.1.2 | As a CSM, I want to provide a reason when changing a score, so that the rationale is documented. | P0 | - Change reason modal appears before saving<br>- Reason is required for all edits |
+| US-17.1.3 | As a CSM, I want to view the audit trail of all score changes, so that I can see the history of modifications. | P0 | - Audit trail shows who, when, old value, new value, reason<br>- Entries in reverse chronological order |
+| US-17.1.4 | As a CSM, I want to see which scores have been edited, so that I can identify manually adjusted values. | P1 | - Visual indicator on edited scores<br>- Hover shows last edit info |
+
+### Feature 17.2: Assessment Targets & Gap Analysis
+**Description:** Set target scores and track progress toward goals.
+
+| ID | User Story | Priority | Acceptance Criteria |
+|----|------------|----------|---------------------|
+| US-17.2.1 | As a CSM, I want to create assessment targets for a customer, so that I can define their maturity goals. | P0 | - Create target with name, description, target date<br>- Set target score for each dimension |
+| US-17.2.2 | As a CSM, I want to see target scores overlaid on the radar chart, so that I can visualize the gap. | P0 | - Target appears as dashed orange line<br>- Legend shows current vs target |
+| US-17.2.3 | As a CSM, I want to view a gap analysis comparing current scores to targets, so that I can prioritize improvement areas. | P0 | - Gap analysis table with dimension, current, target, gap<br>- Status indicators (Achieved, On Track, Needs Attention, At Risk) |
+| US-17.2.4 | As a CSM, I want to set a target date for achieving goals, so that I can track progress against timeline. | P0 | - Target date field with date picker<br>- Days remaining displayed |
+| US-17.2.5 | As a CSM, I want to mark one target as active, so that it displays on the radar chart. | P1 | - "Set as Active" button per target<br>- Only one active target at a time |
+| US-17.2.6 | As a CSM, I want to include gap analysis in the assessment report, so that I can share progress with stakeholders. | P1 | - Gap analysis section added to PDF/Excel reports<br>- Shows current vs target comparison |
+
+### Feature 17.3: Radar Chart Enhancements
+**Description:** Interactive radar chart with export capabilities.
+
+| ID | User Story | Priority | Acceptance Criteria |
+|----|------------|----------|---------------------|
+| US-17.3.1 | As a CSM, I want to click the radar chart to view an enlarged version, so that I can see details more clearly. | P0 | - Click opens modal with larger chart<br>- All overlays (targets, comparisons) included |
+| US-17.3.2 | As a CSM, I want to copy the radar chart to clipboard, so that I can paste it into documents. | P0 | - Copy button in enlarged modal<br>- PNG image copied with white background |
+| US-17.3.3 | As a CSM, I want to download the radar chart as an image, so that I can save and share it. | P0 | - Download button in enlarged modal<br>- PNG file with customer name and date |
+| US-17.3.4 | As a CSM, I want to see visual hover feedback on the chart, so that I know it's interactive. | P1 | - Chart container highlights on hover<br>- "Click to enlarge" hint appears |
+
+---
+
 ## Summary
 
 | Epic | Features | User Stories | P0 | P1 | P2 |
@@ -519,7 +556,8 @@
 | 14. Custom Fields | 3 | 13 | 8 | 5 | 0 |
 | 15. User Management | 3 | 10 | 8 | 2 | 0 |
 | 16. Responsive Design | 3 | 13 | 4 | 5 | 4 |
-| **TOTAL** | **39** | **171** | **104** | **58** | **9** |
+| 17. SPM Maturity Assessments | 3 | 14 | 10 | 4 | 0 |
+| **TOTAL** | **42** | **185** | **114** | **62** | **9** |
 
 ---
 
