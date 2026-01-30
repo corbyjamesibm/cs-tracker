@@ -5756,6 +5756,25 @@ function renderAssessmentReport(report) {
                                 <td>${q.score_label ? escapeHtml(q.score_label) : '<span class="text-secondary">-</span>'}</td>
                                 <td class="report-notes-cell">${q.notes ? escapeHtml(q.notes) : '<span class="text-secondary">-</span>'}</td>
                             </tr>
+                            ${(q.score_description || q.score_evidence) ? `
+                            <tr class="report-detail-row">
+                                <td></td>
+                                <td colspan="4">
+                                    ${q.score_description ? `
+                                        <div class="report-detail-section">
+                                            <span class="report-detail-label">Rating Description:</span>
+                                            <span class="report-detail-text">${escapeHtml(q.score_description)}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${q.score_evidence ? `
+                                        <div class="report-detail-section">
+                                            <span class="report-detail-label">Evidence Required:</span>
+                                            <span class="report-detail-text">${escapeHtml(q.score_evidence)}</span>
+                                        </div>
+                                    ` : ''}
+                                </td>
+                            </tr>
+                            ` : ''}
                         `).join('')}
                     </tbody>
                 </table>
@@ -5955,6 +5974,12 @@ function printAssessmentReport() {
                 .text-center { text-align: center; }
                 .text-secondary { color: #525252; }
                 .report-notes { padding: 12px; background: #f4f4f4; border-radius: 4px; white-space: pre-wrap; }
+                .report-detail-row { background: #f9f9f9; }
+                .report-detail-row td { padding-top: 4px !important; padding-bottom: 12px !important; border-top: none !important; }
+                .report-detail-section { margin-bottom: 8px; }
+                .report-detail-section:last-child { margin-bottom: 0; }
+                .report-detail-label { display: block; font-size: 10px; font-weight: 600; color: #525252; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+                .report-detail-text { display: block; font-size: 11px; color: #161616; line-height: 1.4; }
                 @media print {
                     body { padding: 0; }
                     .report-meta-grid { grid-template-columns: repeat(3, 1fr); }

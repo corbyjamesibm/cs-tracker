@@ -970,7 +970,7 @@ async def export_assessment_excel(assessment_id: int, db: AsyncSession = Depends
     # Questions and responses header
     row += 2
     header_row = row
-    headers = ["#", "Dimension", "Question", "Score", "Label", "Notes"]
+    headers = ["#", "Dimension", "Question", "Score", "Label", "Rating Description", "Evidence Required", "Notes"]
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=row, column=col, value=header)
         cell.font = header_font_white
@@ -985,6 +985,8 @@ async def export_assessment_excel(assessment_id: int, db: AsyncSession = Depends
     ws.column_dimensions['D'].width = 10
     ws.column_dimensions['E'].width = 15
     ws.column_dimensions['F'].width = 40
+    ws.column_dimensions['G'].width = 40
+    ws.column_dimensions['H'].width = 40
 
     # Build response lookup
     response_lookup = {r.question_id: r for r in assessment.responses}
@@ -1024,12 +1026,31 @@ async def export_assessment_excel(assessment_id: int, db: AsyncSession = Depends
 
         # Score label
         score_label = ""
-        if response and question.score_labels:
-            score_label = question.score_labels.get(str(response.score), "")
+        score_description = ""
+        score_evidence = ""
+        if response:
+            score_key = str(response.score)
+            if question.score_labels:
+                score_label = question.score_labels.get(score_key, "")
+            if question.score_descriptions:
+                score_description = question.score_descriptions.get(score_key, "")
+            if question.score_evidence:
+                score_evidence = question.score_evidence.get(score_key, "")
+
         ws.cell(row=row, column=5, value=score_label).border = thin_border
 
+        # Rating Description
+        desc_cell = ws.cell(row=row, column=6, value=score_description)
+        desc_cell.border = thin_border
+        desc_cell.alignment = Alignment(wrap_text=True, vertical='top')
+
+        # Evidence Required
+        evidence_cell = ws.cell(row=row, column=7, value=score_evidence)
+        evidence_cell.border = thin_border
+        evidence_cell.alignment = Alignment(wrap_text=True, vertical='top')
+
         # Notes
-        notes_cell = ws.cell(row=row, column=6, value=response.notes if response else "")
+        notes_cell = ws.cell(row=row, column=8, value=response.notes if response else "")
         notes_cell.border = thin_border
         notes_cell.alignment = Alignment(wrap_text=True, vertical='top')
 
@@ -1089,8 +1110,16 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
 
         response = response_lookup.get(question.id)
         score_label = ""
-        if response and question.score_labels:
-            score_label = question.score_labels.get(str(response.score), "")
+        score_description = ""
+        score_evidence = ""
+        if response:
+            score_key = str(response.score)
+            if question.score_labels:
+                score_label = question.score_labels.get(score_key, "")
+            if question.score_descriptions:
+                score_description = question.score_descriptions.get(score_key, "")
+            if question.score_evidence:
+                score_evidence = question.score_evidence.get(score_key, "")
 
         questions_by_dimension[dim_name]["questions"].append({
             "question_id": question.id,
@@ -1098,6 +1127,8 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
             "question_text": question.question_text,
             "score": response.score if response else None,
             "score_label": score_label,
+            "score_description": score_description,
+            "score_evidence": score_evidence,
             "notes": response.notes if response else None,
             "min_score": question.min_score,
             "max_score": question.max_score

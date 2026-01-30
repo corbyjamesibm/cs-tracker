@@ -2499,6 +2499,42 @@ input[type="file"].form-input::file-selector-button:hover {
   line-height: 1.6;
 }
 
+/* Report Detail Rows - Rating Description & Evidence */
+.report-detail-row {
+  background: var(--cds-layer-02);
+}
+
+.report-detail-row td {
+  padding-top: 4px !important;
+  padding-bottom: 12px !important;
+  border-top: none !important;
+}
+
+.report-detail-section {
+  margin-bottom: 8px;
+}
+
+.report-detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.report-detail-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cds-text-secondary);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.report-detail-text {
+  display: block;
+  font-size: 12px;
+  color: var(--cds-text-primary);
+  line-height: 1.5;
+}
+
 @media (max-width: 768px) {
   .report-meta-grid {
     grid-template-columns: repeat(2, 1fr);
