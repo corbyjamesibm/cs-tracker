@@ -364,12 +364,13 @@ Authentication can be toggled via `AppSetting`:
 ### Current
 - **PostgreSQL**: Primary data store
 - **Redis**: Session/cache store (configured, not heavily used)
+- **Ollama**: Local LLM provider (free, default)
+- **TargetProcess**: Work item integration (API service implemented)
 
 ### Planned/Configured
 - **Salesforce**: Customer sync (`salesforce_id` field)
 - **Gainsight**: Health data sync (`gainsight_id` field)
-- **TargetProcess**: Roadmap sync (`targetprocess_id` field)
-- **Anthropic**: AI-powered insights (`anthropic_api_key`)
+- **Anthropic**: AI-powered insights (fallback LLM provider)
 - **pgvector**: Semantic search on customer data
 
 ---
@@ -478,6 +479,66 @@ python3 db_backup.py restore backups/cstracker_data_YYYYMMDD_HHMMSS.json
 - Backups stored in `backend/backups/`
 - Directory is git-ignored (backups not committed)
 - Recommend copying important backups to external storage
+
+---
+
+---
+
+## AI/LLM Architecture
+
+### Provider Abstraction
+
+The AI service uses a provider abstraction pattern supporting multiple LLM backends:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     LLM Service                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │               AI Provider Interface                  │   │
+│  │  - chat(messages, system_prompt, tools, max_tokens) │   │
+│  │  - is_available()                                   │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                    ▲                 ▲                      │
+│         ┌─────────┴──────┐  ┌───────┴────────┐             │
+│         │ OllamaProvider │  │AnthropicProvider│             │
+│         │ (Free/Local)   │  │ (Paid API)      │             │
+│         └────────────────┘  └─────────────────┘             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### AI Provider Selection
+
+1. **Default**: Ollama (local, free)
+2. **Fallback**: Anthropic Claude (if Ollama unavailable and API key configured)
+3. **Configuration**: `LLM_PROVIDER` environment variable
+
+### LLM Tools (22 total)
+
+The chat service provides tools for the LLM to interact with data:
+
+| Category | Tools |
+|----------|-------|
+| **Customer Data** | search_customers, get_customer_details, update_customer, get_portfolio_summary, get_renewals_upcoming |
+| **Tasks** | list_tasks, create_task, update_task, complete_task |
+| **Engagements** | log_engagement |
+| **Risks** | list_risks, create_risk, update_risk, get_risk_summary |
+| **Meeting Notes** | search_meeting_notes, create_meeting_note |
+| **TargetProcess** | tp_search, tp_get_details, tp_create, tp_update, tp_add_comment, tp_get_comments |
+
+### TargetProcess Service
+
+Dedicated service for TargetProcess API integration:
+
+```python
+# backend/app/services/targetprocess.py
+class TargetProcessService:
+    - search_entities(entity_type, where, include, take)
+    - get_entity(entity_type, entity_id, include)
+    - create_entity(entity_type, data)
+    - update_entity(entity_type, entity_id, data)
+    - add_comment(entity_type, entity_id, comment)
+    - get_comments(entity_id, limit)
+```
 
 ---
 

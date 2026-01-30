@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD)
 ## Customer Status Tracker
 
-**Version:** 1.7
+**Version:** 1.8
 **Date:** January 30, 2026
 **Author:** Product Team
 **Status:** Requirements Complete
@@ -633,7 +633,8 @@ A Sankey diagram visualization showing the flow from assessment dimension gaps t
 | **Color Coding** | Red (< 2.0), Orange (< 3.0), Yellow (< 4.0) based on dimension scores |
 | **Flow Thickness** | Link thickness based on impact weight |
 | **Interactive** | Click to expand to full-screen modal view |
-| **Export** | Copy to clipboard and download as image |
+| **Filtering** | Filter by specific dimension or use case to focus the visualization |
+| **Export** | Copy entire visual to clipboard (for PowerPoint) and download as image |
 
 #### Data Sources
 | Requirement | Description |
@@ -1077,11 +1078,23 @@ Recommended: pgvector extension for PostgreSQL (unified stack)
 Alternative: Dedicated vector DB for scale (Pinecone, Weaviate)
 ```
 
-#### LLM Provider: Anthropic (Claude)
+#### LLM Provider Options
+
+The application supports multiple LLM providers with automatic fallback:
+
+| Provider | Model | Cost | Usage |
+|----------|-------|------|-------|
+| **Ollama (Default)** | llama3.1:8b, mistral, etc. | Free (local) | Primary provider for cost-free operation |
+| **Anthropic** | Claude 3.5 Sonnet / Claude 3 Opus | Paid API | Fallback provider for advanced capabilities |
+
+**Ollama Configuration:**
+- Runs locally or in Docker container
+- No API costs, full data privacy
+- Recommended models: llama3.1:8b (4.9GB), mistral (4.1GB)
 
 | Component | Model | Usage |
 |-----------|-------|-------|
-| **Text Generation** | Claude 3.5 Sonnet / Claude 3 Opus | Summaries, insights, conversational interface |
+| **Text Generation** | Ollama (local) or Claude | Summaries, insights, conversational interface |
 | **Embeddings** | Voyage AI (Anthropic partner) or alternative | Vector embeddings for semantic search |
 
 #### Embedding Strategy
@@ -1832,6 +1845,7 @@ The following are explicitly **not** included in the initial release:
 | 1.5 | Jan 8, 2026 | Product Team | All 22 open questions resolved. Requirements complete. |
 | 1.6 | Jan 8, 2026 | Product Team | Added: Customer Usage Framework with Adoption Steps (journey tracking) and Use Case Checklist |
 | 1.7 | Jan 30, 2026 | Product Team | Added: Implementation Flow visualization with Sankey diagram showing assessment gaps → recommended use cases → TP features flow |
+| 1.8 | Jan 30, 2026 | Product Team | Added: Ollama LLM support for cost-free AI chat, TargetProcess API integration with read/write capabilities, CS Tracker write operations via chat (update customer, task, risk) |
 
 ---
 

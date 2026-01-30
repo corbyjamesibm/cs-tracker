@@ -1,7 +1,7 @@
 # Features and User Stories
 ## Customer Status Tracker
 
-**Generated from:** PRD v1.6
+**Generated from:** PRD v1.8
 **Date:** January 8, 2026
 
 ---
@@ -592,4 +592,65 @@
 
 ---
 
-*Document generated from PRD v1.6*
+## Epic 18: AI Chat Assistant
+
+### Feature 18.1: LLM Provider Support
+**Description:** Support for multiple LLM providers (Ollama and Anthropic).
+
+| ID | User Story | Priority | Acceptance Criteria |
+|----|------------|----------|---------------------|
+| US-18.1.1 | As a CSM, I want to use the AI chat with a free local LLM (Ollama), so that I don't incur API costs. | P0 | - Ollama provider works with llama3.1:8b model<br>- Chat functions without external API calls |
+| US-18.1.2 | As an Admin, I want the system to fall back to Anthropic if Ollama is unavailable, so that chat remains functional. | P1 | - Automatic fallback detection<br>- Seamless provider switching |
+| US-18.1.3 | As an Admin, I want to configure the LLM provider via environment variables, so that I can choose the best option for my deployment. | P0 | - LLM_PROVIDER, OLLAMA_*, ANTHROPIC_* settings<br>- Provider selection on startup |
+
+### Feature 18.2: TargetProcess Integration via Chat
+**Description:** Interact with TargetProcess data through the AI chat.
+
+| ID | User Story | Priority | Acceptance Criteria |
+|----|------------|----------|---------------------|
+| US-18.2.1 | As a CSM, I want to search TargetProcess work items via chat, so that I can find relevant items quickly. | P0 | - Search UserStories, Bugs, Tasks, Features, Epics<br>- Filter by state, project, assignee |
+| US-18.2.2 | As a CSM, I want to view TP item details via chat, so that I can understand the current status. | P0 | - Show name, state, project, assignee, description<br>- Show create/modify dates |
+| US-18.2.3 | As a CSM, I want to create TP items via chat, so that I can log feature requests and bugs efficiently. | P1 | - Create UserStory, Bug, Task, Feature<br>- Link to project, set name/description |
+| US-18.2.4 | As a CSM, I want to update TP items via chat, so that I can modify status and details. | P1 | - Update name, description, state<br>- Confirm changes |
+| US-18.2.5 | As a CSM, I want to add comments to TP items via chat, so that I can communicate updates. | P1 | - Add comment to any TP entity<br>- Comment appears in TP |
+| US-18.2.6 | As a CSM, I want to view TP item comments via chat, so that I can see discussion history. | P1 | - List comments with author and date<br>- Show comment text |
+
+### Feature 18.3: CS Tracker Write Operations via Chat
+**Description:** Update CS Tracker data through the AI chat.
+
+| ID | User Story | Priority | Acceptance Criteria |
+|----|------------|----------|---------------------|
+| US-18.3.1 | As a CSM, I want to update customer health status via chat, so that I can quickly record status changes. | P0 | - Set health to green/yellow/red<br>- Respects role-based access |
+| US-18.3.2 | As a CSM, I want to add notes to a customer via chat, so that I can log information quickly. | P0 | - Append timestamped notes<br>- Notes visible in customer profile |
+| US-18.3.3 | As a CSM, I want to update task details via chat, so that I can manage tasks efficiently. | P0 | - Update status, priority, due date, assignee<br>- Mark tasks completed |
+| US-18.3.4 | As a CSM, I want to update risk details via chat, so that I can maintain risk status. | P0 | - Update severity, status, mitigation plan<br>- Add resolution notes |
+
+---
+
+## Summary (Updated)
+
+| Epic | Features | User Stories | P0 | P1 | P2 |
+|------|----------|--------------|----|----|-----|
+| 1. Customer Management | 2 | 14 | 10 | 4 | 0 |
+| 2. Dashboard & Portfolio | 3 | 14 | 9 | 2 | 3 |
+| 3. Task & Reminder | 3 | 16 | 10 | 6 | 0 |
+| 4. Usage Framework | 2 | 14 | 12 | 2 | 0 |
+| 5. Health Scoring | 2 | 6 | 1 | 5 | 0 |
+| 6. Engagement Logging | 1 | 7 | 2 | 5 | 0 |
+| 7. Partner Portal | 4 | 20 | 16 | 4 | 0 |
+| 8. Salesforce Integration | 2 | 8 | 5 | 3 | 0 |
+| 9. Gainsight Integration | 1 | 4 | 3 | 1 | 0 |
+| 10. TargetProcess Integration | 3 | 9 | 6 | 3 | 0 |
+| 11. Outlook Integration | 2 | 5 | 0 | 5 | 0 |
+| 12. Excel Integration | 2 | 10 | 5 | 3 | 2 |
+| 13. PowerPoint Export | 3 | 8 | 5 | 3 | 0 |
+| 14. Custom Fields | 3 | 13 | 8 | 5 | 0 |
+| 15. User Management | 3 | 10 | 8 | 2 | 0 |
+| 16. Responsive Design | 3 | 13 | 4 | 5 | 4 |
+| 17. SPM Maturity Assessments | 3 | 14 | 10 | 4 | 0 |
+| 18. AI Chat Assistant | 3 | 13 | 7 | 6 | 0 |
+| **TOTAL** | **45** | **198** | **121** | **68** | **9** |
+
+---
+
+*Document generated from PRD v1.7*

@@ -21,7 +21,7 @@ A comprehensive customer success tracking application built with FastAPI and Pos
 - **Database**: PostgreSQL with SQLAlchemy async ORM
 - **Cache**: Redis (for session management)
 - **Frontend**: HTML/CSS/JavaScript (Carbon Design System inspired)
-- **AI/LLM**: Anthropic Claude API
+- **AI/LLM**: Ollama (local/free) or Anthropic Claude API
 - **MCP Server**: TypeScript with Model Context Protocol SDK
 - **Containerization**: Podman/Docker
 
@@ -107,20 +107,36 @@ The application includes an LLM-powered chat assistant that can query and act on
 
 ### Configuration
 
-To enable the AI chat assistant, add your Anthropic API key to the environment:
+The AI chat supports two providers: **Ollama** (free/local) and **Anthropic** (paid API).
+
+#### Option 1: Ollama (Recommended - Free)
+
+Run Ollama in a Docker/Podman container:
 
 ```bash
-# In .env file or environment variables
+# Start Ollama container
+podman run -d --name ollama -p 11434:11434 ollama/ollama
+
+# Pull a model (e.g., llama3.1:8b)
+podman exec -it ollama ollama pull llama3.1:8b
+```
+
+Configure in `.env`:
+```bash
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+```
+
+#### Option 2: Anthropic Claude (Paid)
+
+```bash
+# In .env file
+LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Or add it to the backend service in `podman-compose.yml`:
-
-```yaml
-backend:
-  environment:
-    - ANTHROPIC_API_KEY=sk-ant-...
-```
+The system automatically falls back to Anthropic if Ollama is unavailable.
 
 ### Capabilities
 
@@ -128,14 +144,26 @@ The chat assistant can:
 
 | Action | Description | Example Query |
 |--------|-------------|---------------|
+| **Query Data** | | |
 | Search customers | Find customers by name, health status, or CSM | "Show me all red health customers" |
 | Get customer details | View full customer context with tasks, risks, engagements | "Tell me about Acme Corp" |
 | Portfolio summary | Get overview of your customer portfolio | "How is my portfolio doing?" |
-| List/create tasks | View and create follow-up tasks | "Create a task to follow up with Acme Corp" |
-| Log engagements | Record customer interactions | "Log a call with Acme Corp about renewal" |
-| Manage risks | View and create customer risks | "What are the critical risks in my portfolio?" |
-| Search meeting notes | Find meeting notes by content | "Find meeting notes about migration" |
+| List tasks | View tasks with filters | "What are my overdue tasks?" |
 | View renewals | See upcoming renewal dates | "Which customers have renewals this quarter?" |
+| Search meeting notes | Find meeting notes by content | "Find meeting notes about migration" |
+| **Create/Update CS Tracker Data** | | |
+| Create tasks | Create follow-up tasks | "Create a task to follow up with Acme Corp" |
+| Update tasks | Change task status, priority, assignee | "Mark task #123 as completed" |
+| Log engagements | Record customer interactions | "Log a call with Acme Corp about renewal" |
+| Create risks | Add customer risks | "Create a critical risk for Acme Corp" |
+| Update risks | Change risk severity, status | "Resolve the renewal risk for Acme Corp" |
+| Update customer | Modify health status, notes, adoption stage | "Set Acme Corp health to yellow" |
+| **TargetProcess Integration** | | |
+| Search TP items | Find UserStories, Bugs, Tasks, Features | "Search TargetProcess for open bugs" |
+| Get TP details | View detailed TP item information | "Get details for TP item #12345" |
+| Create TP items | Create new TP work items | "Create a feature request in TP" |
+| Update TP items | Modify TP item state, description | "Update TP story #123 state" |
+| Add TP comments | Add comments to TP items | "Add comment to TP bug #456" |
 
 ### Usage
 
@@ -179,20 +207,35 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 | Tool | Description |
 |------|-------------|
+| **Customer Data** | |
 | `search_customers` | Search customers by name, health status, or CSM |
 | `get_customer_details` | Get full customer details with tasks and risks |
+| `update_customer` | Update customer health status, notes, adoption stage |
 | `get_renewals_upcoming` | Get customers with upcoming renewals |
+| `get_portfolio_summary` | Get portfolio overview |
+| **Tasks** | |
 | `list_tasks` | List tasks with filters |
 | `create_task` | Create a new task |
+| `update_task` | Update task status, priority, due date, assignee |
 | `complete_task` | Mark a task as completed |
+| **Engagements** | |
 | `list_engagements` | List engagements for a customer |
 | `log_engagement` | Log a customer engagement |
+| **Risks** | |
 | `list_risks` | List risks with filters |
 | `create_risk` | Create a new risk |
+| `update_risk` | Update risk severity, status, mitigation plan |
 | `get_risk_summary` | Get risk summary statistics |
-| `get_portfolio_summary` | Get portfolio overview |
+| **Meeting Notes** | |
 | `search_meeting_notes` | Search meeting notes |
 | `create_meeting_note` | Create a meeting note |
+| **TargetProcess Integration** | |
+| `tp_search` | Search TP work items (UserStory, Bug, Task, Feature, Epic) |
+| `tp_get_details` | Get detailed TP item information |
+| `tp_create` | Create new TP items linked to a project |
+| `tp_update` | Update TP item name, description, state |
+| `tp_add_comment` | Add comment to a TP item |
+| `tp_get_comments` | Get comments from a TP item |
 
 ## API Endpoints
 
@@ -227,9 +270,19 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 | `DATABASE_URL` | PostgreSQL connection string | Yes |
 | `SECRET_KEY` | JWT signing key | Yes |
 | `REDIS_URL` | Redis connection string | No (defaults to localhost) |
-| `ANTHROPIC_API_KEY` | Anthropic API key for chat assistant | No (chat disabled if not set) |
-| `LLM_MODEL` | Claude model to use | No (defaults to claude-sonnet-4-20250514) |
+| **LLM Configuration** | | |
+| `LLM_PROVIDER` | LLM provider: "ollama" or "anthropic" | No (defaults to "ollama") |
 | `LLM_MAX_TOKENS` | Max tokens for LLM responses | No (defaults to 4096) |
+| **Ollama (Free/Local)** | | |
+| `OLLAMA_BASE_URL` | Ollama API URL | No (defaults to http://localhost:11434) |
+| `OLLAMA_MODEL` | Ollama model name | No (defaults to llama3.1:8b) |
+| `OLLAMA_TIMEOUT` | Request timeout in seconds | No (defaults to 120) |
+| **Anthropic (Paid)** | | |
+| `ANTHROPIC_API_KEY` | Anthropic API key | No (required if using Anthropic) |
+| `ANTHROPIC_MODEL` | Claude model to use | No (defaults to claude-sonnet-4-20250514) |
+| **TargetProcess Integration** | | |
+| `TARGETPROCESS_API_TOKEN` | TargetProcess API token | No (TP features disabled if not set) |
+| `TARGETPROCESS_BASE_URL` | TargetProcess instance URL | No (defaults to https://tpondemand.tpondemand.com) |
 
 For the MCP server:
 
