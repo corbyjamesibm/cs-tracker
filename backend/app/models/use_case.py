@@ -1,11 +1,14 @@
 from sqlalchemy import String, DateTime, Enum as SQLEnum, ForeignKey, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
-from typing import Optional
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 import enum
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.use_case_solution_mapping import UseCaseTPSolutionMapping
 
 
 class UseCaseStatus(str, enum.Enum):
@@ -33,6 +36,9 @@ class UseCase(Base):
 
     # Relationships
     customer_use_cases: Mapped[list["CustomerUseCase"]] = relationship(back_populates="use_case")
+    tp_solution_mappings: Mapped[List["UseCaseTPSolutionMapping"]] = relationship(
+        back_populates="use_case", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<UseCase {self.name}>"

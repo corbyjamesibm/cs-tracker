@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Implementation Flow Mockup - CS Tracker</title>
+  <title>Use Case to TP Solution Mapping - CS Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css?v=27">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -249,29 +249,25 @@
   <div class="mockup-container">
     <!-- Header -->
     <div class="mockup-header">
-      <h1>Acme Corporation</h1>
-      <p>Customer ID: 1 | ARR: $450K | Health: Green</p>
+      <h1>TargetProcess Solutions Mapping</h1>
+      <p>Visualize how Use Cases map to TargetProcess Solutions</p>
     </div>
 
     <!-- Tab Navigation -->
     <div class="tabs-mockup">
-      <button class="tab-mockup">Overview</button>
-      <button class="tab-mockup">Usage Framework</button>
-      <button class="tab-mockup">Engagements</button>
-      <button class="tab-mockup">Tasks</button>
-      <button class="tab-mockup">SPM Assessment</button>
-      <button class="tab-mockup">Recommendations</button>
-      <button class="tab-mockup active">Flow</button>
-      <button class="tab-mockup">Documents</button>
+      <button class="tab-mockup active">Solution Mapping</button>
+      <button class="tab-mockup">Use Cases</button>
+      <button class="tab-mockup">TP Solutions</button>
+      <button class="tab-mockup">Categories</button>
     </div>
 
     <!-- Section Header -->
     <div class="section-header">
       <h2 class="section-title">
         <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 2H4a2 2 0 00-2 2v24a2 2 0 002 2h24a2 2 0 002-2V4a2 2 0 00-2-2zM4 28V4h11v24zm13 0V4h11v24z"/><path d="M8 8h4v2H8zm0 4h4v2H8zm0 4h4v2H8zm12-8h4v2h-4zm0 4h4v2h-4zm0 4h4v2h-4z"/></svg>
-        Implementation Flow
+        Use Case to TP Solution Mapping
       </h2>
-      <button class="btn btn--secondary">
+      <button class="btn btn--secondary" onclick="loadSankeyData()">
         <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
         Refresh
       </button>
@@ -280,26 +276,26 @@
     <!-- Summary Statistics -->
     <div class="grid--3" style="margin-bottom: 24px;">
       <div class="metric-card">
-        <div class="metric-card__label">Weak Dimensions</div>
-        <div class="metric-card__value" style="color: #da1e28;">4</div>
+        <div class="metric-card__label">Total Mappings</div>
+        <div class="metric-card__value" style="color: #da1e28;" id="totalMappingsCount">-</div>
       </div>
       <div class="metric-card">
-        <div class="metric-card__label">Recommended Use Cases</div>
-        <div class="metric-card__value" style="color: #0f62fe;">6</div>
+        <div class="metric-card__label">Use Cases</div>
+        <div class="metric-card__value" style="color: #0f62fe;">-</div>
       </div>
       <div class="metric-card">
-        <div class="metric-card__label">TP Features to Implement</div>
-        <div class="metric-card__value" style="color: #8a3ffc;">9</div>
+        <div class="metric-card__label">TP Solutions</div>
+        <div class="metric-card__value" style="color: #8a3ffc;">-</div>
       </div>
     </div>
 
     <!-- Flow Visualization Card -->
     <div class="card">
       <div class="card__header">
-        <h3>Assessment Gap -> Use Case -> TP Feature Flow</h3>
-        <button class="btn btn--secondary" style="padding: 6px 12px; font-size: 12px;">
-          <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M28 4H10a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H10V6h18zM2 24V10H0v14a2 2 0 002 2h18v-2z"/></svg>
-          Expand
+        <h3>Use Case → TP Solution Mapping</h3>
+        <button class="btn btn--secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadSankeyData()">
+          <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
+          Refresh
         </button>
       </div>
       <div class="card__body">
@@ -308,164 +304,66 @@
         </div>
         <div class="flow-legend">
           <span class="legend-item">
-            <span class="legend-dot" style="background: #da1e28;"></span> Critical (&lt; 2.0)
+            <span class="legend-dot" style="background: #0f62fe;"></span> WFM
           </span>
           <span class="legend-item">
-            <span class="legend-dot" style="background: #ff832b;"></span> Needs Work (&lt; 3.0)
+            <span class="legend-dot" style="background: #8a3ffc;"></span> HPM
           </span>
           <span class="legend-item">
-            <span class="legend-dot" style="background: #f1c21b;"></span> Below Target (&lt; 4.0)
+            <span class="legend-dot" style="background: #00539a;"></span> EAP
           </span>
           <span class="legend-item">
-            <span class="legend-dot" style="background: #0f62fe;"></span> Use Cases
+            <span class="legend-dot" style="background: #198038;"></span> POM
           </span>
           <span class="legend-item">
-            <span class="legend-dot" style="background: #8a3ffc;"></span> TP Features
+            <span class="legend-dot" style="background: #9f1853;"></span> FPM
+          </span>
+          <span class="legend-item" style="margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--cds-border-subtle-01);">
+            * = Required
           </span>
         </div>
       </div>
     </div>
 
-    <!-- Weak Dimensions Table -->
+    <!-- Use Cases Table -->
     <div class="card">
       <div class="card__header">
-        <h3>Weak Dimensions</h3>
+        <h3>Use Cases with TP Solution Mappings</h3>
       </div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Dimension</th>
-            <th>Score</th>
-            <th>Gap to Target (3.5)</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="font-weight: 500;">Organization</td>
-            <td><span style="color: #da1e28; font-weight: 600;">1.8</span></td>
-            <td><span style="color: #da1e28;">1.7</span></td>
-            <td><span class="flow-status-badge flow-status-badge--critical">Critical</span></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Strategic Planning</td>
-            <td><span style="color: #ff832b; font-weight: 600;">2.4</span></td>
-            <td><span style="color: #da1e28;">1.1</span></td>
-            <td><span class="flow-status-badge flow-status-badge--warning">Needs Work</span></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Portfolio Management</td>
-            <td><span style="color: #ff832b; font-weight: 600;">2.8</span></td>
-            <td><span style="color: #da1e28;">0.7</span></td>
-            <td><span class="flow-status-badge flow-status-badge--warning">Needs Work</span></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Resource Management</td>
-            <td><span style="color: #f1c21b; font-weight: 600;">3.2</span></td>
-            <td><span style="color: #da1e28;">0.3</span></td>
-            <td><span class="flow-status-badge flow-status-badge--below-target">Below Target</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Recommended Use Cases Table -->
-    <div class="card">
-      <div class="card__header">
-        <h3>Recommended Use Cases</h3>
-      </div>
-      <table class="data-table">
+      <table class="data-table" id="useCasesTable">
         <thead>
           <tr>
             <th>Use Case</th>
             <th>Solution Area</th>
-            <th>Improves</th>
-            <th>TP Features</th>
+            <th>TP Solutions</th>
+            <th>Required</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="useCasesTableBody">
           <tr>
-            <td style="font-weight: 500;">Strategic Resource Management</td>
-            <td><span class="solution-area-chip">WFM</span></td>
-            <td>
-              <span class="tag tag--gray" style="margin-right: 4px;">Organization</span>
-              <span class="tag tag--gray">Strategic Planning</span>
-            </td>
-            <td><span class="tag tag--blue">3 features</span></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Capacity Planning</td>
-            <td><span class="solution-area-chip">WFM</span></td>
-            <td>
-              <span class="tag tag--gray">Resource Management</span>
-            </td>
-            <td><span class="tag tag--blue">2 features</span></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Portfolio Prioritization</td>
-            <td><span class="solution-area-chip">HPM</span></td>
-            <td>
-              <span class="tag tag--gray" style="margin-right: 4px;">Portfolio Management</span>
-              <span class="tag tag--gray">Strategic Planning</span>
-            </td>
-            <td><span class="tag tag--blue">2 features</span></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Demand Forecasting</td>
-            <td><span class="solution-area-chip">WFM</span></td>
-            <td>
-              <span class="tag tag--gray">Resource Management</span>
-            </td>
-            <td><span class="tag tag--blue">2 features</span></td>
+            <td colspan="4" style="text-align: center; color: var(--cds-text-secondary);">Loading...</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- TP Features Table -->
+    <!-- TP Solutions Table -->
     <div class="card">
       <div class="card__header">
-        <h3>TP Features to Implement</h3>
+        <h3>TP Solutions</h3>
       </div>
-      <table class="data-table">
+      <table class="data-table" id="tpSolutionsTable">
         <thead>
           <tr>
-            <th>Feature Name</th>
-            <th>For Use Case</th>
-            <th>Required</th>
-            <th>TP Link</th>
+            <th>Solution Name</th>
+            <th>Category</th>
+            <th>Version</th>
+            <th>Used By</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="tpSolutionsTableBody">
           <tr>
-            <td style="font-weight: 500;">Resource Capacity Dashboard</td>
-            <td><span class="tag tag--gray">Strategic Resource Management</span></td>
-            <td><span class="required-badge required-badge--yes">Required</span></td>
-            <td><a href="#" class="tp-link-btn">TP #12345</a></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Skills Matrix</td>
-            <td><span class="tag tag--gray">Strategic Resource Management</span></td>
-            <td><span class="required-badge required-badge--yes">Required</span></td>
-            <td><a href="#" class="tp-link-btn">TP #12346</a></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Team Allocation View</td>
-            <td><span class="tag tag--gray">Strategic Resource Management</span></td>
-            <td><span class="required-badge required-badge--no">Recommended</span></td>
-            <td><a href="#" class="tp-link-btn">TP #12347</a></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Demand Forecasting Module</td>
-            <td><span class="tag tag--gray">Demand Forecasting</span></td>
-            <td><span class="required-badge required-badge--yes">Required</span></td>
-            <td><a href="#" class="tp-link-btn">TP #12350</a></td>
-          </tr>
-          <tr>
-            <td style="font-weight: 500;">Portfolio Scoring Model</td>
-            <td><span class="tag tag--gray">Portfolio Prioritization</span></td>
-            <td><span class="required-badge required-badge--yes">Required</span></td>
-            <td><a href="#" class="tp-link-btn">TP #12351</a></td>
+            <td colspan="4" style="text-align: center; color: var(--cds-text-secondary);">Loading...</td>
           </tr>
         </tbody>
       </table>
@@ -473,84 +371,298 @@
   </div>
 
   <script>
-    // Sample flow data for mockup
-    const mockData = [
-      { from: 'Organization (1.8)', to: 'Strategic Resource Mgmt', flow: 17 },
-      { from: 'Organization (1.8)', to: 'Capacity Planning', flow: 12 },
-      { from: 'Strategic Planning (2.4)', to: 'Strategic Resource Mgmt', flow: 14 },
-      { from: 'Strategic Planning (2.4)', to: 'Portfolio Prioritization', flow: 11 },
-      { from: 'Portfolio Mgmt (2.8)', to: 'Portfolio Prioritization', flow: 10 },
-      { from: 'Resource Mgmt (3.2)', to: 'Capacity Planning', flow: 8 },
-      { from: 'Resource Mgmt (3.2)', to: 'Demand Forecasting', flow: 7 },
-      { from: 'Strategic Resource Mgmt', to: 'Resource Capacity *', flow: 10 },
-      { from: 'Strategic Resource Mgmt', to: 'Skills Matrix *', flow: 10 },
-      { from: 'Strategic Resource Mgmt', to: 'Team Allocation', flow: 5 },
-      { from: 'Capacity Planning', to: 'Capacity Dashboard *', flow: 8 },
-      { from: 'Capacity Planning', to: 'What-If Scenarios', flow: 5 },
-      { from: 'Portfolio Prioritization', to: 'Portfolio Scoring *', flow: 8 },
-      { from: 'Portfolio Prioritization', to: 'Value Stream Map', flow: 5 },
-      { from: 'Demand Forecasting', to: 'Forecast Module *', flow: 8 },
-      { from: 'Demand Forecasting', to: 'Trend Analysis', flow: 5 },
-    ];
+    const API_BASE_URL = 'http://localhost:8000/api/v1';
+    let sankeyChart = null;
 
-    // Add sourceType for coloring
-    mockData.forEach(d => {
-      if (d.from.includes('(1.8)')) d.sourceScore = 1.8;
-      else if (d.from.includes('(2.4)')) d.sourceScore = 2.4;
-      else if (d.from.includes('(2.8)')) d.sourceScore = 2.8;
-      else if (d.from.includes('(3.2)')) d.sourceScore = 3.2;
-
-      d.sourceType = d.from.includes('(') ? 'dimension' : 'use_case';
-      d.targetType = d.to.includes('*') || (!d.from.includes('(') && !d.to.includes('Mgmt') && !d.to.includes('Prioritization') && !d.to.includes('Forecasting')) ? 'tp_feature' : 'use_case';
-    });
-
-    function getDimensionColor(score) {
-      if (score < 2.0) return '#da1e28';
-      if (score < 3.0) return '#ff832b';
-      if (score < 4.0) return '#f1c21b';
-      return '#24a148';
+    // Color palette
+    function getUseCaseColor(solutionArea) {
+      const colors = {
+        'WFM': '#0f62fe',  // Blue
+        'HPM': '#8a3ffc',  // Purple
+        'EAP': '#00539a',  // Dark blue
+        'POM': '#198038',  // Green
+        'FPM': '#9f1853',  // Magenta
+      };
+      return colors[solutionArea] || '#0f62fe';
     }
 
-    // Render Sankey chart
-    const ctx = document.getElementById('flowSankeyChart');
-    new Chart(ctx, {
-      type: 'sankey',
-      data: {
-        datasets: [{
-          data: mockData,
-          colorFrom: (ctx) => {
-            const item = ctx.dataset.data[ctx.dataIndex];
-            if (item.sourceType === 'dimension') {
-              return getDimensionColor(item.sourceScore);
-            }
-            return '#0f62fe';
-          },
-          colorTo: (ctx) => {
-            const item = ctx.dataset.data[ctx.dataIndex];
-            if (item.targetType === 'tp_feature') {
-              return '#8a3ffc';
-            }
-            return '#0f62fe';
-          },
-          colorMode: 'gradient',
-          size: 'max'
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                const item = context.dataset.data[context.dataIndex];
-                return `${item.from} → ${item.to}`;
-              }
-            }
-          },
-          legend: { display: false }
+    function getTPSolutionColor(category) {
+      const colors = {
+        'core_solutions': '#8a3ffc',       // Purple
+        'solution_components': '#6929c4',  // Dark purple
+        'budgeting_components': '#009d9a', // Teal
+        'extensions': '#1192e8',           // Cyan
+        'automations': '#005d5d',          // Dark teal
+        'integrations': '#9f1853',         // Magenta
+      };
+      return colors[category] || '#8a3ffc';
+    }
+
+    // Load and render Sankey from API
+    async function loadSankeyData() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/tp-solutions/mappings/sankey`);
+        if (!response.ok) {
+          console.error('Failed to fetch Sankey data:', response.statusText);
+          renderMockData();
+          return;
         }
+
+        const data = await response.json();
+        console.log('Sankey data loaded:', data);
+
+        // Update summary stats
+        document.querySelector('.metric-card__value[style*="0f62fe"]').textContent = data.use_case_count;
+        document.querySelector('.metric-card__value[style*="8a3ffc"]').textContent = data.solution_count;
+
+        if (data.links.length === 0) {
+          console.log('No mappings found, rendering mock data');
+          renderMockData();
+          return;
+        }
+
+        // Prepare chart data
+        const chartData = data.links.map(link => ({
+          from: link.from,
+          to: link.to,
+          flow: link.flow,
+          is_required: link.is_required,
+          is_primary: link.is_primary
+        }));
+
+        // Build node lookup for coloring
+        const nodeMap = {};
+        data.nodes.forEach(node => {
+          nodeMap[node.name] = node;
+        });
+
+        renderSankeyChart(chartData, nodeMap);
+
+      } catch (error) {
+        console.error('Error loading Sankey data:', error);
+        renderMockData();
       }
+    }
+
+    // Render with real data
+    function renderSankeyChart(chartData, nodeMap) {
+      const ctx = document.getElementById('flowSankeyChart');
+
+      if (sankeyChart) {
+        sankeyChart.destroy();
+      }
+
+      sankeyChart = new Chart(ctx, {
+        type: 'sankey',
+        data: {
+          datasets: [{
+            data: chartData,
+            colorFrom: (ctx) => {
+              const item = ctx.dataset.data[ctx.dataIndex];
+              const fromName = item.from;
+              const node = nodeMap[fromName];
+              if (node && node.solution_area) {
+                return getUseCaseColor(node.solution_area);
+              }
+              return '#0f62fe';
+            },
+            colorTo: (ctx) => {
+              const item = ctx.dataset.data[ctx.dataIndex];
+              // Remove the * suffix to look up the node
+              const toName = item.to.replace(' *', '');
+              const node = nodeMap[toName];
+              if (node && node.category) {
+                return getTPSolutionColor(node.category);
+              }
+              return '#8a3ffc';
+            },
+            colorMode: 'gradient',
+            size: 'max'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  const item = context.dataset.data[context.dataIndex];
+                  const reqLabel = item.is_required ? ' (Required)' : ' (Recommended)';
+                  return `${item.from} → ${item.to}${reqLabel}`;
+                }
+              }
+            },
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    // Fallback mock data
+    function renderMockData() {
+      const mockData = [
+        { from: 'PI Planning', to: 'PI Planning *', flow: 10, is_required: true },
+        { from: 'PI Planning', to: 'ARTs *', flow: 10, is_required: true },
+        { from: 'PI Planning', to: 'Solution Train', flow: 5, is_required: false },
+        { from: 'Capacity Planning', to: 'Capacity Planner *', flow: 10, is_required: true },
+        { from: 'Capacity Planning', to: 'Skills', flow: 5, is_required: false },
+        { from: 'Portfolio Backlog Management', to: 'Portfolio Backlog *', flow: 10, is_required: true },
+        { from: 'Portfolio Backlog Management', to: 'Epics/Features', flow: 5, is_required: false },
+        { from: 'Strategic Resource Management', to: 'Resource Planner *', flow: 10, is_required: true },
+        { from: 'Strategic Resource Management', to: 'Capacity Planner', flow: 8, is_required: false },
+        { from: 'Roadmap Visualization', to: 'Roadmaps *', flow: 10, is_required: true },
+        { from: 'Demand Forecasting', to: 'Demand Planner *', flow: 10, is_required: true },
+      ];
+
+      const nodeMap = {
+        'PI Planning': { solution_area: 'EAP' },
+        'Capacity Planning': { solution_area: 'WFM' },
+        'Portfolio Backlog Management': { solution_area: 'HPM' },
+        'Strategic Resource Management': { solution_area: 'WFM' },
+        'Roadmap Visualization': { solution_area: 'HPM' },
+        'Demand Forecasting': { solution_area: 'WFM' },
+        'PI Planning': { category: 'core_solutions' },
+        'ARTs': { category: 'core_solutions' },
+        'Solution Train': { category: 'solution_components' },
+        'Capacity Planner': { category: 'core_solutions' },
+        'Skills': { category: 'solution_components' },
+        'Portfolio Backlog': { category: 'core_solutions' },
+        'Epics/Features': { category: 'solution_components' },
+        'Resource Planner': { category: 'core_solutions' },
+        'Roadmaps': { category: 'core_solutions' },
+        'Demand Planner': { category: 'core_solutions' },
+      };
+
+      renderSankeyChart(mockData, nodeMap);
+    }
+
+    // Populate data tables
+    function populateTables(data) {
+      const { nodes, links } = data;
+
+      // Group data by use case
+      const useCaseData = {};
+      const solutionData = {};
+
+      nodes.forEach(node => {
+        if (node.type === 'use_case') {
+          useCaseData[node.name] = {
+            name: node.name,
+            solution_area: node.solution_area || '-',
+            solutions: [],
+            required_count: 0
+          };
+        } else if (node.type === 'tp_solution') {
+          solutionData[node.name] = {
+            name: node.name,
+            category: node.category || 'Unknown',
+            version: node.version || '-',
+            used_by: []
+          };
+        }
+      });
+
+      // Process links to build relationships
+      links.forEach(link => {
+        const ucName = link.from;
+        const solName = link.to.replace(' *', '');
+
+        if (useCaseData[ucName]) {
+          useCaseData[ucName].solutions.push(solName);
+          if (link.is_required) {
+            useCaseData[ucName].required_count++;
+          }
+        }
+
+        if (solutionData[solName]) {
+          solutionData[solName].used_by.push(ucName);
+        }
+      });
+
+      // Populate Use Cases table
+      const ucTableBody = document.getElementById('useCasesTableBody');
+      if (ucTableBody) {
+        const ucRows = Object.values(useCaseData).map(uc => `
+          <tr>
+            <td style="font-weight: 500;">${uc.name}</td>
+            <td><span class="solution-area-chip">${uc.solution_area}</span></td>
+            <td><span class="tag tag--blue">${uc.solutions.length} solutions</span></td>
+            <td><span class="required-badge ${uc.required_count > 0 ? 'required-badge--yes' : 'required-badge--no'}">${uc.required_count} required</span></td>
+          </tr>
+        `).join('');
+
+        ucTableBody.innerHTML = ucRows || '<tr><td colspan="4" style="text-align: center;">No use cases found</td></tr>';
+      }
+
+      // Populate TP Solutions table
+      const tpTableBody = document.getElementById('tpSolutionsTableBody');
+      if (tpTableBody) {
+        const tpRows = Object.values(solutionData).map(sol => `
+          <tr>
+            <td style="font-weight: 500;">${sol.name}</td>
+            <td><span class="tag tag--gray">${sol.category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span></td>
+            <td>${sol.version}</td>
+            <td><span class="tag tag--blue">${sol.used_by.length} use cases</span></td>
+          </tr>
+        `).join('');
+
+        tpTableBody.innerHTML = tpRows || '<tr><td colspan="4" style="text-align: center;">No solutions found</td></tr>';
+      }
+    }
+
+    // Update the loadSankeyData function to also populate tables
+    const originalLoadSankeyData = loadSankeyData;
+    loadSankeyData = async function() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/tp-solutions/mappings/sankey`);
+        if (!response.ok) {
+          console.error('Failed to fetch Sankey data:', response.statusText);
+          renderMockData();
+          return;
+        }
+
+        const data = await response.json();
+        console.log('Sankey data loaded:', data);
+
+        // Update summary stats
+        document.getElementById('totalMappingsCount').textContent = data.total_mappings;
+        document.querySelector('.metric-card__value[style*="0f62fe"]').textContent = data.use_case_count;
+        document.querySelector('.metric-card__value[style*="8a3ffc"]').textContent = data.solution_count;
+
+        if (data.links.length === 0) {
+          console.log('No mappings found, rendering mock data');
+          renderMockData();
+          return;
+        }
+
+        // Prepare chart data
+        const chartData = data.links.map(link => ({
+          from: link.from,
+          to: link.to,
+          flow: link.flow,
+          is_required: link.is_required,
+          is_primary: link.is_primary
+        }));
+
+        // Build node lookup for coloring
+        const nodeMap = {};
+        data.nodes.forEach(node => {
+          nodeMap[node.name] = node;
+        });
+
+        renderSankeyChart(chartData, nodeMap);
+        populateTables(data);
+
+      } catch (error) {
+        console.error('Error loading Sankey data:', error);
+        renderMockData();
+      }
+    };
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSankeyData();
     });
   </script>
 </body>

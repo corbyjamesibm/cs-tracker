@@ -6,7 +6,7 @@ import os
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.api import customers, tasks, engagements, users, partners, use_cases, health, roadmaps, admin, auth, risks, assessments, lookups, meeting_notes, documents, chat, mappings, recommendations, ai
+from app.api import customers, tasks, engagements, users, partners, use_cases, health, roadmaps, admin, auth, risks, assessments, lookups, meeting_notes, documents, chat, mappings, recommendations, ai, tp_solutions
 
 
 @asynccontextmanager
@@ -61,6 +61,7 @@ app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
 app.include_router(mappings.router, prefix="/api/v1/mappings", tags=["Mappings"])
 app.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["Recommendations"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Features"])
+app.include_router(tp_solutions.router, prefix="/api/v1", tags=["TargetProcess Solutions"])
 
 # Serve static files (prototype)
 prototype_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "prototype")

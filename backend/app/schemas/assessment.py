@@ -340,18 +340,20 @@ class GapAnalysisResponse(BaseModel):
 # === Flow Visualization Schemas ===
 
 class FlowNode(BaseModel):
-    """A node in the flow visualization (dimension, use case, or TP feature)"""
+    """A node in the flow visualization (dimension, use case, or TP solution)"""
     id: str
     name: str
-    type: str  # 'dimension', 'use_case', 'tp_feature'
+    type: str  # 'dimension', 'use_case', 'tp_solution'
     # Dimension-specific
     score: Optional[float] = None
     gap: Optional[float] = None
     # Use case-specific
     solution_area: Optional[str] = None
-    # TP feature-specific
+    # TP solution-specific
     tp_id: Optional[int] = None
     is_required: Optional[bool] = None
+    category: Optional[str] = None  # TP solution category
+    version: Optional[str] = None  # TP solution version
 
 
 class FlowLink(BaseModel):
@@ -374,4 +376,4 @@ class FlowVisualizationResponse(BaseModel):
     # Summary stats
     weak_dimensions_count: int = 0
     recommended_use_cases_count: int = 0
-    tp_features_count: int = 0
+    tp_solutions_count: int = 0

@@ -19,6 +19,8 @@ from .roadmap import Roadmap, RoadmapItem, RoadmapUpdate, RoadmapItemStatus, Roa
 from .mapping import (
     DimensionUseCaseMapping, UseCaseTPFeatureMapping, RoadmapRecommendation
 )
+from .tp_solution import TPSolution, TPSolutionCategory
+from .use_case_solution_mapping import UseCaseTPSolutionMapping
 
 __all__ = [
     "User", "UserRole",
@@ -38,4 +40,6 @@ __all__ = [
     "Document",
     "Roadmap", "RoadmapItem", "RoadmapUpdate", "RoadmapItemStatus", "RoadmapItemCategory",
     "DimensionUseCaseMapping", "UseCaseTPFeatureMapping", "RoadmapRecommendation",
+    "TPSolution", "TPSolutionCategory",
+    "UseCaseTPSolutionMapping",
 ]
