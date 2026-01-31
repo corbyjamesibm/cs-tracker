@@ -14,6 +14,7 @@ A comprehensive customer success tracking application built with FastAPI and Pos
 - **Admin Dashboard**: Manage use cases, categories, and system settings
 - **AI Chat Assistant**: LLM-powered chat interface for querying and acting on customer data
 - **MCP Server**: Model Context Protocol server for Claude Desktop and Claude Code integration
+- **TP Solutions Catalog**: Document and map TargetProcess solutions to use cases with Sankey visualization
 
 ## Tech Stack
 
@@ -259,6 +260,16 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 ### Assessments
 - `GET /api/v1/assessments/templates` - List assessment templates
 - `POST /api/v1/assessments` - Create a customer assessment
+- `GET /api/v1/assessments/customer/{id}/flow-visualization` - Get Sankey flow data
+
+### TP Solutions
+- `GET /api/v1/tp-solutions` - List TargetProcess solutions
+- `GET /api/v1/tp-solutions/categories` - Get solution categories with counts
+- `GET /api/v1/tp-solutions/{id}` - Get solution details
+- `GET /api/v1/tp-solutions/{id}/use-cases` - Get use cases mapped to a solution
+- `GET /api/v1/tp-solutions/mappings/by-use-case/{id}` - Get solutions for a use case
+- `GET /api/v1/tp-solutions/mappings/sankey` - Get Sankey visualization data
+- `GET /api/v1/tp-solutions/mappings/summary` - Get mapping summary statistics
 
 ### AI Chat
 - `POST /api/v1/chat` - Send a message to the AI assistant
@@ -290,6 +301,29 @@ For the MCP server:
 |----------|-------------|----------|
 | `CS_TRACKER_API_URL` | CS Tracker API base URL | Yes |
 | `CS_TRACKER_API_TOKEN` | JWT token for API authentication | Yes |
+
+## TargetProcess Solutions Catalog
+
+The application includes a catalog of TargetProcess solutions that can be mapped to use cases. This helps CSMs understand which TP features enable specific customer use cases.
+
+### Solution Categories
+
+| Category | Description |
+|----------|-------------|
+| **Core Solutions** | Primary TP solutions (PI Planning, Portfolio Backlog, Resource Planner, etc.) |
+| **Solution Components** | Supporting components (ARTs, Skills, Demand Planner, etc.) |
+| **Budgeting Components** | Financial and budgeting features |
+| **Extensions** | Extended functionality |
+| **Automations** | Automation rules and workflows |
+| **Integrations** | Third-party integrations (Jira, Azure DevOps, etc.) |
+
+### Sankey Visualization
+
+The Use Case to TP Solution Sankey diagram (`prototype/mockup-implementation-flow.html`) provides:
+- Visual flow from Use Cases to required/recommended TP Solutions
+- Color coding by solution area (WFM, HPM, EAP, POM, FPM)
+- Required solutions marked with asterisk (*)
+- Dynamic data tables showing mappings
 
 ## SPM Framework Use Cases
 
