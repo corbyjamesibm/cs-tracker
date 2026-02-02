@@ -5915,6 +5915,10 @@ window.dismissRecommendation = dismissRecommendation;
 // ==========================================
 
 let currentReportAssessmentId = null;
+let reportRadarChart = null;
+let currentReportData = null;
+let reportComparisonAssessments = [];
+let reportRadarDrilldownDimension = null;
 
 /**
  * Open assessment report modal
@@ -5961,6 +5965,11 @@ function closeAssessmentReportModal() {
 function renderAssessmentReport(report) {
     const content = document.getElementById('assessmentReportContent');
 
+    // Store report data for radar chart rendering
+    currentReportData = report;
+    reportRadarDrilldownDimension = null;
+    reportComparisonAssessments = [];
+
     // Build dimension scores HTML
     let dimensionScoresHtml = '';
     if (report.dimension_scores && Object.keys(report.dimension_scores).length > 0) {
@@ -5976,57 +5985,92 @@ function renderAssessmentReport(report) {
             `).join('');
     }
 
-    // Build questions HTML grouped by dimension
+    // Build comparison selector options for radar chart
+    let comparisonOptionsHtml = '';
+    if (customerAssessments && customerAssessments.length > 1) {
+        const otherAssessments = customerAssessments.filter(a =>
+            a.id !== report.assessment_id &&
+            a.status === 'completed' &&
+            a.dimension_scores &&
+            Object.keys(a.dimension_scores).length > 0
+        );
+        comparisonOptionsHtml = otherAssessments.map(a => {
+            const dateStr = new Date(a.assessment_date).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric'
+            });
+            return `<option value="${a.id}">${dateStr} - Score: ${a.overall_score ? a.overall_score.toFixed(1) : 'N/A'}</option>`;
+        }).join('');
+    }
+
+    // Build questions HTML grouped by dimension using card layout for better evidence display
     let questionsHtml = '';
     for (const dimension of report.dimensions) {
+        const questionCardsHtml = dimension.questions.map(q => {
+            // Parse notes for URLs and images
+            const parsedNotes = parseTextWithLinks(q.notes);
+            const hasDetails = q.score_description || q.score_evidence || q.notes;
+
+            return `
+                <div class="report-question-card">
+                    <div class="report-question-header">
+                        <span class="report-question-number">${escapeHtml(q.question_number)}</span>
+                        <span class="report-question-text">${escapeHtml(q.question_text)}</span>
+                        <div class="report-question-score-area">
+                            ${q.score !== null ? `
+                                <span class="report-score-badge ${getScoreBadgeClass(q.score, q.max_score)}">${q.score}</span>
+                                ${q.score_label ? `<span class="report-score-label">${escapeHtml(q.score_label)}</span>` : ''}
+                            ` : '<span class="text-secondary">Not Answered</span>'}
+                        </div>
+                    </div>
+                    ${hasDetails ? `
+                        <div class="report-question-details">
+                            ${q.score_description ? `
+                                <div class="report-detail-section report-rating-description">
+                                    <span class="report-detail-label">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px; vertical-align: -2px;">
+                                            <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                                        </svg>
+                                        Rating Description
+                                    </span>
+                                    <span class="report-detail-text">${escapeHtml(q.score_description)}</span>
+                                </div>
+                            ` : ''}
+                            ${q.score_evidence ? `
+                                <div class="report-detail-section report-evidence-required">
+                                    <span class="report-detail-label">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px; vertical-align: -2px;">
+                                            <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                                            <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm10-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z"/>
+                                        </svg>
+                                        Evidence Required
+                                    </span>
+                                    <span class="report-detail-text">${escapeHtml(q.score_evidence)}</span>
+                                </div>
+                            ` : ''}
+                            ${q.notes ? `
+                                <div class="report-detail-section report-assessor-notes">
+                                    <span class="report-detail-label">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px; vertical-align: -2px;">
+                                            <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                        </svg>
+                                        Assessor Notes
+                                    </span>
+                                    <div class="report-detail-text report-notes-content">${parsedNotes.html}</div>
+                                    ${renderEvidenceThumbnails(parsedNotes.images)}
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+
         questionsHtml += `
             <div class="report-dimension-section">
                 <h4 class="report-dimension-header">${escapeHtml(dimension.dimension_name)}</h4>
-                <table class="report-questions-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 60px;">#</th>
-                            <th>Question</th>
-                            <th style="width: 80px;">Score</th>
-                            <th style="width: 120px;">Rating</th>
-                            <th style="width: 200px;">Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${dimension.questions.map(q => `
-                            <tr>
-                                <td>${escapeHtml(q.question_number)}</td>
-                                <td>${escapeHtml(q.question_text)}</td>
-                                <td class="text-center">
-                                    ${q.score !== null ? `
-                                        <span class="report-score-badge ${getScoreBadgeClass(q.score, q.max_score)}">${q.score}</span>
-                                    ` : '<span class="text-secondary">-</span>'}
-                                </td>
-                                <td>${q.score_label ? escapeHtml(q.score_label) : '<span class="text-secondary">-</span>'}</td>
-                                <td class="report-notes-cell">${q.notes ? escapeHtml(q.notes) : '<span class="text-secondary">-</span>'}</td>
-                            </tr>
-                            ${(q.score_description || q.score_evidence) ? `
-                            <tr class="report-detail-row">
-                                <td></td>
-                                <td colspan="4">
-                                    ${q.score_description ? `
-                                        <div class="report-detail-section">
-                                            <span class="report-detail-label">Rating Description:</span>
-                                            <span class="report-detail-text">${escapeHtml(q.score_description)}</span>
-                                        </div>
-                                    ` : ''}
-                                    ${q.score_evidence ? `
-                                        <div class="report-detail-section">
-                                            <span class="report-detail-label">Evidence Required:</span>
-                                            <span class="report-detail-text">${escapeHtml(q.score_evidence)}</span>
-                                        </div>
-                                    ` : ''}
-                                </td>
-                            </tr>
-                            ` : ''}
-                        `).join('')}
-                    </tbody>
-                </table>
+                <div class="report-questions-cards">
+                    ${questionCardsHtml}
+                </div>
             </div>
         `;
     }
@@ -6071,6 +6115,45 @@ function renderAssessmentReport(report) {
                 </div>
             </div>
 
+            <!-- Radar Chart Section -->
+            ${report.dimension_scores && Object.keys(report.dimension_scores).length > 0 ? `
+                <div class="report-section report-radar-section">
+                    <div class="report-radar-header">
+                        <h3 class="report-section-title" style="margin-bottom: 0;">
+                            <span id="reportRadarTitle">Dimension Overview</span>
+                        </h3>
+                        <div class="report-radar-controls no-print">
+                            <button id="reportRadarBackBtn" class="btn btn--ghost btn--sm" onclick="reportRadarBackToDimensions()" style="display: none;">
+                                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 4px;">
+                                    <path d="M10 16L20 6l1.4 1.4-8.6 8.6 8.6 8.6L20 26z"/>
+                                </svg>
+                                Back to Dimensions
+                            </button>
+                            ${comparisonOptionsHtml ? `
+                                <div class="report-comparison-select">
+                                    <label for="reportComparisonSelect" style="font-size: 12px; margin-right: 8px;">Compare with:</label>
+                                    <select id="reportComparisonSelect" class="form__input form__input--sm" onchange="toggleReportComparison(this.value)" style="min-width: 180px;">
+                                        <option value="">No comparison</option>
+                                        ${comparisonOptionsHtml}
+                                    </select>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="report-radar-container">
+                        <canvas id="reportRadarChart"></canvas>
+                    </div>
+                    <div id="reportRadarLegend" class="report-radar-legend"></div>
+                    <p class="report-radar-hint no-print" id="reportRadarHint">
+                        <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor" style="vertical-align: middle; margin-right: 4px;">
+                            <path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 26a12 12 0 1112-12 12 12 0 01-12 12z"/>
+                            <path d="M16 7a1.5 1.5 0 101.5 1.5A1.5 1.5 0 0016 7zm1 17h-2v-9h2z"/>
+                        </svg>
+                        Click on a dimension label to drill down and see individual question scores
+                    </p>
+                </div>
+            ` : ''}
+
             <!-- Dimension Scores Summary -->
             ${dimensionScoresHtml ? `
                 <div class="report-section">
@@ -6096,6 +6179,11 @@ function renderAssessmentReport(report) {
             </div>
         </div>
     `;
+
+    // Initialize radar chart after DOM is updated
+    if (report.dimension_scores && Object.keys(report.dimension_scores).length > 0) {
+        setTimeout(() => renderReportRadarChart(), 100);
+    }
 }
 
 /**
@@ -6107,6 +6195,118 @@ function getScoreBadgeClass(score, maxScore = 5) {
     if (percentage >= 60) return 'score-medium';
     if (percentage >= 40) return 'score-low';
     return 'score-critical';
+}
+
+/**
+ * Parse text for URLs and make them clickable links
+ * Also detects image URLs and returns them separately for thumbnail display
+ */
+function parseTextWithLinks(text) {
+    if (!text) return { html: '', images: [] };
+
+    // URL regex pattern
+    const urlPattern = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi;
+
+    // Image file extensions
+    const imageExtensions = /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i;
+
+    const images = [];
+    let html = escapeHtml(text);
+
+    // Find all URLs in original text
+    const urls = text.match(urlPattern) || [];
+
+    urls.forEach(url => {
+        const escapedUrl = escapeHtml(url);
+        const isImage = imageExtensions.test(url);
+
+        if (isImage) {
+            images.push(url);
+        }
+
+        // Replace URL with clickable link
+        const linkHtml = `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="report-evidence-link">${escapedUrl}</a>`;
+        html = html.replace(escapedUrl, linkHtml);
+    });
+
+    return { html, images };
+}
+
+/**
+ * Render evidence thumbnails with lightbox support
+ */
+function renderEvidenceThumbnails(images) {
+    if (!images || images.length === 0) return '';
+
+    return `
+        <div class="report-evidence-thumbnails">
+            ${images.map((url, idx) => `
+                <div class="report-evidence-thumbnail" onclick="openImageLightbox('${escapeHtml(url)}')">
+                    <img src="${escapeHtml(url)}" alt="Evidence image ${idx + 1}" loading="lazy" onerror="this.parentElement.style.display='none'">
+                    <div class="report-thumbnail-overlay">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M8 3a.5.5 0 0 1 .5.5v4h4a.5.5 0 0 1 0 1h-4v4a.5.5 0 0 1-1 0v-4h-4a.5.5 0 0 1 0-1h4v-4A.5.5 0 0 1 8 3z"/>
+                        </svg>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+/**
+ * Open image in lightbox
+ */
+function openImageLightbox(imageUrl) {
+    // Create lightbox if it doesn't exist
+    let lightbox = document.getElementById('imageLightbox');
+    if (!lightbox) {
+        lightbox = document.createElement('div');
+        lightbox.id = 'imageLightbox';
+        lightbox.className = 'image-lightbox';
+        lightbox.innerHTML = `
+            <div class="lightbox-backdrop" onclick="closeImageLightbox()"></div>
+            <div class="lightbox-content">
+                <button class="lightbox-close" onclick="closeImageLightbox()" aria-label="Close">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+                <img id="lightboxImage" src="" alt="Evidence image enlarged">
+            </div>
+        `;
+        document.body.appendChild(lightbox);
+    }
+
+    // Set image and show lightbox
+    const img = document.getElementById('lightboxImage');
+    img.src = imageUrl;
+    lightbox.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Close on Escape key
+    document.addEventListener('keydown', handleLightboxKeydown);
+}
+
+/**
+ * Close image lightbox
+ */
+function closeImageLightbox() {
+    const lightbox = document.getElementById('imageLightbox');
+    if (lightbox) {
+        lightbox.classList.remove('active');
+        document.body.style.overflow = '';
+        document.removeEventListener('keydown', handleLightboxKeydown);
+    }
+}
+
+/**
+ * Handle keyboard events for lightbox
+ */
+function handleLightboxKeydown(e) {
+    if (e.key === 'Escape') {
+        closeImageLightbox();
+    }
 }
 
 /**
