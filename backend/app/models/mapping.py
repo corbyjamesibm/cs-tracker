@@ -22,6 +22,14 @@ class DimensionUseCaseMapping(Base):
     # Ordering for recommendations
     priority: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Learning system fields
+    original_impact_weight: Mapped[float] = mapped_column(Float, default=0.5)
+    original_priority: Mapped[int] = mapped_column(Integer, default=0)
+    is_learning_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_weight_update: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -94,6 +102,14 @@ class RoadmapRecommendation(Base):
     is_dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Feedback tracking fields
+    quality_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    rated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rated_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    dismiss_reason: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     # Link to created roadmap item (if accepted)
     roadmap_item_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("roadmap_items.id"), nullable=True
@@ -108,6 +124,8 @@ class RoadmapRecommendation(Base):
     use_case: Mapped["UseCase"] = relationship()
     tp_feature_mapping: Mapped[Optional["UseCaseTPFeatureMapping"]] = relationship()
     roadmap_item: Mapped[Optional["RoadmapItem"]] = relationship()
+    rated_by: Mapped[Optional["User"]] = relationship(foreign_keys=[rated_by_id])
+    dismissed_by: Mapped[Optional["User"]] = relationship(foreign_keys=[dismissed_by_id])
 
     def __repr__(self) -> str:
         return f"<RoadmapRecommendation {self.id}: {self.title}>"
@@ -118,3 +136,4 @@ from app.models.assessment import AssessmentDimension, CustomerAssessment
 from app.models.use_case import UseCase
 from app.models.customer import Customer
 from app.models.roadmap import RoadmapItem
+from app.models.user import User

@@ -22,6 +22,10 @@ from .mapping import (
 )
 from .tp_solution import TPSolution, TPSolutionCategory
 from .use_case_solution_mapping import UseCaseTPSolutionMapping
+from .learning import (
+    RecommendationFeedback, MappingEffectiveness, WeightAdjustmentHistory,
+    LearningConfig, LEARNING_CONFIG_DEFAULTS
+)
 
 __all__ = [
     "User", "UserRole",
@@ -44,4 +48,6 @@ __all__ = [
     "DimensionUseCaseMapping", "UseCaseTPFeatureMapping", "RoadmapRecommendation",
     "TPSolution", "TPSolutionCategory",
     "UseCaseTPSolutionMapping",
+    "RecommendationFeedback", "MappingEffectiveness", "WeightAdjustmentHistory",
+    "LearningConfig", "LEARNING_CONFIG_DEFAULTS",
 ]
