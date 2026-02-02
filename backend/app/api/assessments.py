@@ -195,6 +195,149 @@ async def upload_template_excel(
         return await parse_tbm_format(rows, name, version, description, db)
 
 
+@router.patch("/templates/{template_id}/update-ratings", response_model=ExcelUploadResult)
+async def update_template_ratings(
+    template_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update rating descriptions and evidence for an existing template.
+
+    Upload a CSV file with the same SPM format (Domain, Lens, Question, Rating, Rating Label,
+    Rating Description, Evidence Required) to update the score_descriptions and score_evidence
+    fields for matching questions. This preserves existing assessments while adding the missing data.
+    """
+    # Verify template exists
+    template = await db.get(AssessmentTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # Parse the uploaded file
+    contents = await file.read()
+    filename = file.filename.lower() if file.filename else ""
+
+    if filename.endswith('.csv'):
+        rows = parse_csv_file(contents)
+    else:
+        try:
+            rows = parse_excel_file(contents)
+        except Exception as e:
+            return ExcelUploadResult(success=False, errors=[f"Failed to read file: {str(e)}"])
+
+    if not rows:
+        return ExcelUploadResult(success=False, errors=["No data found in file"])
+
+    # Find column indices from header
+    header = [str(cell).strip().lower() if cell else "" for cell in rows[0]]
+    try:
+        domain_idx = header.index('domain')
+        lens_idx = header.index('lens') if 'lens' in header else -1
+        question_idx = header.index('question')
+        rating_idx = header.index('rating')
+    except ValueError as e:
+        return ExcelUploadResult(success=False, errors=[f"Missing required column: {str(e)}"])
+
+    # Check for rating description and evidence columns
+    description_idx = header.index('rating description') if 'rating description' in header else -1
+    evidence_idx = header.index('evidence required') if 'evidence required' in header else -1
+
+    if description_idx == -1 and evidence_idx == -1:
+        return ExcelUploadResult(success=False, errors=["No 'Rating Description' or 'Evidence Required' columns found in file"])
+
+    # Build lookup of new data: {normalized_question_text: {rating: {description, evidence}}}
+    update_data = {}
+    for row_idx, row in enumerate(rows[1:], start=2):
+        if not row or len(row) <= max(domain_idx, question_idx, rating_idx):
+            continue
+
+        domain = str(row[domain_idx]).strip() if row[domain_idx] else ""
+        lens = str(row[lens_idx]).strip() if lens_idx >= 0 and len(row) > lens_idx and row[lens_idx] else ""
+        question_text = str(row[question_idx]).strip() if row[question_idx] else ""
+        rating = str(row[rating_idx]).strip() if row[rating_idx] else ""
+        rating_desc = str(row[description_idx]).strip() if description_idx >= 0 and len(row) > description_idx and row[description_idx] else ""
+        evidence = str(row[evidence_idx]).strip() if evidence_idx >= 0 and len(row) > evidence_idx and row[evidence_idx] else ""
+
+        if not question_text or not rating:
+            continue
+
+        # Build the full question text as stored in the database
+        full_question_text = f"[{lens}] {question_text}" if lens else question_text
+
+        if full_question_text not in update_data:
+            update_data[full_question_text] = {}
+
+        update_data[full_question_text][rating] = {
+            'description': rating_desc,
+            'evidence': evidence
+        }
+
+    # Get all questions for this template
+    result = await db.execute(
+        select(AssessmentQuestion).where(AssessmentQuestion.template_id == template_id)
+    )
+    questions = result.scalars().all()
+
+    questions_updated = 0
+    errors = []
+
+    # Build a normalized lookup for more flexible matching
+    # Key: normalized question text (lowercase, stripped), Value: original key
+    normalized_lookup = {}
+    for key in update_data.keys():
+        # Normalize: lowercase, strip whitespace
+        normalized = key.lower().strip()
+        normalized_lookup[normalized] = key
+        # Also try without the lens prefix for matching
+        if key.startswith('[') and '] ' in key:
+            without_lens = key.split('] ', 1)[1].lower().strip()
+            normalized_lookup[without_lens] = key
+
+    for question in questions:
+        rating_data = None
+
+        # Try exact match first
+        if question.question_text in update_data:
+            rating_data = update_data[question.question_text]
+        else:
+            # Try normalized match
+            normalized_q = question.question_text.lower().strip()
+            if normalized_q in normalized_lookup:
+                rating_data = update_data[normalized_lookup[normalized_q]]
+            else:
+                # Try matching without lens prefix
+                if question.question_text.startswith('[') and '] ' in question.question_text:
+                    without_lens = question.question_text.split('] ', 1)[1].lower().strip()
+                    if without_lens in normalized_lookup:
+                        rating_data = update_data[normalized_lookup[without_lens]]
+
+        if rating_data:
+            # Update score_descriptions
+            new_descriptions = dict(question.score_descriptions) if question.score_descriptions else {}
+            new_evidence = dict(question.score_evidence) if question.score_evidence else {}
+
+            for rating, data in rating_data.items():
+                if data['description']:
+                    new_descriptions[rating] = data['description']
+                if data['evidence']:
+                    new_evidence[rating] = data['evidence']
+
+            # Only update if there are changes
+            if new_descriptions != question.score_descriptions or new_evidence != question.score_evidence:
+                question.score_descriptions = new_descriptions
+                question.score_evidence = new_evidence
+                questions_updated += 1
+
+    await db.commit()
+
+    return ExcelUploadResult(
+        success=True,
+        template_id=template_id,
+        questions_created=questions_updated,  # Reusing field to indicate questions updated
+        errors=errors if errors else []
+    )
+
+
 async def parse_spm_maturity_csv(
     rows: List[List[str]],
     name: str,
@@ -202,7 +345,7 @@ async def parse_spm_maturity_csv(
     description: Optional[str],
     db: AsyncSession
 ) -> ExcelUploadResult:
-    """Parse SPM Maturity Assessment CSV format (Domain, Lens, Question, Rating, Rating Label)."""
+    """Parse SPM Maturity Assessment CSV format (Domain, Lens, Question, Rating, Rating Label, Rating Description, Evidence Required)."""
     errors = []
 
     # Find column indices from header
@@ -216,13 +359,17 @@ async def parse_spm_maturity_csv(
     except ValueError as e:
         return ExcelUploadResult(success=False, errors=[f"Missing required column: {str(e)}"])
 
+    # Optional columns for rating description and evidence
+    description_idx = header.index('rating description') if 'rating description' in header else -1
+    evidence_idx = header.index('evidence required') if 'evidence required' in header else -1
+
     # Create template
     template = AssessmentTemplate(name=name, version=version, description=description)
     db.add(template)
     await db.flush()
 
     # Group questions by Domain + Lens + Question text (each question has 5 rows for ratings 1-5)
-    # Structure: {domain: {(lens, question_text): {rating: label}}}
+    # Structure: {domain: {(lens, question_text): {rating: {label, description, evidence}}}}
     question_data = {}
 
     for row_idx, row in enumerate(rows[1:], start=2):  # Skip header
@@ -234,6 +381,8 @@ async def parse_spm_maturity_csv(
         question_text = str(row[question_idx]).strip() if row[question_idx] else ""
         rating = str(row[rating_idx]).strip() if row[rating_idx] else ""
         label = str(row[label_idx]).strip() if row[label_idx] else ""
+        rating_desc = str(row[description_idx]).strip() if description_idx >= 0 and len(row) > description_idx and row[description_idx] else ""
+        evidence = str(row[evidence_idx]).strip() if evidence_idx >= 0 and len(row) > evidence_idx and row[evidence_idx] else ""
 
         if not domain or not question_text:
             continue
@@ -245,7 +394,11 @@ async def parse_spm_maturity_csv(
         if key not in question_data[domain]:
             question_data[domain][key] = {}
 
-        question_data[domain][key][rating] = label
+        question_data[domain][key][rating] = {
+            'label': label,
+            'description': rating_desc,
+            'evidence': evidence
+        }
 
     # Create dimensions and questions
     dimension_map = {}
@@ -269,11 +422,21 @@ async def parse_spm_maturity_csv(
         dim_id = dimension_map[domain.lower()]
         question_number = 1
 
-        for (lens, question_text), score_labels_raw in questions.items():
-            # Build score labels dict
+        for (lens, question_text), rating_data in questions.items():
+            # Build score labels, descriptions, and evidence dicts
             score_labels = {}
-            for rating, label in score_labels_raw.items():
-                score_labels[rating] = label
+            score_descriptions = {}
+            score_evidence = {}
+            for rating, data in rating_data.items():
+                if isinstance(data, dict):
+                    score_labels[rating] = data.get('label', '')
+                    if data.get('description'):
+                        score_descriptions[rating] = data['description']
+                    if data.get('evidence'):
+                        score_evidence[rating] = data['evidence']
+                else:
+                    # Backwards compatibility if data is just the label string
+                    score_labels[rating] = data
 
             # Determine min/max scores from the ratings we found
             ratings = [int(r) for r in score_labels.keys() if r.isdigit()]
@@ -291,6 +454,8 @@ async def parse_spm_maturity_csv(
                 min_score=min_score,
                 max_score=max_score,
                 score_labels=score_labels,
+                score_descriptions=score_descriptions if score_descriptions else {},
+                score_evidence=score_evidence if score_evidence else {},
                 display_order=questions_created,
                 is_required=True
             )

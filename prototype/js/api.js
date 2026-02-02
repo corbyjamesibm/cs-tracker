@@ -433,6 +433,18 @@ const AssessmentAPI = {
         return response.json();
     },
 
+    async updateTemplateRatings(templateId, formData) {
+        const url = `${API_BASE_URL}/assessments/templates/${templateId}/update-ratings`;
+        const response = await fetch(url, {
+            method: 'PATCH',
+            body: formData,
+        });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+    },
+
     async updateTemplate(id, data) {
         return apiRequest(`/assessments/templates/${id}`, {
             method: 'PATCH',

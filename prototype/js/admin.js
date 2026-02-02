@@ -1484,6 +1484,9 @@ async function loadAssessmentTemplates() {
                                 <svg width="16" height="16" viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
                             </button>
                         ` : ''}
+                        <button class="btn btn--ghost btn--small" onclick="openUpdateRatingsModal(${template.id}, '${template.name.replace(/'/g, "\\'")}')" title="Update Rating Descriptions">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M28 10V28H10V10H28m0-2H10a2 2 0 00-2 2V28a2 2 0 002 2H28a2 2 0 002-2V10a2 2 0 00-2-2z"/><path d="M4 18H2V4a2 2 0 012-2h14v2H4z"/><path d="M14 16h10v2H14zM14 22h6v2h-6z"/></svg>
+                        </button>
                         <button class="btn btn--ghost btn--small" onclick="viewTemplateDetails(${template.id})" title="View Details">
                             <svg width="16" height="16" viewBox="0 0 32 32"><path d="M30.94 15.66A16.69 16.69 0 0016 5 16.69 16.69 0 001.06 15.66a1 1 0 000 .68A16.69 16.69 0 0016 27a16.69 16.69 0 0014.94-10.66 1 1 0 000-.68zM16 25c-5.3 0-10.9-3.93-12.93-9C5.1 10.93 10.7 7 16 7s10.9 3.93 12.93 9C26.9 21.07 21.3 25 16 25z"/><path d="M16 10a6 6 0 106 6 6 6 0 00-6-6zm0 10a4 4 0 114-4 4 4 0 01-4 4z"/></svg>
                         </button>
@@ -1565,6 +1568,71 @@ async function handleTemplateUpload(event) {
     } catch (error) {
         console.error('Failed to upload template:', error);
         showToast(error.message || 'Failed to upload template', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Open update ratings modal
+ */
+function openUpdateRatingsModal(templateId, templateName) {
+    const modal = document.getElementById('updateRatingsModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        document.getElementById('updateRatingsForm').reset();
+        document.getElementById('updateRatingsTemplateId').value = templateId;
+        document.getElementById('updateRatingsTemplateName').value = templateName;
+    }
+}
+
+/**
+ * Close update ratings modal
+ */
+function closeUpdateRatingsModal() {
+    const modal = document.getElementById('updateRatingsModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+/**
+ * Handle update ratings form submission
+ */
+async function handleUpdateRatings(event) {
+    event.preventDefault();
+
+    const btn = document.getElementById('updateRatingsBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Updating...';
+
+    try {
+        const templateId = document.getElementById('updateRatingsTemplateId').value;
+        const fileInput = document.getElementById('updateRatingsFile');
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            throw new Error('Please select a file to upload');
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        const result = await window.API.AssessmentAPI.updateTemplateRatings(templateId, formData);
+
+        if (result.success) {
+            closeUpdateRatingsModal();
+            showToast(`Updated ${result.questions_created} questions with rating descriptions`, 'success');
+        } else {
+            throw new Error(result.errors ? result.errors.join(', ') : 'Update failed');
+        }
+
+    } catch (error) {
+        console.error('Failed to update ratings:', error);
+        showToast(error.message || 'Failed to update ratings', 'error');
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalText;

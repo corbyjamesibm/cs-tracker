@@ -4795,20 +4795,21 @@ document.addEventListener('DOMContentLoaded', async function() {
 // Set up tab switching logic
 function setupTabSwitching() {
     const tabs = document.querySelectorAll('.tabs__tab');
-    const tasksSection = document.getElementById('tasksSection');
-    const risksSection = document.getElementById('risksSection');
-    const roadmapSection = document.getElementById('roadmapSection');
-    const engagementsSection = document.getElementById('engagementsSection');
-    const targetprocessSection = document.getElementById('targetprocessSection');
-    const documentsSection = document.getElementById('documentsSection');
-    const usageFrameworkSection = document.getElementById('usageFrameworkSection');
-    const spmAssessmentSection = document.getElementById('spmAssessmentSection');
-    const recommendationsSection = document.getElementById('recommendationsSection');
-    const implementationFlowSection = document.getElementById('implementationFlowSection');
-    const overviewGrid = document.querySelector('.grid.grid--2');
 
-    // Helper to hide all tab sections
+    // Helper to hide all tab sections - queries elements at call time to handle dynamic content
     function hideAllSections() {
+        const tasksSection = document.getElementById('tasksSection');
+        const risksSection = document.getElementById('risksSection');
+        const roadmapSection = document.getElementById('roadmapSection');
+        const engagementsSection = document.getElementById('engagementsSection');
+        const targetprocessSection = document.getElementById('targetprocessSection');
+        const documentsSection = document.getElementById('documentsSection');
+        const usageFrameworkSection = document.getElementById('usageFrameworkSection');
+        const spmAssessmentSection = document.getElementById('spmAssessmentSection');
+        const recommendationsSection = document.getElementById('recommendationsSection');
+        const implementationFlowSection = document.getElementById('implementationFlowSection');
+        const overviewGrid = document.querySelector('.grid.grid--2');
+
         if (tasksSection) tasksSection.style.display = 'none';
         if (risksSection) risksSection.style.display = 'none';
         if (roadmapSection) roadmapSection.style.display = 'none';
@@ -4835,6 +4836,19 @@ function setupTabSwitching() {
 
             // Hide all sections first
             hideAllSections();
+
+            // Query for sections at click time to handle dynamic content
+            const tasksSection = document.getElementById('tasksSection');
+            const risksSection = document.getElementById('risksSection');
+            const roadmapSection = document.getElementById('roadmapSection');
+            const engagementsSection = document.getElementById('engagementsSection');
+            const targetprocessSection = document.getElementById('targetprocessSection');
+            const documentsSection = document.getElementById('documentsSection');
+            const usageFrameworkSection = document.getElementById('usageFrameworkSection');
+            const spmAssessmentSection = document.getElementById('spmAssessmentSection');
+            const recommendationsSection = document.getElementById('recommendationsSection');
+            const implementationFlowSection = document.getElementById('implementationFlowSection');
+            const overviewGrid = document.querySelector('.grid.grid--2');
 
             // Show appropriate section based on tab
             if (tabName === 'Overview') {
@@ -4864,7 +4878,7 @@ function setupTabSwitching() {
             } else if (tabName === 'Documents') {
                 if (documentsSection) documentsSection.style.display = 'block';
                 loadDocuments(customerId);
-            } else if (tabName === 'SPM Assessment') {
+            } else if (tabName === 'Assessments') {
                 if (spmAssessmentSection) spmAssessmentSection.style.display = 'block';
                 loadAssessments(customerId);
             } else {
@@ -4884,7 +4898,7 @@ function showSection(sectionName) {
         'engagements': 'Engagements',
         'tasks': 'Tasks',
         'risks': 'Risks',
-        'spmAssessment': 'SPM Assessment',
+        'spmAssessment': 'Assessments',
         'targetprocess': 'TargetProcess',
         'roadmap': 'Roadmap',
         'recommendations': 'Recommendations',
@@ -7287,7 +7301,7 @@ async function loadFlowVisualization(customerId) {
         // Update summary stats
         document.getElementById('flowWeakDimensionsCount').textContent = flowVisualizationData.weak_dimensions_count;
         document.getElementById('flowUseCasesCount').textContent = flowVisualizationData.recommended_use_cases_count;
-        document.getElementById('flowTPFeaturesCount').textContent = flowVisualizationData.tp_features_count;
+        document.getElementById('flowTPFeaturesCount').textContent = flowVisualizationData.tp_solutions_count;
 
         // Populate filter dropdowns
         populateFlowFilters();
@@ -7407,7 +7421,7 @@ function renderFlowTPFeaturesTable() {
     const tbody = document.getElementById('flowTPFeaturesTableBody');
     if (!tbody || !flowVisualizationData) return;
 
-    const tpNodes = flowVisualizationData.nodes.filter(n => n.type === 'tp_feature');
+    const tpNodes = flowVisualizationData.nodes.filter(n => n.type === 'tp_solution');
 
     if (tpNodes.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary">No TP features to implement</td></tr>';
@@ -7677,6 +7691,12 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
     // Get filtered data
     const filteredData = getFilteredFlowData();
 
+    // Helper to truncate labels for display
+    const truncateLabel = (text, maxLen) => {
+        if (!text || text.length <= maxLen) return text;
+        return text.substring(0, maxLen - 3) + '...';
+    };
+
     // Transform data for Chart.js Sankey format
     const chartData = filteredData.links.map(link => {
         const sourceNode = filteredData.nodes.find(n => n.id === link.source);
@@ -7685,18 +7705,34 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
         if (!sourceNode || !targetNode) return null;
 
         let fromLabel = sourceNode.name;
+        let fromLabelFull = sourceNode.name;
         if (sourceNode.type === 'dimension' && sourceNode.score) {
-            fromLabel = `${sourceNode.name} (${sourceNode.score.toFixed(1)})`;
+            fromLabel = `${truncateLabel(sourceNode.name, 18)} (${sourceNode.score.toFixed(1)})`;
+            fromLabelFull = `${sourceNode.name} (${sourceNode.score.toFixed(1)})`;
+        } else if (sourceNode.type === 'use_case') {
+            fromLabel = truncateLabel(sourceNode.name, 25);
+            fromLabelFull = sourceNode.name;
         }
 
         let toLabel = targetNode.name;
-        if (targetNode.type === 'tp_feature' && targetNode.is_required) {
-            toLabel = `${targetNode.name} *`;
+        let toLabelFull = targetNode.name;
+        if (targetNode.type === 'tp_solution') {
+            toLabel = truncateLabel(targetNode.name, 20);
+            toLabelFull = targetNode.name;
+            if (targetNode.is_required) {
+                toLabel = `${toLabel} *`;
+                toLabelFull = `${toLabelFull} *`;
+            }
+        } else if (targetNode.type === 'use_case') {
+            toLabel = truncateLabel(targetNode.name, 25);
+            toLabelFull = targetNode.name;
         }
 
         return {
             from: fromLabel,
             to: toLabel,
+            fromFull: fromLabelFull,
+            toFull: toLabelFull,
             flow: (link.value || 1) * 10,
             sourceScore: sourceNode.score,
             sourceType: sourceNode.type,
@@ -7733,13 +7769,20 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
                 },
                 colorTo: (ctx) => {
                     const item = ctx.dataset.data[ctx.dataIndex];
-                    if (item.targetType === 'tp_feature') {
-                        return '#8a3ffc';  // Purple for TP features
+                    if (item.targetType === 'tp_solution') {
+                        return '#8a3ffc';  // Purple for TP solutions
                     }
                     return '#0f62fe';  // Blue for use cases
                 },
                 colorMode: 'gradient',
-                size: 'max'
+                size: 'max',
+                nodePadding: 40,
+                nodeWidth: 8,
+                labels: {
+                    font: {
+                        size: 10
+                    }
+                }
             }]
         },
         options: {
@@ -7750,7 +7793,7 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
                     callbacks: {
                         label: (context) => {
                             const item = context.dataset.data[context.dataIndex];
-                            return `${item.from} → ${item.to}`;
+                            return `${item.fromFull || item.from} → ${item.toFull || item.to}`;
                         }
                     }
                 },
