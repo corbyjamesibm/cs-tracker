@@ -2613,10 +2613,56 @@
     </div>
   </div>
 
+  <!-- Recommendation Modal -->
+  <div class="modal" id="recommendationModal">
+    <div class="modal__overlay" onclick="closeRecommendationModal()"></div>
+    <div class="modal__container" style="max-width: 600px;">
+      <div class="modal__header">
+        <h2 class="modal__title" id="recommendationModalTitle">Add Recommendation</h2>
+        <button class="modal__close" onclick="closeRecommendationModal()">&times;</button>
+      </div>
+      <form id="recommendationForm" onsubmit="event.preventDefault(); saveRecommendation();">
+        <div class="modal__body">
+          <div class="form__group">
+            <label class="form__label" for="recTitle">Title <span class="text-danger">*</span></label>
+            <input type="text" id="recTitle" class="form__input" required placeholder="Enter recommendation title">
+          </div>
+
+          <div class="form__group">
+            <label class="form__label" for="recDescription">Description</label>
+            <textarea id="recDescription" class="form__input form__textarea" rows="6" placeholder="Enter recommendation details. Supports markdown: **bold**, *italic*, [link](url), - list items"></textarea>
+            <span class="form__helper">Supports markdown formatting: **bold**, *italic*, [link](url), - lists</span>
+          </div>
+
+          <div class="form__row">
+            <div class="form__group" style="flex: 1;">
+              <label class="form__label" for="recPriority">Priority</label>
+              <select id="recPriority" class="form__input">
+                <option value="high">High</option>
+                <option value="medium" selected>Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+
+            <div class="form__group" style="flex: 1;">
+              <label class="form__label" for="recCategory">Category</label>
+              <input type="text" id="recCategory" class="form__input" placeholder="e.g., Process, Technology, People">
+            </div>
+          </div>
+        </div>
+
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" onclick="closeRecommendationModal()">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save Recommendation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="js/auth.js?v=5"></script>
-  <script src="js/api.js?v=15"></script>
+  <script src="js/api.js?v=16"></script>
   <script src="js/chat.js?v=1"></script>
   <script src="js/table-sort.js?v=1"></script>
-  <script src="js/customer-detail.js?v=45"></script>
+  <script src="js/customer-detail.js?v=46"></script>
 </body>
 </html>

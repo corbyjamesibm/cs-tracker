@@ -2786,6 +2786,187 @@ input[type="file"].form-input::file-selector-button:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* Assessment Recommendations Styles */
+.recommendations-section {
+  margin-top: 32px;
+  page-break-before: auto;
+}
+
+.report-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.report-section-header .report-section-title {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.recommendations-empty {
+  padding: 32px;
+  text-align: center;
+  background: var(--cds-layer-02);
+  border-radius: 8px;
+  border: 2px dashed var(--cds-border-subtle-01);
+}
+
+.recommendations-empty p {
+  margin: 4px 0;
+}
+
+.recommendation-card {
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: box-shadow 0.2s ease;
+}
+
+.recommendation-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.recommendation-card:last-child {
+  margin-bottom: 0;
+}
+
+.recommendation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.recommendation-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.recommendation-priority {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.recommendation-priority.priority--high {
+  background: #fff1f1;
+  color: #da1e28;
+  border: 1px solid #da1e28;
+}
+
+.recommendation-priority.priority--medium {
+  background: #fcf4d6;
+  color: #8a6d3b;
+  border: 1px solid #f1c21b;
+}
+
+.recommendation-priority.priority--low {
+  background: #defbe6;
+  color: #198038;
+  border: 1px solid #24a148;
+}
+
+.recommendation-category {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--cds-layer-02);
+  color: var(--cds-text-secondary);
+}
+
+.recommendation-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin: 0;
+  flex: 1;
+}
+
+.recommendation-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.recommendation-actions .btn--icon {
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+}
+
+.recommendation-actions .btn--danger:hover {
+  background: #fff1f1;
+  color: #da1e28;
+}
+
+.recommendation-description {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--cds-text-primary);
+  margin: 8px 0;
+  padding: 12px;
+  background: var(--cds-layer-02);
+  border-radius: 4px;
+}
+
+.recommendation-description ul,
+.recommendation-description ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.recommendation-description li {
+  margin: 4px 0;
+}
+
+.recommendation-description a {
+  color: var(--cds-link-primary);
+  text-decoration: none;
+}
+
+.recommendation-description a:hover {
+  text-decoration: underline;
+}
+
+.recommendation-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--cds-text-secondary);
+  margin-top: 8px;
+}
+
+/* Print styles for recommendations */
+@media print {
+  .recommendations-section .no-print {
+    display: none !important;
+  }
+
+  .recommendation-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .recommendation-actions {
+    display: none;
+  }
+}
+
 /* Report Radar Chart Styles */
 .report-radar-section {
   margin-bottom: 32px;

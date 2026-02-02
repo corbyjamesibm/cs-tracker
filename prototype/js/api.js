@@ -398,6 +398,33 @@ const RiskAPI = {
     },
 };
 
+// Assessment Recommendations API
+const AssessmentRecommendationsAPI = {
+    async getAll(assessmentId) {
+        return apiRequest(`/assessments/${assessmentId}/recommendations`);
+    },
+
+    async create(assessmentId, data) {
+        return apiRequest(`/assessments/${assessmentId}/recommendations`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async update(assessmentId, recommendationId, data) {
+        return apiRequest(`/assessments/${assessmentId}/recommendations/${recommendationId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    async delete(assessmentId, recommendationId) {
+        return apiRequest(`/assessments/${assessmentId}/recommendations/${recommendationId}`, {
+            method: 'DELETE',
+        });
+    },
+};
+
 // Assessment API
 const AssessmentAPI = {
     // Templates
@@ -890,6 +917,7 @@ window.API = {
     RoadmapAPI,
     RiskAPI,
     AssessmentAPI,
+    AssessmentRecommendationsAPI,
     LookupAPI,
     MeetingNoteAPI,
     DocumentAPI,

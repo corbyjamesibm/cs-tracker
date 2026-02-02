@@ -94,6 +94,12 @@ class AssessmentQuestion(Base):
         return f"<AssessmentQuestion {self.question_number}>"
 
 
+class RecommendationPriority(str, enum.Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
 class CustomerAssessment(Base):
     """A specific assessment instance for a customer"""
     __tablename__ = "customer_assessments"
@@ -120,6 +126,9 @@ class CustomerAssessment(Base):
     completed_by: Mapped[Optional["User"]] = relationship()
     responses: Mapped[List["AssessmentResponse"]] = relationship(
         back_populates="customer_assessment", cascade="all, delete-orphan"
+    )
+    recommendations: Mapped[List["AssessmentRecommendation"]] = relationship(
+        back_populates="assessment", cascade="all, delete-orphan", order_by="AssessmentRecommendation.display_order"
     )
 
     def calculate_scores(self) -> None:
@@ -248,6 +257,32 @@ class CustomerAssessmentTarget(Base):
 
     def __repr__(self) -> str:
         return f"<CustomerAssessmentTarget {self.name} for Customer {self.customer_id}>"
+
+
+class AssessmentRecommendation(Base):
+    """Recommendations added by assessors to assessment reports"""
+    __tablename__ = "assessment_recommendations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    assessment_id: Mapped[int] = mapped_column(ForeignKey("customer_assessments.id", ondelete="CASCADE"))
+
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Markdown content
+    priority: Mapped[Optional[RecommendationPriority]] = mapped_column(
+        SQLEnum(RecommendationPriority), default=RecommendationPriority.MEDIUM
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # Optional categorization
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    assessment: Mapped["CustomerAssessment"] = relationship(back_populates="recommendations")
+
+    def __repr__(self) -> str:
+        return f"<AssessmentRecommendation {self.id}: {self.title}>"
 
 
 # Import at bottom to avoid circular imports

@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Any
 from datetime import datetime, date
 
-from app.models.assessment import AssessmentStatus
+from app.models.assessment import AssessmentStatus, RecommendationPriority
 
 
 # === Minimal Info Classes ===
@@ -377,3 +377,45 @@ class FlowVisualizationResponse(BaseModel):
     weak_dimensions_count: int = 0
     recommended_use_cases_count: int = 0
     tp_solutions_count: int = 0
+
+
+# === Assessment Recommendation Schemas ===
+
+class AssessmentRecommendationBase(BaseModel):
+    """Base recommendation fields"""
+    title: str
+    description: Optional[str] = None  # Markdown content
+    priority: Optional[RecommendationPriority] = RecommendationPriority.MEDIUM
+    category: Optional[str] = None
+    display_order: int = 0
+
+
+class AssessmentRecommendationCreate(AssessmentRecommendationBase):
+    """Create a new recommendation"""
+    created_by: Optional[str] = None
+
+
+class AssessmentRecommendationUpdate(BaseModel):
+    """Update an existing recommendation"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[RecommendationPriority] = None
+    category: Optional[str] = None
+    display_order: Optional[int] = None
+
+
+class AssessmentRecommendationResponse(AssessmentRecommendationBase):
+    """Recommendation response with metadata"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    assessment_id: int
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssessmentRecommendationListResponse(BaseModel):
+    """List of recommendations for an assessment"""
+    items: List[AssessmentRecommendationResponse]
+    total: int

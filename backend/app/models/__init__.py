@@ -10,7 +10,8 @@ from .risk import Risk, RiskSeverity, RiskStatus, RiskCategory
 from .assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
     CustomerAssessment, AssessmentResponse, AssessmentStatus,
-    AssessmentResponseAudit, CustomerAssessmentTarget
+    AssessmentResponseAudit, CustomerAssessmentTarget,
+    AssessmentRecommendation, RecommendationPriority
 )
 from .lookup import LookupValue
 from .meeting_note import MeetingNote
@@ -35,6 +36,7 @@ __all__ = [
     "AssessmentTemplate", "AssessmentDimension", "AssessmentQuestion",
     "CustomerAssessment", "AssessmentResponse", "AssessmentStatus",
     "AssessmentResponseAudit", "CustomerAssessmentTarget",
+    "AssessmentRecommendation", "RecommendationPriority",
     "LookupValue",
     "MeetingNote",
     "Document",

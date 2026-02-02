@@ -15,7 +15,7 @@ from app.core.database import get_db
 from app.models.assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
     CustomerAssessment, AssessmentResponse, AssessmentStatus,
-    AssessmentResponseAudit, CustomerAssessmentTarget
+    AssessmentResponseAudit, CustomerAssessmentTarget, AssessmentRecommendation
 )
 from app.schemas.assessment import (
     AssessmentTemplateCreate, AssessmentTemplateUpdate, AssessmentTemplateResponse,
@@ -28,7 +28,9 @@ from app.schemas.assessment import (
     AssessmentAnswerUpdate, AssessmentAuditEntry, AssessmentAuditListResponse,
     TargetCreate, TargetUpdate, TargetResponse, TargetListResponse,
     DimensionGap, GapAnalysisResponse,
-    FlowNode, FlowLink, FlowVisualizationResponse
+    FlowNode, FlowLink, FlowVisualizationResponse,
+    AssessmentRecommendationCreate, AssessmentRecommendationUpdate,
+    AssessmentRecommendationResponse, AssessmentRecommendationListResponse
 )
 
 router = APIRouter()
@@ -1059,7 +1061,8 @@ async def export_assessment_excel(assessment_id: int, db: AsyncSession = Depends
         selectinload(CustomerAssessment.customer),
         selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.dimensions),
         selectinload(CustomerAssessment.completed_by),
-        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
+        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension),
+        selectinload(CustomerAssessment.recommendations)
     )
 
     result = await db.execute(query)
@@ -1226,6 +1229,63 @@ async def export_assessment_excel(assessment_id: int, db: AsyncSession = Depends
 
         row += 1
 
+    # Add Recommendations section if there are any
+    if assessment.recommendations:
+        row += 2  # Add spacing
+
+        # Recommendations header
+        ws[f'A{row}'] = "Recommendations"
+        ws[f'A{row}'].font = header_font
+        ws.merge_cells(f'A{row}:H{row}')
+        row += 1
+
+        # Recommendations table header
+        rec_headers = ["#", "Priority", "Category", "Title", "Description", "", "", "Created By"]
+        for col, header in enumerate(rec_headers, 1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = header_font_white
+            cell.fill = header_fill
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        row += 1
+
+        # Add recommendation rows
+        for idx, rec in enumerate(sorted(assessment.recommendations, key=lambda r: r.display_order), 1):
+            # Number
+            ws.cell(row=row, column=1, value=idx).border = thin_border
+
+            # Priority
+            priority_cell = ws.cell(row=row, column=2, value=rec.priority.value.upper() if rec.priority else "MEDIUM")
+            priority_cell.border = thin_border
+            priority_cell.alignment = Alignment(horizontal='center')
+            # Color code priority
+            if rec.priority:
+                if rec.priority.value == "high":
+                    priority_cell.fill = PatternFill(start_color="FFCCCB", end_color="FFCCCB", fill_type="solid")
+                elif rec.priority.value == "medium":
+                    priority_cell.fill = PatternFill(start_color="FFFACD", end_color="FFFACD", fill_type="solid")
+                elif rec.priority.value == "low":
+                    priority_cell.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
+
+            # Category
+            ws.cell(row=row, column=3, value=rec.category or "").border = thin_border
+
+            # Title
+            title_cell = ws.cell(row=row, column=4, value=rec.title)
+            title_cell.border = thin_border
+            title_cell.font = Font(bold=True)
+
+            # Description (merge columns 5-7)
+            desc_cell = ws.cell(row=row, column=5, value=rec.description or "")
+            desc_cell.border = thin_border
+            desc_cell.alignment = Alignment(wrap_text=True, vertical='top')
+            ws.merge_cells(start_row=row, start_column=5, end_row=row, end_column=7)
+
+            # Created By
+            ws.cell(row=row, column=8, value=rec.created_by or "").border = thin_border
+
+            row += 1
+
     # Save to buffer
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -1252,7 +1312,8 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
         selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.dimensions),
         selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.questions).selectinload(AssessmentQuestion.dimension),
         selectinload(CustomerAssessment.completed_by),
-        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
+        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension),
+        selectinload(CustomerAssessment.recommendations)
     )
 
     result = await db.execute(query)
@@ -1311,6 +1372,21 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
     for dim in dimensions_data:
         dim["questions"].sort(key=lambda q: q["question_number"])
 
+    # Build recommendations data
+    recommendations_data = []
+    for rec in assessment.recommendations:
+        recommendations_data.append({
+            "id": rec.id,
+            "title": rec.title,
+            "description": rec.description,
+            "priority": rec.priority.value if rec.priority else "medium",
+            "category": rec.category,
+            "display_order": rec.display_order,
+            "created_by": rec.created_by,
+            "created_at": rec.created_at.isoformat() if rec.created_at else None,
+            "updated_at": rec.updated_at.isoformat() if rec.updated_at else None
+        })
+
     return {
         "assessment_id": assessment.id,
         "customer": {
@@ -1333,6 +1409,7 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
         "completed_at": assessment.completed_at.isoformat() if assessment.completed_at else None,
         "notes": assessment.notes,
         "dimensions": dimensions_data,
+        "recommendations": recommendations_data,
         "total_questions": len(assessment.template.questions) if assessment.template else 0,
         "answered_questions": len(assessment.responses)
     }
@@ -1932,3 +2009,140 @@ async def get_flow_visualization(
         recommended_use_cases_count=len(seen_use_cases),
         tp_solutions_count=len(seen_tp_solutions)
     )
+
+
+# ============================================================
+# RECOMMENDATION ENDPOINTS
+# ============================================================
+
+@router.get("/{assessment_id}/recommendations", response_model=AssessmentRecommendationListResponse)
+async def list_assessment_recommendations(
+    assessment_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """List all recommendations for an assessment."""
+    # Verify assessment exists
+    assessment = await db.get(CustomerAssessment, assessment_id)
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    query = select(AssessmentRecommendation).where(
+        AssessmentRecommendation.assessment_id == assessment_id
+    ).order_by(AssessmentRecommendation.display_order, AssessmentRecommendation.created_at)
+
+    result = await db.execute(query)
+    recommendations = result.scalars().all()
+
+    return AssessmentRecommendationListResponse(
+        items=[AssessmentRecommendationResponse.model_validate(r) for r in recommendations],
+        total=len(recommendations)
+    )
+
+
+@router.post("/{assessment_id}/recommendations", response_model=AssessmentRecommendationResponse, status_code=201)
+async def create_assessment_recommendation(
+    assessment_id: int,
+    recommendation_in: AssessmentRecommendationCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new recommendation for an assessment."""
+    # Verify assessment exists
+    assessment = await db.get(CustomerAssessment, assessment_id)
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Get max display_order for this assessment
+    max_order_query = select(func.max(AssessmentRecommendation.display_order)).where(
+        AssessmentRecommendation.assessment_id == assessment_id
+    )
+    result = await db.execute(max_order_query)
+    max_order = result.scalar() or 0
+
+    recommendation = AssessmentRecommendation(
+        assessment_id=assessment_id,
+        title=recommendation_in.title,
+        description=recommendation_in.description,
+        priority=recommendation_in.priority,
+        category=recommendation_in.category,
+        display_order=recommendation_in.display_order if recommendation_in.display_order > 0 else max_order + 1,
+        created_by=recommendation_in.created_by
+    )
+    db.add(recommendation)
+    await db.flush()
+    await db.refresh(recommendation)
+
+    return AssessmentRecommendationResponse.model_validate(recommendation)
+
+
+@router.get("/{assessment_id}/recommendations/{recommendation_id}", response_model=AssessmentRecommendationResponse)
+async def get_assessment_recommendation(
+    assessment_id: int,
+    recommendation_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific recommendation."""
+    query = select(AssessmentRecommendation).where(
+        and_(
+            AssessmentRecommendation.id == recommendation_id,
+            AssessmentRecommendation.assessment_id == assessment_id
+        )
+    )
+    result = await db.execute(query)
+    recommendation = result.scalar_one_or_none()
+
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    return AssessmentRecommendationResponse.model_validate(recommendation)
+
+
+@router.patch("/{assessment_id}/recommendations/{recommendation_id}", response_model=AssessmentRecommendationResponse)
+async def update_assessment_recommendation(
+    assessment_id: int,
+    recommendation_id: int,
+    recommendation_in: AssessmentRecommendationUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update an existing recommendation."""
+    query = select(AssessmentRecommendation).where(
+        and_(
+            AssessmentRecommendation.id == recommendation_id,
+            AssessmentRecommendation.assessment_id == assessment_id
+        )
+    )
+    result = await db.execute(query)
+    recommendation = result.scalar_one_or_none()
+
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    update_data = recommendation_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(recommendation, field, value)
+
+    await db.flush()
+    await db.refresh(recommendation)
+
+    return AssessmentRecommendationResponse.model_validate(recommendation)
+
+
+@router.delete("/{assessment_id}/recommendations/{recommendation_id}", status_code=204)
+async def delete_assessment_recommendation(
+    assessment_id: int,
+    recommendation_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a recommendation."""
+    query = select(AssessmentRecommendation).where(
+        and_(
+            AssessmentRecommendation.id == recommendation_id,
+            AssessmentRecommendation.assessment_id == assessment_id
+        )
+    )
+    result = await db.execute(query)
+    recommendation = result.scalar_one_or_none()
+
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    await db.delete(recommendation)

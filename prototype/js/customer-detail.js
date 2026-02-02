@@ -6958,10 +6958,30 @@ function printAssessmentReport() {
                 .report-radar-legend-item { display: flex; align-items: center; gap: 8px; }
                 .report-radar-legend-color { width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; }
                 .report-radar-legend-label { font-size: 13px; color: #161616; }
+                /* Recommendations print styles */
+                .recommendations-section { margin-top: 32px; page-break-before: auto; }
+                .report-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e0e0e0; }
+                .report-section-header .report-section-title { margin: 0; padding: 0; border: none; }
+                .recommendation-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 12px; page-break-inside: avoid; }
+                .recommendation-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+                .recommendation-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
+                .recommendation-priority { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
+                .recommendation-priority.priority--high { background: #fff1f1; color: #da1e28; border: 1px solid #da1e28; }
+                .recommendation-priority.priority--medium { background: #fcf4d6; color: #8a6d3b; border: 1px solid #f1c21b; }
+                .recommendation-priority.priority--low { background: #defbe6; color: #198038; border: 1px solid #24a148; }
+                .recommendation-category { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; background: #f4f4f4; color: #525252; }
+                .recommendation-title { font-size: 14px; font-weight: 600; color: #161616; margin: 0; }
+                .recommendation-description { font-size: 13px; line-height: 1.6; color: #161616; margin: 8px 0; padding: 12px; background: #f4f4f4; border-radius: 4px; }
+                .recommendation-description ul, .recommendation-description ol { margin: 8px 0; padding-left: 20px; }
+                .recommendation-description li { margin: 4px 0; }
+                .recommendation-meta { display: flex; gap: 16px; font-size: 11px; color: #525252; margin-top: 8px; }
+                .recommendations-empty { padding: 24px; text-align: center; background: #f4f4f4; border-radius: 8px; }
+                .no-print { display: none !important; }
                 @media print {
                     body { padding: 0; }
                     .report-meta-grid { grid-template-columns: repeat(3, 1fr); }
                     .report-radar-section { page-break-inside: avoid; }
+                    .recommendation-card { page-break-inside: avoid; }
                 }
             </style>
         </head>
