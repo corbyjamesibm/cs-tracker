@@ -5919,6 +5919,7 @@ let reportRadarChart = null;
 let currentReportData = null;
 let reportComparisonAssessments = [];
 let reportRadarDrilldownDimension = null;
+let reportShowTarget = false;
 
 /**
  * Open assessment report modal
@@ -5969,6 +5970,7 @@ function renderAssessmentReport(report) {
     currentReportData = report;
     reportRadarDrilldownDimension = null;
     reportComparisonAssessments = [];
+    reportShowTarget = false;
 
     // Build dimension scores HTML
     let dimensionScoresHtml = '';
@@ -6136,6 +6138,14 @@ function renderAssessmentReport(report) {
                                         <option value="">No comparison</option>
                                         ${comparisonOptionsHtml}
                                     </select>
+                                </div>
+                            ` : ''}
+                            ${activeTarget && activeTarget.target_scores && Object.keys(activeTarget.target_scores).length > 0 ? `
+                                <div class="report-target-toggle">
+                                    <label class="checkbox-label" style="font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                        <input type="checkbox" id="reportTargetToggle" onchange="toggleReportTarget(this.checked)">
+                                        <span>Show Target: ${escapeHtml(activeTarget.name)}</span>
+                                    </label>
                                 </div>
                             ` : ''}
                         </div>
@@ -6512,6 +6522,22 @@ function renderReportRadarChart() {
         });
     }
 
+    // Add target dataset if toggled on and not in drilldown mode
+    if (!isDrilldown && reportShowTarget && activeTarget && activeTarget.target_scores) {
+        const targetData = labels.map(label => activeTarget.target_scores[label] || 0);
+        datasets.push({
+            label: `Target: ${activeTarget.name}`,
+            data: targetData,
+            backgroundColor: 'rgba(255, 131, 0, 0.1)',
+            borderColor: 'rgba(255, 131, 0, 1)',
+            borderWidth: 2,
+            borderDash: [8, 4],
+            pointBackgroundColor: 'rgba(255, 131, 0, 1)',
+            pointRadius: 3,
+            pointStyle: 'triangle'
+        });
+    }
+
     // Store labels for click handling
     const chartLabels = labels;
 
@@ -6688,10 +6714,19 @@ async function toggleReportComparison(assessmentId) {
     }
 }
 
+/**
+ * Toggle target state overlay in the report radar chart
+ */
+function toggleReportTarget(showTarget) {
+    reportShowTarget = showTarget;
+    renderReportRadarChart();
+}
+
 // Export report radar functions
 window.reportRadarDrillDown = reportRadarDrillDown;
 window.reportRadarBackToDimensions = reportRadarBackToDimensions;
 window.toggleReportComparison = toggleReportComparison;
+window.toggleReportTarget = toggleReportTarget;
 
 /**
  * Parse text for URLs and make them clickable links

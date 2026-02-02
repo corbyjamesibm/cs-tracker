@@ -2999,6 +2999,23 @@ input[type="file"].form-input::file-selector-button:hover {
   white-space: nowrap;
 }
 
+.report-target-toggle {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: rgba(255, 131, 0, 0.08);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 131, 0, 0.3);
+}
+
+.report-target-toggle .checkbox-label {
+  margin: 0;
+}
+
+.report-target-toggle input[type="checkbox"] {
+  accent-color: #ff8300;
+}
+
 .report-radar-container {
   position: relative;
   width: 100%;
