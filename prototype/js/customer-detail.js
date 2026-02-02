@@ -6177,8 +6177,27 @@ function renderAssessmentReport(report) {
                 <h3 class="report-section-title">Detailed Responses</h3>
                 ${questionsHtml}
             </div>
+
+            <!-- Recommendations Section -->
+            <div class="report-section recommendations-section" id="recommendationsSection">
+                <div class="report-section-header">
+                    <h3 class="report-section-title">Recommendations</h3>
+                    <button class="btn btn--primary btn--sm no-print" onclick="openAddRecommendationModal()">
+                        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M8 3a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H9v3a1 1 0 1 1-2 0V9H4a1 1 0 1 1 0-2h3V4a1 1 0 0 1 1-1z"/>
+                        </svg>
+                        Add Recommendation
+                    </button>
+                </div>
+                <div id="recommendationsList">
+                    ${renderRecommendationsList(report.recommendations || [])}
+                </div>
+            </div>
         </div>
     `;
+
+    // Store the current report for recommendations operations
+    window.currentAssessmentReport = report;
 
     // Initialize radar chart after DOM is updated
     if (report.dimension_scores && Object.keys(report.dimension_scores).length > 0) {
@@ -6196,6 +6215,483 @@ function getScoreBadgeClass(score, maxScore = 5) {
     if (percentage >= 40) return 'score-low';
     return 'score-critical';
 }
+
+// ============================================================
+// ASSESSMENT RECOMMENDATIONS
+// ============================================================
+
+let currentEditingRecommendationId = null;
+
+/**
+ * Render recommendations list
+ */
+function renderRecommendationsList(recommendations) {
+    if (!recommendations || recommendations.length === 0) {
+        return `
+            <div class="recommendations-empty">
+                <p class="text-secondary">No recommendations have been added yet.</p>
+                <p class="text-secondary text-sm">Click "Add Recommendation" to create your first recommendation.</p>
+            </div>
+        `;
+    }
+
+    // Sort by priority (high first) then by display_order
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    const sorted = [...recommendations].sort((a, b) => {
+        const aPriority = priorityOrder[a.priority] ?? 1;
+        const bPriority = priorityOrder[b.priority] ?? 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.display_order || 0) - (b.display_order || 0);
+    });
+
+    return sorted.map(rec => `
+        <div class="recommendation-card" data-recommendation-id="${rec.id}">
+            <div class="recommendation-header">
+                <div class="recommendation-title-row">
+                    <span class="recommendation-priority priority--${rec.priority || 'medium'}">${(rec.priority || 'medium').toUpperCase()}</span>
+                    ${rec.category ? `<span class="recommendation-category">${escapeHtml(rec.category)}</span>` : ''}
+                    <h4 class="recommendation-title">${escapeHtml(rec.title)}</h4>
+                </div>
+                <div class="recommendation-actions no-print">
+                    <button class="btn btn--ghost btn--icon" onclick="openEditRecommendationModal(${rec.id})" title="Edit">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                        </svg>
+                    </button>
+                    <button class="btn btn--ghost btn--icon btn--danger" onclick="deleteRecommendation(${rec.id})" title="Delete">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            ${rec.description ? `
+                <div class="recommendation-description">
+                    ${renderMarkdown(rec.description)}
+                </div>
+            ` : ''}
+            <div class="recommendation-meta">
+                ${rec.created_by ? `<span>By: ${escapeHtml(rec.created_by)}</span>` : ''}
+                ${rec.created_at ? `<span>${formatDate(rec.created_at)}</span>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+
+/**
+ * Simple markdown renderer for recommendations
+ */
+function renderMarkdown(text) {
+    if (!text) return '';
+
+    // Escape HTML first
+    let html = escapeHtml(text);
+
+    // Bold: **text** or __text__
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+    // Italic: *text* or _text_
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+
+    // Links: [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    // Line breaks
+    html = html.replace(/\n/g, '<br>');
+
+    // Unordered lists: - item or * item
+    html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.+<\/li>)+/g, '<ul>$&</ul>');
+
+    // Numbered lists: 1. item
+    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+    return html;
+}
+
+/**
+ * Open add recommendation modal
+ */
+function openAddRecommendationModal() {
+    currentEditingRecommendationId = null;
+    document.getElementById('recommendationModalTitle').textContent = 'Add Recommendation';
+    document.getElementById('recommendationForm').reset();
+    document.getElementById('recommendationModal').classList.add('open');
+}
+
+/**
+ * Open edit recommendation modal
+ */
+function openEditRecommendationModal(recommendationId) {
+    const report = window.currentAssessmentReport;
+    if (!report || !report.recommendations) return;
+
+    const rec = report.recommendations.find(r => r.id === recommendationId);
+    if (!rec) return;
+
+    currentEditingRecommendationId = recommendationId;
+    document.getElementById('recommendationModalTitle').textContent = 'Edit Recommendation';
+
+    document.getElementById('recTitle').value = rec.title || '';
+    document.getElementById('recDescription').value = rec.description || '';
+    document.getElementById('recPriority').value = rec.priority || 'medium';
+    document.getElementById('recCategory').value = rec.category || '';
+
+    document.getElementById('recommendationModal').classList.add('open');
+}
+
+/**
+ * Close recommendation modal
+ */
+function closeRecommendationModal() {
+    document.getElementById('recommendationModal').classList.remove('open');
+    currentEditingRecommendationId = null;
+}
+
+/**
+ * Save recommendation (create or update)
+ */
+async function saveRecommendation() {
+    const assessmentId = currentReportAssessmentId;
+    if (!assessmentId) return;
+
+    const title = document.getElementById('recTitle').value.trim();
+    const description = document.getElementById('recDescription').value.trim();
+    const priority = document.getElementById('recPriority').value;
+    const category = document.getElementById('recCategory').value.trim();
+
+    if (!title) {
+        alert('Title is required');
+        return;
+    }
+
+    const data = {
+        title,
+        description: description || null,
+        priority,
+        category: category || null
+    };
+
+    try {
+        if (currentEditingRecommendationId) {
+            // Update existing
+            await API.AssessmentRecommendationsAPI.update(assessmentId, currentEditingRecommendationId, data);
+        } else {
+            // Create new
+            // Get the current user name if available
+            if (window.Auth && window.Auth.getCurrentUser) {
+                const user = window.Auth.getCurrentUser();
+                if (user) {
+                    data.created_by = `${user.first_name} ${user.last_name}`;
+                }
+            }
+            await API.AssessmentRecommendationsAPI.create(assessmentId, data);
+        }
+
+        closeRecommendationModal();
+
+        // Refresh the report to show updated recommendations
+        await openAssessmentReport(assessmentId);
+
+    } catch (error) {
+        console.error('Failed to save recommendation:', error);
+        alert('Failed to save recommendation. Please try again.');
+    }
+}
+
+/**
+ * Delete recommendation
+ */
+async function deleteRecommendation(recommendationId) {
+    if (!confirm('Are you sure you want to delete this recommendation?')) {
+        return;
+    }
+
+    const assessmentId = currentReportAssessmentId;
+    if (!assessmentId) return;
+
+    try {
+        await API.AssessmentRecommendationsAPI.delete(assessmentId, recommendationId);
+
+        // Refresh the report
+        await openAssessmentReport(assessmentId);
+
+    } catch (error) {
+        console.error('Failed to delete recommendation:', error);
+        alert('Failed to delete recommendation. Please try again.');
+    }
+}
+
+// Export recommendation functions
+window.openAddRecommendationModal = openAddRecommendationModal;
+window.openEditRecommendationModal = openEditRecommendationModal;
+window.closeRecommendationModal = closeRecommendationModal;
+window.saveRecommendation = saveRecommendation;
+window.deleteRecommendation = deleteRecommendation;
+
+/**
+ * Render radar chart in the assessment report
+ */
+function renderReportRadarChart() {
+    const ctx = document.getElementById('reportRadarChart');
+    if (!ctx || !currentReportData) return;
+
+    // Destroy existing chart if any
+    if (reportRadarChart) {
+        reportRadarChart.destroy();
+        reportRadarChart = null;
+    }
+
+    let labels, data, chartTitle, isDrilldown = false;
+
+    if (reportRadarDrilldownDimension) {
+        // Drill-down mode: show questions for selected dimension
+        isDrilldown = true;
+        const dimension = currentReportData.dimensions.find(d => d.dimension_name === reportRadarDrilldownDimension);
+        if (!dimension) return;
+
+        labels = dimension.questions.map(q => `Q${q.question_number}`);
+        data = dimension.questions.map(q => q.score !== null ? q.score : 0);
+        chartTitle = `${reportRadarDrilldownDimension} - Question Scores`;
+
+        // Update UI
+        document.getElementById('reportRadarTitle').textContent = chartTitle;
+        document.getElementById('reportRadarBackBtn').style.display = 'inline-flex';
+        document.getElementById('reportRadarHint').style.display = 'none';
+    } else {
+        // Dimension overview mode
+        labels = Object.keys(currentReportData.dimension_scores);
+        data = Object.values(currentReportData.dimension_scores);
+        chartTitle = 'Dimension Overview';
+
+        // Update UI
+        document.getElementById('reportRadarTitle').textContent = chartTitle;
+        document.getElementById('reportRadarBackBtn').style.display = 'none';
+        document.getElementById('reportRadarHint').style.display = 'block';
+    }
+
+    // Build datasets array - primary assessment first
+    const datasets = [{
+        label: 'Current Assessment',
+        data: data,
+        backgroundColor: comparisonColors[0].bg,
+        borderColor: comparisonColors[0].border,
+        borderWidth: 2,
+        pointBackgroundColor: comparisonColors[0].point,
+        pointRadius: 5,
+        pointHoverRadius: 7
+    }];
+
+    // Add comparison dataset if available and not in drilldown mode
+    if (!isDrilldown && reportComparisonAssessments.length > 0) {
+        reportComparisonAssessments.forEach((assessment, index) => {
+            if (assessment.dimension_scores && Object.keys(assessment.dimension_scores).length > 0) {
+                const colorIndex = (index + 1) % comparisonColors.length;
+                const comparisonData = labels.map(label => assessment.dimension_scores[label] || 0);
+                const assessmentDate = new Date(assessment.assessment_date).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+
+                datasets.push({
+                    label: assessmentDate,
+                    data: comparisonData,
+                    backgroundColor: comparisonColors[colorIndex].bg,
+                    borderColor: comparisonColors[colorIndex].border,
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointBackgroundColor: comparisonColors[colorIndex].point,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                });
+            }
+        });
+    }
+
+    // Store labels for click handling
+    const chartLabels = labels;
+
+    reportRadarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            layout: {
+                padding: {
+                    left: 80,
+                    right: 80,
+                    top: 20,
+                    bottom: 20
+                }
+            },
+            scales: {
+                r: {
+                    min: 0,
+                    max: 5,
+                    ticks: {
+                        stepSize: 1,
+                        color: '#525252',
+                        backdropColor: 'transparent',
+                        font: { size: 10 },
+                        showLabelBackdrop: false
+                    },
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    angleLines: {
+                        color: 'rgba(0, 0, 0, 0.1)'
+                    },
+                    pointLabels: {
+                        color: '#161616',
+                        font: {
+                            size: isDrilldown ? 11 : 12,
+                            weight: 'bold'
+                        },
+                        padding: 15,
+                        callback: function(label, index) {
+                            // For drilldown, show truncated question text as tooltip alternative
+                            if (isDrilldown && currentReportData) {
+                                const dimension = currentReportData.dimensions.find(d => d.dimension_name === reportRadarDrilldownDimension);
+                                if (dimension && dimension.questions[index]) {
+                                    const qText = dimension.questions[index].question_text;
+                                    // Keep question number label short, tooltip will show full text
+                                    return label;
+                                }
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: datasets.length > 1,
+                    position: 'bottom',
+                    labels: {
+                        color: '#161616',
+                        usePointStyle: true,
+                        padding: 16,
+                        font: { size: 12 }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            if (isDrilldown && currentReportData) {
+                                const dimension = currentReportData.dimensions.find(d => d.dimension_name === reportRadarDrilldownDimension);
+                                if (dimension && dimension.questions[context[0].dataIndex]) {
+                                    return dimension.questions[context[0].dataIndex].question_text;
+                                }
+                            }
+                            return context[0].label;
+                        },
+                        label: function(context) {
+                            return `Score: ${context.raw.toFixed(2)} / 5`;
+                        }
+                    }
+                }
+            },
+            onClick: function(event, elements, chart) {
+                // Only allow drill-down when not already in drilldown mode
+                if (!isDrilldown && elements.length > 0) {
+                    const labelIndex = elements[0].index;
+                    const dimensionName = chartLabels[labelIndex];
+                    reportRadarDrillDown(dimensionName);
+                }
+            }
+        }
+    });
+
+    // Update legend
+    updateReportRadarLegend(datasets);
+}
+
+/**
+ * Update the radar chart legend in the report
+ */
+function updateReportRadarLegend(datasets) {
+    const legendContainer = document.getElementById('reportRadarLegend');
+    if (!legendContainer) return;
+
+    if (datasets.length <= 1) {
+        legendContainer.innerHTML = '';
+        legendContainer.style.display = 'none';
+        return;
+    }
+
+    legendContainer.style.display = 'flex';
+    let html = '';
+    datasets.forEach((ds, index) => {
+        const isDashed = ds.borderDash && ds.borderDash.length > 0;
+        html += `
+            <div class="report-radar-legend-item">
+                <span class="report-radar-legend-color" style="background-color: ${ds.borderColor}; ${isDashed ? 'border: 2px dashed ' + ds.borderColor + '; background: transparent;' : ''}"></span>
+                <span class="report-radar-legend-label">${ds.label}</span>
+            </div>
+        `;
+    });
+    legendContainer.innerHTML = html;
+}
+
+/**
+ * Drill down into a dimension to see question-level radar chart
+ */
+function reportRadarDrillDown(dimensionName) {
+    reportRadarDrilldownDimension = dimensionName;
+    renderReportRadarChart();
+}
+
+/**
+ * Go back to dimension-level radar chart
+ */
+function reportRadarBackToDimensions() {
+    reportRadarDrilldownDimension = null;
+    renderReportRadarChart();
+}
+
+/**
+ * Toggle comparison assessment in the report radar chart
+ */
+async function toggleReportComparison(assessmentId) {
+    if (!assessmentId) {
+        reportComparisonAssessments = [];
+        renderReportRadarChart();
+        return;
+    }
+
+    try {
+        // Find the assessment in customerAssessments
+        const assessment = customerAssessments.find(a => a.id === parseInt(assessmentId));
+        if (assessment && assessment.dimension_scores) {
+            reportComparisonAssessments = [assessment];
+        } else {
+            // Fetch the full assessment data if not available
+            const response = await fetch(`${API_BASE_URL}/assessments/${assessmentId}`);
+            if (response.ok) {
+                const fullAssessment = await response.json();
+                reportComparisonAssessments = [fullAssessment];
+            }
+        }
+        renderReportRadarChart();
+    } catch (error) {
+        console.error('Failed to load comparison assessment:', error);
+        reportComparisonAssessments = [];
+        renderReportRadarChart();
+    }
+}
+
+// Export report radar functions
+window.reportRadarDrillDown = reportRadarDrillDown;
+window.reportRadarBackToDimensions = reportRadarBackToDimensions;
+window.toggleReportComparison = toggleReportComparison;
 
 /**
  * Parse text for URLs and make them clickable links
@@ -6352,6 +6848,31 @@ function printAssessmentReport() {
     const printContent = document.getElementById('printableReport');
     if (!printContent) return;
 
+    // Clone content for modifications
+    const clonedContent = printContent.cloneNode(true);
+
+    // Convert radar chart canvas to image for printing
+    const radarCanvas = document.getElementById('reportRadarChart');
+    const radarContainer = clonedContent.querySelector('.report-radar-container');
+    if (radarCanvas && radarContainer) {
+        try {
+            const imageUrl = radarCanvas.toDataURL('image/png');
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
+            img.style.margin = '0 auto';
+            radarContainer.innerHTML = '';
+            radarContainer.appendChild(img);
+        } catch (e) {
+            console.warn('Could not convert radar chart to image:', e);
+        }
+    }
+
+    // Remove no-print elements from cloned content
+    clonedContent.querySelectorAll('.no-print').forEach(el => el.remove());
+
     // Create print window
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
@@ -6429,14 +6950,23 @@ function printAssessmentReport() {
                 .report-detail-section:last-child { margin-bottom: 0; }
                 .report-detail-label { display: block; font-size: 10px; font-weight: 600; color: #525252; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
                 .report-detail-text { display: block; font-size: 11px; color: #161616; line-height: 1.4; }
+                /* Radar chart print styles */
+                .report-radar-section { margin-bottom: 32px; page-break-inside: avoid; }
+                .report-radar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e0e0e0; }
+                .report-radar-container { max-width: 450px; margin: 0 auto; padding: 10px 0; }
+                .report-radar-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 16px; margin-top: 16px; padding: 12px; background: #f4f4f4; border-radius: 8px; }
+                .report-radar-legend-item { display: flex; align-items: center; gap: 8px; }
+                .report-radar-legend-color { width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; }
+                .report-radar-legend-label { font-size: 13px; color: #161616; }
                 @media print {
                     body { padding: 0; }
                     .report-meta-grid { grid-template-columns: repeat(3, 1fr); }
+                    .report-radar-section { page-break-inside: avoid; }
                 }
             </style>
         </head>
         <body>
-            ${printContent.innerHTML}
+            ${clonedContent.innerHTML}
         </body>
         </html>
     `);

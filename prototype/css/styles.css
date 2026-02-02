@@ -2786,6 +2786,88 @@ input[type="file"].form-input::file-selector-button:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* Report Radar Chart Styles */
+.report-radar-section {
+  margin-bottom: 32px;
+}
+
+.report-radar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.report-radar-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.report-comparison-select {
+  display: flex;
+  align-items: center;
+}
+
+.report-comparison-select label {
+  white-space: nowrap;
+}
+
+.report-radar-container {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 20px 0;
+}
+
+.report-radar-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--cds-layer-01);
+  border-radius: 8px;
+}
+
+.report-radar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-radar-legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.report-radar-legend-label {
+  font-size: 13px;
+  color: var(--cds-text-primary);
+}
+
+.report-radar-hint {
+  text-align: center;
+  color: var(--cds-text-secondary);
+  font-size: 12px;
+  margin-top: 12px;
+  font-style: italic;
+}
+
+/* Hide controls in print view */
+.no-print {
+  /* This class will be hidden in print via @media print */
+}
+
 /* Print Styles for Report */
 @media print {
   .report-question-card {
@@ -2843,6 +2925,32 @@ input[type="file"].form-input::file-selector-button:hover {
 
   .image-lightbox {
     display: none !important;
+  }
+
+  /* Radar chart print styles */
+  .no-print {
+    display: none !important;
+  }
+
+  .report-radar-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 24px;
+  }
+
+  .report-radar-header {
+    border-bottom: 1px solid #ccc;
+  }
+
+  .report-radar-container {
+    max-width: 400px;
+    padding: 10px 0;
+  }
+
+  .report-radar-legend {
+    background: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 
