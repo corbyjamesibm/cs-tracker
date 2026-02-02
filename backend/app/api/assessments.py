@@ -17,6 +17,7 @@ from app.models.assessment import (
     CustomerAssessment, AssessmentResponse, AssessmentStatus,
     AssessmentResponseAudit, CustomerAssessmentTarget, AssessmentRecommendation
 )
+from app.models.mapping import RoadmapRecommendation
 from app.schemas.assessment import (
     AssessmentTemplateCreate, AssessmentTemplateUpdate, AssessmentTemplateResponse,
     AssessmentTemplateDetailResponse, AssessmentTemplateListResponse,
@@ -1312,8 +1313,7 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
         selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.dimensions),
         selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.questions).selectinload(AssessmentQuestion.dimension),
         selectinload(CustomerAssessment.completed_by),
-        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension),
-        selectinload(CustomerAssessment.recommendations)
+        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
     )
 
     result = await db.execute(query)
@@ -1372,19 +1372,35 @@ async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(g
     for dim in dimensions_data:
         dim["questions"].sort(key=lambda q: q["question_number"])
 
-    # Build recommendations data
+    # Fetch roadmap recommendations for this assessment (not dismissed)
+    rec_query = select(RoadmapRecommendation).where(
+        RoadmapRecommendation.customer_assessment_id == assessment_id,
+        RoadmapRecommendation.is_dismissed == False
+    ).options(
+        selectinload(RoadmapRecommendation.use_case),
+        selectinload(RoadmapRecommendation.tp_feature_mapping)
+    ).order_by(RoadmapRecommendation.priority_score.desc())
+
+    rec_result = await db.execute(rec_query)
+    roadmap_recommendations = rec_result.scalars().all()
+
+    # Build recommendations data from roadmap recommendations
     recommendations_data = []
-    for rec in assessment.recommendations:
+    for rec in roadmap_recommendations:
         recommendations_data.append({
             "id": rec.id,
             "title": rec.title,
             "description": rec.description,
-            "priority": rec.priority.value if rec.priority else "medium",
-            "category": rec.category,
-            "display_order": rec.display_order,
-            "created_by": rec.created_by,
-            "created_at": rec.created_at.isoformat() if rec.created_at else None,
-            "updated_at": rec.updated_at.isoformat() if rec.updated_at else None
+            "dimension_name": rec.dimension_name,
+            "dimension_score": rec.dimension_score,
+            "priority_score": rec.priority_score,
+            "improvement_potential": rec.improvement_potential,
+            "is_accepted": rec.is_accepted,
+            "use_case_name": rec.use_case.name if rec.use_case else None,
+            "solution_area": rec.use_case.solution_area if rec.use_case else None,
+            "tp_feature_name": rec.tp_feature_mapping.tp_feature_name if rec.tp_feature_mapping else None,
+            "tp_feature_id": rec.tp_feature_mapping.tp_feature_id if rec.tp_feature_mapping else None,
+            "created_at": rec.created_at.isoformat() if rec.created_at else None
         })
 
     return {

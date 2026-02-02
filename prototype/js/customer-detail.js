@@ -6192,12 +6192,7 @@ function renderAssessmentReport(report) {
             <div class="report-section recommendations-section" id="recommendationsSection">
                 <div class="report-section-header">
                     <h3 class="report-section-title">Recommendations</h3>
-                    <button class="btn btn--primary btn--sm no-print" onclick="openAddRecommendationModal()">
-                        <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M8 3a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H9v3a1 1 0 1 1-2 0V9H4a1 1 0 1 1 0-2h3V4a1 1 0 0 1 1-1z"/>
-                        </svg>
-                        Add Recommendation
-                    </button>
+                    <p class="report-section-subtitle text-secondary text-sm" style="margin: 0;">Based on assessment scores and identified improvement areas</p>
                 </div>
                 <div id="recommendationsList">
                     ${renderRecommendationsList(report.recommendations || [])}
@@ -6233,58 +6228,78 @@ function getScoreBadgeClass(score, maxScore = 5) {
 let currentEditingRecommendationId = null;
 
 /**
- * Render recommendations list
+ * Render recommendations list (roadmap recommendations)
  */
 function renderRecommendationsList(recommendations) {
     if (!recommendations || recommendations.length === 0) {
         return `
             <div class="recommendations-empty">
-                <p class="text-secondary">No recommendations have been added yet.</p>
-                <p class="text-secondary text-sm">Click "Add Recommendation" to create your first recommendation.</p>
+                <p class="text-secondary">No recommendations generated yet.</p>
+                <p class="text-secondary text-sm">Recommendations are automatically generated based on assessment scores and identified improvement areas.</p>
             </div>
         `;
     }
 
-    // Sort by priority (high first) then by display_order
-    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    // Sort by priority_score (highest first)
     const sorted = [...recommendations].sort((a, b) => {
-        const aPriority = priorityOrder[a.priority] ?? 1;
-        const bPriority = priorityOrder[b.priority] ?? 1;
-        if (aPriority !== bPriority) return aPriority - bPriority;
-        return (a.display_order || 0) - (b.display_order || 0);
+        return (b.priority_score || 0) - (a.priority_score || 0);
     });
 
-    return sorted.map(rec => `
-        <div class="recommendation-card" data-recommendation-id="${rec.id}">
-            <div class="recommendation-header">
-                <div class="recommendation-title-row">
-                    <span class="recommendation-priority priority--${rec.priority || 'medium'}">${(rec.priority || 'medium').toUpperCase()}</span>
-                    ${rec.category ? `<span class="recommendation-category">${escapeHtml(rec.category)}</span>` : ''}
-                    <h4 class="recommendation-title">${escapeHtml(rec.title)}</h4>
-                </div>
-                <div class="recommendation-actions no-print">
-                    <button class="btn btn--ghost btn--icon" onclick="openEditRecommendationModal(${rec.id})" title="Edit">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
-                        </svg>
-                    </button>
-                    <button class="btn btn--ghost btn--icon btn--danger" onclick="deleteRecommendation(${rec.id})" title="Delete">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                        </svg>
-                    </button>
-                </div>
+    // Group by dimension
+    const byDimension = {};
+    sorted.forEach(rec => {
+        const dim = rec.dimension_name || 'General';
+        if (!byDimension[dim]) {
+            byDimension[dim] = [];
+        }
+        byDimension[dim].push(rec);
+    });
+
+    // Render grouped by dimension
+    return Object.entries(byDimension).map(([dimension, recs]) => `
+        <div class="recommendation-dimension-group">
+            <div class="recommendation-dimension-header">
+                <span class="recommendation-dimension-name">${escapeHtml(dimension)}</span>
+                <span class="recommendation-dimension-score text-secondary">Current Score: ${recs[0].dimension_score?.toFixed(1) || 'N/A'}</span>
             </div>
-            ${rec.description ? `
-                <div class="recommendation-description">
-                    ${renderMarkdown(rec.description)}
+            ${recs.map(rec => `
+                <div class="recommendation-card ${rec.is_accepted ? 'recommendation--accepted' : ''}" data-recommendation-id="${rec.id}">
+                    <div class="recommendation-header">
+                        <div class="recommendation-title-row">
+                            <span class="recommendation-priority-score" title="Priority Score">${Math.round(rec.priority_score || 0)}</span>
+                            ${rec.is_accepted ? `<span class="recommendation-badge recommendation-badge--accepted">Accepted</span>` : ''}
+                            <h4 class="recommendation-title">${escapeHtml(rec.title)}</h4>
+                        </div>
+                        <div class="recommendation-improvement" title="Potential Improvement">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px;">
+                                <path fill-rule="evenodd" d="M8 12a.5.5 0 0 0 .5-.5V5.707l2.146 2.147a.5.5 0 0 0 .708-.708l-3-3a.5.5 0 0 0-.708 0l-3 3a.5.5 0 1 0 .708.708L7.5 5.707V11.5a.5.5 0 0 0 .5.5z"/>
+                                <path fill-rule="evenodd" d="M1 13.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 0-1h-13a.5.5 0 0 0-.5.5z"/>
+                            </svg>
+                            +${rec.improvement_potential?.toFixed(2) || '0.00'}
+                        </div>
+                    </div>
+                    ${rec.description ? `
+                        <div class="recommendation-description">
+                            ${renderMarkdown(rec.description)}
+                        </div>
+                    ` : ''}
+                    <div class="recommendation-meta">
+                        ${rec.use_case_name ? `<span class="recommendation-use-case">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px;">
+                                <path d="M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H4zm0 1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z"/>
+                            </svg>
+                            ${escapeHtml(rec.use_case_name)}
+                        </span>` : ''}
+                        ${rec.solution_area ? `<span class="recommendation-area">${escapeHtml(rec.solution_area)}</span>` : ''}
+                        ${rec.tp_feature_name ? `<span class="recommendation-tp-feature" title="TargetProcess Feature">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px;">
+                                <path d="M13.5 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM11 2.5a2.5 2.5 0 1 1 .603 1.628l-6.718 3.12a2.499 2.499 0 0 1 0 1.504l6.718 3.12a2.5 2.5 0 1 1-.488.876l-6.718-3.12a2.5 2.5 0 1 1 0-3.256l6.718-3.12A2.5 2.5 0 0 1 11 2.5zm-8.5 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm11 5.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/>
+                            </svg>
+                            ${escapeHtml(rec.tp_feature_name)}
+                        </span>` : ''}
+                    </div>
                 </div>
-            ` : ''}
-            <div class="recommendation-meta">
-                ${rec.created_by ? `<span>By: ${escapeHtml(rec.created_by)}</span>` : ''}
-                ${rec.created_at ? `<span>${formatDate(rec.created_at)}</span>` : ''}
-            </div>
+            `).join('')}
         </div>
     `).join('');
 }

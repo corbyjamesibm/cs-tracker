@@ -2946,9 +2946,110 @@ input[type="file"].form-input::file-selector-button:hover {
 .recommendation-meta {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--cds-text-secondary);
   margin-top: 8px;
+}
+
+/* Roadmap Recommendation Styles */
+.recommendation-dimension-group {
+  margin-bottom: 24px;
+}
+
+.recommendation-dimension-group:last-child {
+  margin-bottom: 0;
+}
+
+.recommendation-dimension-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--cds-layer-02);
+  border-radius: 6px 6px 0 0;
+  border: 1px solid var(--cds-border-subtle-01);
+  border-bottom: none;
+}
+
+.recommendation-dimension-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--cds-text-primary);
+}
+
+.recommendation-dimension-score {
+  font-size: 12px;
+}
+
+.recommendation-dimension-group .recommendation-card {
+  border-radius: 0;
+  margin-bottom: 0;
+  border-top: none;
+}
+
+.recommendation-dimension-group .recommendation-card:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+.recommendation-priority-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 24px;
+  background: var(--cds-interactive);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.recommendation-improvement {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: #defbe6;
+  color: #198038;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.recommendation-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.recommendation-badge--accepted {
+  background: #defbe6;
+  color: #198038;
+  border: 1px solid #24a148;
+}
+
+.recommendation--accepted {
+  border-left: 3px solid #24a148;
+}
+
+.recommendation-use-case,
+.recommendation-area,
+.recommendation-tp-feature {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--cds-layer-02);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.recommendation-tp-feature {
+  background: #e5f1ff;
+  color: #0f62fe;
 }
 
 /* Print styles for recommendations */
