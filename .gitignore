@@ -78,3 +78,8 @@ coverage.xml
 .coverage
 backups/*
 !backups/README.md
+
+# MCP servers
+cs-tracker-mcp/node_modules/
+cs-tracker-mcp/dist/
+.playwright-mcp/
