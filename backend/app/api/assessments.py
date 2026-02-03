@@ -45,15 +45,28 @@ router = APIRouter()
 async def list_templates(
     db: AsyncSession = Depends(get_db),
     active_only: bool = Query(False, description="Only show active templates"),
+    type: Optional[str] = Query(None, description="Filter by assessment type code (spm, tbm, finops)"),
 ):
-    """List all assessment templates."""
+    """List all assessment templates, optionally filtered by assessment type."""
     query = select(AssessmentTemplate)
 
     if active_only:
         query = query.where(AssessmentTemplate.is_active == True)
 
+    # Filter by assessment type if specified
+    if type:
+        from app.models.assessment_type import AssessmentType
+        type_query = select(AssessmentType.id).where(AssessmentType.code == type.lower())
+        type_result = await db.execute(type_query)
+        type_id = type_result.scalar_one_or_none()
+        if type_id:
+            query = query.where(AssessmentTemplate.assessment_type_id == type_id)
+
     query = query.order_by(AssessmentTemplate.created_at.desc())
-    query = query.options(selectinload(AssessmentTemplate.created_by))
+    query = query.options(
+        selectinload(AssessmentTemplate.created_by),
+        selectinload(AssessmentTemplate.assessment_type)
+    )
 
     result = await db.execute(query)
     templates = result.scalars().all()
@@ -72,7 +85,8 @@ async def get_active_template(db: AsyncSession = Depends(get_db)):
     ).options(
         selectinload(AssessmentTemplate.dimensions),
         selectinload(AssessmentTemplate.questions).selectinload(AssessmentQuestion.dimension),
-        selectinload(AssessmentTemplate.created_by)
+        selectinload(AssessmentTemplate.created_by),
+        selectinload(AssessmentTemplate.assessment_type)
     )
 
     result = await db.execute(query)
@@ -92,7 +106,8 @@ async def get_template(template_id: int, db: AsyncSession = Depends(get_db)):
     ).options(
         selectinload(AssessmentTemplate.dimensions),
         selectinload(AssessmentTemplate.questions).selectinload(AssessmentQuestion.dimension),
-        selectinload(AssessmentTemplate.created_by)
+        selectinload(AssessmentTemplate.created_by),
+        selectinload(AssessmentTemplate.assessment_type)
     )
 
     result = await db.execute(query)
@@ -688,8 +703,9 @@ async def list_customer_assessments(
     customer_id: int,
     db: AsyncSession = Depends(get_db),
     status: Optional[AssessmentStatus] = None,
+    type: Optional[str] = Query(None, description="Filter by assessment type code (spm, tbm, finops)"),
 ):
-    """List all assessments for a customer."""
+    """List all assessments for a customer, optionally filtered by assessment type."""
     query = select(CustomerAssessment).where(
         CustomerAssessment.customer_id == customer_id
     )
@@ -697,10 +713,20 @@ async def list_customer_assessments(
     if status:
         query = query.where(CustomerAssessment.status == status)
 
+    # Filter by assessment type if specified
+    if type:
+        from app.models.assessment_type import AssessmentType
+        type_query = select(AssessmentType.id).where(AssessmentType.code == type.lower())
+        type_result = await db.execute(type_query)
+        type_id = type_result.scalar_one_or_none()
+        if type_id:
+            query = query.where(CustomerAssessment.assessment_type_id == type_id)
+
     query = query.order_by(CustomerAssessment.assessment_date.desc(), CustomerAssessment.id.desc())
     query = query.options(
         selectinload(CustomerAssessment.template),
-        selectinload(CustomerAssessment.completed_by)
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.assessment_type)
     )
 
     result = await db.execute(query)
@@ -724,7 +750,11 @@ async def get_customer_assessment_history(
             CustomerAssessment.status == AssessmentStatus.COMPLETED
         )
     ).order_by(CustomerAssessment.assessment_date.desc(), CustomerAssessment.id.desc())
-    query = query.options(selectinload(CustomerAssessment.template))
+    query = query.options(
+        selectinload(CustomerAssessment.template),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.assessment_type)
+    )
 
     result = await db.execute(query)
     assessments = list(result.scalars().all())
@@ -767,7 +797,7 @@ async def create_customer_assessment(
     db: AsyncSession = Depends(get_db)
 ):
     """Start a new assessment for a customer."""
-    # Verify template exists
+    # Verify template exists and get its assessment_type_id
     template = await db.get(AssessmentTemplate, assessment_in.template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -775,12 +805,24 @@ async def create_customer_assessment(
     assessment = CustomerAssessment(
         customer_id=customer_id,
         template_id=assessment_in.template_id,
+        assessment_type_id=template.assessment_type_id,
         assessment_date=assessment_in.assessment_date or date.today(),
         notes=assessment_in.notes,
         status=AssessmentStatus.DRAFT
     )
     db.add(assessment)
     await db.flush()
+
+    # Reload with relationships for response
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.id == assessment.id
+    ).options(
+        selectinload(CustomerAssessment.template),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.assessment_type)
+    )
+    result = await db.execute(query)
+    assessment = result.scalar_one()
 
     return CustomerAssessmentResponse.model_validate(assessment)
 
@@ -794,7 +836,9 @@ async def get_assessment(assessment_id: int, db: AsyncSession = Depends(get_db))
         selectinload(CustomerAssessment.customer),
         selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.dimensions),
         selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.questions),
+        selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.assessment_type),
         selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.assessment_type),
         selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
     )
 
@@ -814,7 +858,13 @@ async def update_assessment(
     db: AsyncSession = Depends(get_db)
 ):
     """Update an assessment's status or notes."""
-    query = select(CustomerAssessment).where(CustomerAssessment.id == assessment_id)
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.id == assessment_id
+    ).options(
+        selectinload(CustomerAssessment.template),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.assessment_type)
+    )
     result = await db.execute(query)
     assessment = result.scalar_one_or_none()
 
@@ -862,7 +912,10 @@ async def save_responses(
     query = select(CustomerAssessment).where(
         CustomerAssessment.id == assessment_id
     ).options(
-        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
+        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension),
+        selectinload(CustomerAssessment.template),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.assessment_type)
     )
     result = await db.execute(query)
     assessment = result.scalar_one_or_none()
@@ -1788,6 +1841,7 @@ async def get_gap_analysis(
 async def get_flow_visualization(
     customer_id: int,
     threshold: float = Query(3.5, ge=1.0, le=5.0, description="Score threshold for weak dimensions"),
+    type: Optional[str] = Query(None, description="Filter by assessment type code (spm, tbm, finops)"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1795,18 +1849,31 @@ async def get_flow_visualization(
     Assessment dimensions (with gaps) -> Recommended use cases -> TP solutions to implement.
 
     This provides data for a Sankey diagram visualization.
+    Optionally filter by assessment type.
     """
     from app.models.mapping import DimensionUseCaseMapping
     from app.models.use_case import CustomerUseCase, UseCaseStatus
     from app.models.use_case_solution_mapping import UseCaseTPSolutionMapping
     from app.models.tp_solution import TPSolution
 
-    # 1. Get customer's latest completed assessment
+    # Get assessment type filter if specified
+    assessment_type_id = None
+    if type:
+        from app.models.assessment_type import AssessmentType
+        type_query = select(AssessmentType.id).where(AssessmentType.code == type.lower())
+        type_result = await db.execute(type_query)
+        assessment_type_id = type_result.scalar_one_or_none()
+
+    # 1. Get customer's latest completed assessment (optionally filtered by type)
+    assessment_conditions = [
+        CustomerAssessment.customer_id == customer_id,
+        CustomerAssessment.status == AssessmentStatus.COMPLETED
+    ]
+    if assessment_type_id:
+        assessment_conditions.append(CustomerAssessment.assessment_type_id == assessment_type_id)
+
     assessment_query = select(CustomerAssessment).where(
-        and_(
-            CustomerAssessment.customer_id == customer_id,
-            CustomerAssessment.status == AssessmentStatus.COMPLETED
-        )
+        and_(*assessment_conditions)
     ).order_by(CustomerAssessment.completed_at.desc()).limit(1)
 
     result = await db.execute(assessment_query)
@@ -1816,6 +1883,8 @@ async def get_flow_visualization(
         return FlowVisualizationResponse(
             customer_id=customer_id,
             assessment_id=None,
+            assessment_type_id=assessment_type_id,
+            assessment_type_code=type.lower() if type else None,
             nodes=[],
             links=[],
             weak_dimensions_count=0,
@@ -1837,6 +1906,8 @@ async def get_flow_visualization(
         return FlowVisualizationResponse(
             customer_id=customer_id,
             assessment_id=assessment.id,
+            assessment_type_id=assessment.assessment_type_id,
+            assessment_type_code=type.lower() if type else None,
             nodes=[],
             links=[],
             weak_dimensions_count=0,
@@ -1860,6 +1931,8 @@ async def get_flow_visualization(
         return FlowVisualizationResponse(
             customer_id=customer_id,
             assessment_id=assessment.id,
+            assessment_type_id=assessment.assessment_type_id,
+            assessment_type_code=type.lower() if type else None,
             nodes=[],
             links=[],
             weak_dimensions_count=len(weak_dims),
@@ -1910,6 +1983,8 @@ async def get_flow_visualization(
         return FlowVisualizationResponse(
             customer_id=customer_id,
             assessment_id=assessment.id,
+            assessment_type_id=assessment.assessment_type_id,
+            assessment_type_code=type.lower() if type else None,
             nodes=nodes,
             links=[],
             weak_dimensions_count=len(weak_dims),
@@ -2019,6 +2094,8 @@ async def get_flow_visualization(
     return FlowVisualizationResponse(
         customer_id=customer_id,
         assessment_id=assessment.id,
+        assessment_type_id=assessment.assessment_type_id,
+        assessment_type_code=type.lower() if type else None,
         nodes=nodes,
         links=links,
         weak_dimensions_count=len(weak_dims),
