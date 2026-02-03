@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # Ollama Configuration
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"  # Default model, can be mistral, llama3.1:70b, etc.
-    ollama_timeout: int = 120  # Timeout in seconds for Ollama requests
+    ollama_timeout: int = 300  # Timeout in seconds for Ollama requests (increased for tool-calling)
 
     # Anthropic Configuration (fallback)
     anthropic_model: str = "claude-sonnet-4-20250514"

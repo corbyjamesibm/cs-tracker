@@ -32,6 +32,13 @@ You help Customer Success Managers (CSMs) with:
 - Creating and tracking risks
 - Getting portfolio summaries and insights
 
+IMPORTANT - TOOL USAGE:
+- You MUST use the provided tools to answer questions that require data
+- DO NOT describe what tool you would use - actually USE the tool
+- DO NOT output JSON or function call syntax in your response text
+- When you need customer data, risks, tasks, etc., call the appropriate tool immediately
+- After getting tool results, respond with the actual data to the user
+
 When responding:
 - Be concise and professional
 - Use specific data from tool results
@@ -599,6 +606,53 @@ TOOLS = [
     }
 ]
 
+# Core tools for smaller models (Ollama 8b) - limited to most commonly used
+CORE_TOOL_NAMES = [
+    "search_customers",
+    "get_customer_details",
+    "get_portfolio_summary",
+    "list_tasks",
+    "list_risks",
+    "get_risk_summary",
+    "get_renewals_upcoming",
+    "search_meeting_notes",
+    "create_task",
+    "log_engagement",
+]
+
+# Keyword to tool mapping for fast tool selection (Ollama optimization)
+KEYWORD_TOOL_MAP = {
+    # Risk-related keywords
+    "risk": ["list_risks", "get_risk_summary"],
+    "risks": ["list_risks", "get_risk_summary"],
+    "danger": ["list_risks"],
+    "issue": ["list_risks"],
+    "problem": ["list_risks"],
+    # Customer-related keywords
+    "customer": ["search_customers", "get_customer_details"],
+    "customers": ["search_customers"],
+    "client": ["search_customers"],
+    "account": ["search_customers"],
+    # Task-related keywords
+    "task": ["list_tasks"],
+    "tasks": ["list_tasks"],
+    "todo": ["list_tasks"],
+    "action": ["list_tasks"],
+    # Renewal-related keywords
+    "renewal": ["get_renewals_upcoming"],
+    "renewals": ["get_renewals_upcoming"],
+    "expiring": ["get_renewals_upcoming"],
+    "expire": ["get_renewals_upcoming"],
+    # Portfolio/summary keywords
+    "portfolio": ["get_portfolio_summary"],
+    "summary": ["get_portfolio_summary", "get_risk_summary"],
+    "overview": ["get_portfolio_summary"],
+    # Meeting/engagement keywords
+    "meeting": ["search_meeting_notes"],
+    "notes": ["search_meeting_notes"],
+    "engagement": ["search_meeting_notes", "log_engagement"],
+}
+
 
 class LLMService:
     """Service for handling LLM-powered chat interactions."""
@@ -612,6 +666,34 @@ class LLMService:
     def _can_write(self) -> bool:
         """Check if current user has write permissions."""
         return self.current_user.role not in [UserRole.READ_ONLY]
+
+    def _select_tools_by_query(self, query: str) -> List[dict]:
+        """Select the most relevant tools based on query keywords (for Ollama)."""
+        query_lower = query.lower()
+        selected_tool_names = set()
+
+        # Find matching tools by keywords
+        for keyword, tools in KEYWORD_TOOL_MAP.items():
+            if keyword in query_lower:
+                selected_tool_names.update(tools)
+
+        # If no keywords matched, use a small default set
+        if not selected_tool_names:
+            selected_tool_names = {"search_customers", "get_portfolio_summary"}
+
+        # Limit to 3 tools max for Ollama
+        tool_names = list(selected_tool_names)[:3]
+
+        return [t for t in TOOLS if t["name"] in tool_names]
+
+    def _get_tools_for_provider(self, query: str = "") -> List[dict]:
+        """Get appropriate tools based on AI provider type and query."""
+        from app.services.ai_provider import OllamaProvider
+
+        # For Ollama, use smart tool selection based on query keywords (max 3 tools)
+        if isinstance(self.provider, OllamaProvider):
+            return self._select_tools_by_query(query)
+        return TOOLS
 
     def _get_user_context(self) -> str:
         """Get context about the current user for the system prompt."""
@@ -639,17 +721,20 @@ Can create/modify data: {self._can_write()}
 
         messages = [AIMessage(role="user", content=request.message)]
 
+        # Get appropriate tools for the provider (using query for smart selection)
+        active_tools = self._get_tools_for_provider(request.message)
+
         # Call AI provider with tools
         try:
             response = await self.provider.chat(
                 messages=messages,
                 system_prompt=system_message,
-                tools=TOOLS,
+                tools=active_tools,
                 max_tokens=settings.llm_max_tokens
             )
 
             # Process tool calls
-            final_response = await self._process_response(response, messages, system_message)
+            final_response = await self._process_response(response, messages, system_message, active_tools)
 
             # Generate suggestions based on response
             suggestions = self._generate_suggestions(request, final_response)
@@ -670,7 +755,7 @@ Can create/modify data: {self._can_write()}
                 conversation_id=conversation_id
             )
 
-    async def _process_response(self, response, messages: List[AIMessage], system_prompt: str) -> str:
+    async def _process_response(self, response, messages: List[AIMessage], system_prompt: str, tools: List[dict]) -> str:
         """Process AI response, handling any tool calls."""
         max_iterations = 10  # Prevent infinite loops
         iteration = 0
@@ -707,7 +792,7 @@ Can create/modify data: {self._can_write()}
             response = await self.provider.chat(
                 messages=messages,
                 system_prompt=system_prompt,
-                tools=TOOLS,
+                tools=tools,
                 max_tokens=settings.llm_max_tokens
             )
 
@@ -766,6 +851,11 @@ Can create/modify data: {self._can_write()}
                 return {"error": f"Unknown tool: {tool_name}"}
         except Exception as e:
             logger.error(f"Error executing tool {tool_name}: {e}")
+            # Rollback on error to recover from failed transactions
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
             return {"error": str(e)}
 
     async def _search_customers(
@@ -1091,17 +1181,42 @@ Can create/modify data: {self._can_write()}
         severity: str = None,
         status: str = None,
         open_only: bool = True,
-        limit: int = 10
+        limit = None
     ) -> dict:
         """List risks with filters."""
+        # Ensure valid limit (default to 10 if invalid)
+        try:
+            limit = int(limit) if limit is not None else 10
+            if limit <= 0:
+                limit = 10
+        except (ValueError, TypeError):
+            limit = 10
+
         query = select(Risk).options(selectinload(Risk.customer))
 
         if customer_id:
             query = query.where(Risk.customer_id == customer_id)
-        if severity:
-            query = query.where(Risk.severity == RiskSeverity(severity))
-        if status:
-            query = query.where(Risk.status == RiskStatus(status))
+        if severity and severity not in ('null', 'None', None):
+            try:
+                query = query.where(Risk.severity == RiskSeverity(severity.lower()))
+            except ValueError:
+                pass  # Invalid severity, ignore filter
+        if status and status not in ('null', 'None', None):
+            # Handle both string and list status
+            if isinstance(status, list):
+                valid_statuses = []
+                for s in status:
+                    try:
+                        valid_statuses.append(RiskStatus(s.lower() if isinstance(s, str) else s))
+                    except ValueError:
+                        pass
+                if valid_statuses:
+                    query = query.where(Risk.status.in_(valid_statuses))
+            else:
+                try:
+                    query = query.where(Risk.status == RiskStatus(status.lower()))
+                except ValueError:
+                    pass  # Invalid status, ignore filter
         elif open_only:
             query = query.where(Risk.status.in_([RiskStatus.OPEN, RiskStatus.MITIGATING]))
 
