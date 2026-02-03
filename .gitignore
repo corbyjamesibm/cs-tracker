@@ -76,3 +76,5 @@ test-results/
 playwright-report/
 coverage.xml
 .coverage
+backups/*
+!backups/README.md
