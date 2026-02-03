@@ -5780,6 +5780,26 @@ async function generateRecommendations() {
     }
 }
 
+let acceptRecRatingValue = null;
+
+/**
+ * Set the rating value in the accept modal
+ */
+function setAcceptRating(rating) {
+    acceptRecRatingValue = rating;
+    document.getElementById('acceptRecRatingValue').value = rating;
+
+    // Update star button visuals
+    const buttons = document.querySelectorAll('#acceptRecRating .star-btn');
+    buttons.forEach((btn, index) => {
+        if (index < rating) {
+            btn.classList.add('star-btn--active');
+        } else {
+            btn.classList.remove('star-btn--active');
+        }
+    });
+}
+
 /**
  * Open accept recommendation modal
  */
@@ -5790,6 +5810,12 @@ function openAcceptRecommendationModal(recId) {
     const modal = document.getElementById('acceptRecommendationModal');
     document.getElementById('acceptRecId').value = recId;
     document.getElementById('acceptRecTitle').textContent = rec.title;
+
+    // Reset rating
+    acceptRecRatingValue = null;
+    document.getElementById('acceptRecRatingValue').value = '';
+    const buttons = document.querySelectorAll('#acceptRecRating .star-btn');
+    buttons.forEach(btn => btn.classList.remove('star-btn--active'));
 
     // Populate year options
     const yearSelect = document.getElementById('acceptRecYear');
@@ -5837,14 +5863,23 @@ async function handleAcceptRecommendation(event) {
     btn.innerHTML = '<span class="loading-spinner"></span> Adding...';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/recommendations/${recId}/accept`, {
+        // Use the learning feedback API for accept
+        const requestBody = {
+            action: 'accept',
+            target_quarter: document.getElementById('acceptRecQuarter').value,
+            target_year: parseInt(document.getElementById('acceptRecYear').value),
+            notes: document.getElementById('acceptRecNotes').value || null
+        };
+
+        // Include rating if provided
+        if (acceptRecRatingValue) {
+            requestBody.quality_rating = acceptRecRatingValue;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/learning/recommendations/${recId}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                target_quarter: document.getElementById('acceptRecQuarter').value,
-                target_year: parseInt(document.getElementById('acceptRecYear').value),
-                notes: document.getElementById('acceptRecNotes').value || null
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -5869,17 +5904,85 @@ async function handleAcceptRecommendation(event) {
     }
 }
 
+let dismissRecRatingValue = null;
+
 /**
- * Dismiss a recommendation
+ * Open dismiss recommendation modal
  */
-async function dismissRecommendation(recId) {
-    if (!confirm('Dismiss this recommendation? It will not appear in the list.')) {
-        return;
-    }
+function openDismissRecommendationModal(recId) {
+    const rec = recommendationsCache.find(r => r.id === recId);
+    if (!rec) return;
+
+    const modal = document.getElementById('dismissRecommendationModal');
+    document.getElementById('dismissRecId').value = recId;
+    document.getElementById('dismissRecTitle').textContent = rec.title;
+
+    // Reset form
+    dismissRecRatingValue = null;
+    document.getElementById('dismissRecReason').value = '';
+    document.getElementById('dismissRecFeedback').value = '';
+    document.getElementById('dismissRecRatingValue').value = '';
+    const buttons = document.querySelectorAll('#dismissRecRating .star-btn');
+    buttons.forEach(btn => btn.classList.remove('star-btn--active'));
+
+    modal.classList.add('open');
+}
+
+/**
+ * Close dismiss recommendation modal
+ */
+function closeDismissRecommendationModal() {
+    const modal = document.getElementById('dismissRecommendationModal');
+    modal.classList.remove('open');
+}
+
+/**
+ * Set dismiss rating value
+ */
+function setDismissRating(rating) {
+    dismissRecRatingValue = rating;
+    document.getElementById('dismissRecRatingValue').value = rating;
+
+    // Update star button visuals
+    const buttons = document.querySelectorAll('#dismissRecRating .star-btn');
+    buttons.forEach((btn, index) => {
+        if (index < rating) {
+            btn.classList.add('star-btn--active');
+        } else {
+            btn.classList.remove('star-btn--active');
+        }
+    });
+}
+
+/**
+ * Handle dismiss recommendation form submit
+ */
+async function handleDismissRecommendation(event) {
+    event.preventDefault();
+
+    const recId = document.getElementById('dismissRecId').value;
+    const btn = document.getElementById('dismissRecSubmitBtn');
+    const originalText = btn.innerHTML;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Dismissing...';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/recommendations/${recId}`, {
-            method: 'DELETE'
+        const requestBody = {
+            action: 'dismiss',
+            dismiss_reason_category: document.getElementById('dismissRecReason').value,
+            feedback_reason: document.getElementById('dismissRecFeedback').value || null
+        };
+
+        // Include rating if provided
+        if (dismissRecRatingValue) {
+            requestBody.quality_rating = dismissRecRatingValue;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/learning/recommendations/${recId}/feedback`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -5887,6 +5990,7 @@ async function dismissRecommendation(recId) {
             throw new Error(error.detail || 'Failed to dismiss recommendation');
         }
 
+        closeDismissRecommendationModal();
         showToast('Recommendation dismissed', 'info');
 
         // Reload recommendations
@@ -5896,6 +6000,54 @@ async function dismissRecommendation(recId) {
     } catch (error) {
         console.error('Failed to dismiss recommendation:', error);
         showToast(error.message || 'Failed to dismiss recommendation', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+/**
+ * Dismiss a recommendation (legacy - now opens modal)
+ */
+function dismissRecommendation(recId) {
+    openDismissRecommendationModal(recId);
+}
+
+/**
+ * Quick rate a recommendation (thumbs up/down)
+ */
+async function rateRecommendation(recId, thumbsUp) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/learning/recommendations/${recId}/rate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                thumbs: thumbsUp
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to submit feedback');
+        }
+
+        // Update button state visually
+        const card = document.querySelector(`[data-recommendation-id="${recId}"]`);
+        if (card) {
+            const thumbsUpBtn = card.querySelector('.feedback-btn--thumbs-up');
+            const thumbsDownBtn = card.querySelector('.feedback-btn--thumbs-down');
+
+            thumbsUpBtn.classList.toggle('feedback-btn--active', thumbsUp === true);
+            thumbsDownBtn.classList.toggle('feedback-btn--active', thumbsUp === false);
+        }
+
+        showToast(thumbsUp ? 'Thanks for the feedback!' : 'Feedback recorded', 'success');
+
+    } catch (error) {
+        console.error('Failed to rate recommendation:', error);
+        showToast(error.message || 'Failed to submit feedback', 'error');
     }
 }
 
@@ -5906,6 +6058,12 @@ window.openAcceptRecommendationModal = openAcceptRecommendationModal;
 window.closeAcceptRecommendationModal = closeAcceptRecommendationModal;
 window.handleAcceptRecommendation = handleAcceptRecommendation;
 window.dismissRecommendation = dismissRecommendation;
+window.openDismissRecommendationModal = openDismissRecommendationModal;
+window.closeDismissRecommendationModal = closeDismissRecommendationModal;
+window.handleDismissRecommendation = handleDismissRecommendation;
+window.setDismissRating = setDismissRating;
+window.rateRecommendation = rateRecommendation;
+window.setAcceptRating = setAcceptRating;
 
 // ==================== END RECOMMENDATIONS ====================
 
@@ -6297,6 +6455,25 @@ function renderRecommendationsList(recommendations) {
                             </svg>
                             ${escapeHtml(rec.tp_feature_name)}
                         </span>` : ''}
+                    </div>
+                    <div class="recommendation-feedback">
+                        <span class="recommendation-feedback-label">Was this helpful?</span>
+                        <div class="recommendation-feedback-buttons">
+                            <button class="feedback-btn feedback-btn--thumbs-up ${rec.thumbs_feedback === true ? 'feedback-btn--active' : ''}"
+                                    onclick="rateRecommendation(${rec.id}, true)"
+                                    title="Thumbs up - relevant recommendation">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M8.864.046C7.908-.193 7.02.53 6.956 1.466c-.072 1.051-.23 2.016-.428 2.59-.125.36-.479 1.013-1.04 1.639-.557.623-1.282 1.178-2.131 1.41-.28.077-.484.324-.484.607v4.172c0 .347.301.636.637.697.306.056.552.27.552.577 0 .317-.256.544-.54.629-.203.063-.478.185-.762.327-.364.182-.678.378-.9.57-.268.234-.522.502-.619.858-.092.336-.045.7.06 1.012.111.325.278.624.492.872.411.475.991.767 1.592.926.612.162 1.264.252 1.957.322.77.078 1.543.148 2.307.15a42.33 42.33 0 0 0 3.12-.16c.616-.051 1.21-.126 1.728-.29.516-.163.973-.412 1.271-.87.3-.462.389-1.054.226-1.707l-.033-.146c-.133-.608-.306-1.201-.376-1.58-.056-.298.054-.545.238-.698.184-.153.414-.202.598-.14.198.067.398.152.57.23l.019.008c.136.066.289.135.46.195.352.126.756.208 1.145.146.392-.062.76-.276.98-.622.223-.35.27-.769.194-1.157a2.63 2.63 0 0 0-.467-1.013c-.24-.318-.575-.597-.944-.82.082-.279.13-.584.133-.909.006-.647-.198-1.296-.617-1.807a1.785 1.785 0 0 0-.21-.231 2.64 2.64 0 0 0 .21-1.061c-.006-.67-.227-1.321-.669-1.825-.437-.497-1.067-.8-1.798-.899a8.263 8.263 0 0 0-1.107-.07c-.478-.002-.959.02-1.42.068-.475.049-.93.117-1.353.203a3.8 3.8 0 0 0-.68.195c.175-.585.31-1.239.376-1.924.019-.198.034-.397.046-.597z"/>
+                                </svg>
+                            </button>
+                            <button class="feedback-btn feedback-btn--thumbs-down ${rec.thumbs_feedback === false ? 'feedback-btn--active' : ''}"
+                                    onclick="rateRecommendation(${rec.id}, false)"
+                                    title="Thumbs down - not relevant">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M8.864 15.674c-.956.24-1.843-.484-1.908-1.42-.072-1.05-.23-2.015-.428-2.59-.125-.36-.479-1.012-1.04-1.638-.557-.624-1.282-1.179-2.131-1.41-.28-.077-.484-.325-.484-.608V3.835c0-.346.301-.636.637-.697.306-.055.552-.27.552-.577 0-.316-.256-.543-.54-.628-.203-.064-.478-.186-.762-.328-.364-.182-.678-.378-.9-.57-.268-.233-.522-.502-.619-.857-.092-.337-.045-.701.06-1.013.111-.324.278-.624.492-.872.411-.474.991-.766 1.592-.925.612-.163 1.264-.252 1.957-.323.77-.077 1.543-.147 2.307-.15a42.33 42.33 0 0 1 3.12.16c.616.052 1.21.127 1.728.291.516.163.973.412 1.271.869.3.462.389 1.055.226 1.708l-.033.145c-.133.608-.306 1.202-.376 1.581-.056.297.054.544.238.697.184.153.414.203.598.141.198-.067.398-.153.57-.23l.019-.009c.136-.065.289-.134.46-.194.352-.127.756-.209 1.145-.147.392.062.76.276.98.622.223.35.27.77.194 1.158a2.63 2.63 0 0 1-.467 1.012c-.24.318-.575.598-.944.82.082.28.13.585.133.91.006.646-.198 1.295-.617 1.806a1.8 1.8 0 0 1-.21.232c.138.294.21.617.21 1.06-.006.671-.227 1.322-.669 1.826-.437.496-1.067.799-1.798.898a8.26 8.26 0 0 1-1.107.07c-.478.003-.959-.02-1.42-.067a12.58 12.58 0 0 1-1.353-.203 3.8 3.8 0 0 1-.68-.196c.175.586.31 1.24.376 1.925.019.197.034.396.046.596z"/>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `).join('')}
