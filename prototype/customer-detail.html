@@ -539,7 +539,79 @@
               </div>
             </div>
 
-            <!-- SPM Assessment Summary -->
+            <!-- Multi-Assessment Maturity Dashboard -->
+            <div class="maturity-dashboard" id="maturityDashboard">
+              <div class="maturity-dashboard__header">
+                <h2 class="maturity-dashboard__title">Maturity Dashboard</h2>
+                <div class="maturity-dashboard__overall-score">
+                  <span>Overall:</span>
+                  <span class="maturity-dashboard__score-value" id="overallMaturityScore">-</span>
+                  <span class="maturity-dashboard__score-max">/ 5.0</span>
+                </div>
+              </div>
+
+              <!-- Overall Radar (3-type radar) -->
+              <div class="overall-radar-container">
+                <canvas id="overallRadarChart" class="overall-radar-chart"></canvas>
+              </div>
+
+              <!-- Mini Radar Cards -->
+              <div class="mini-radar-grid" id="miniRadarGrid">
+                <!-- SPM Card -->
+                <div class="mini-radar-card" data-type="spm" onclick="showAssessmentTypeTab('spm')">
+                  <div class="mini-radar-card__header">
+                    <span class="mini-radar-card__type-indicator mini-radar-card__type-indicator--spm"></span>
+                    SPM
+                  </div>
+                  <div class="mini-radar-card__chart">
+                    <canvas id="miniRadarSpm"></canvas>
+                  </div>
+                  <div class="mini-radar-card__score" id="spmScore">-</div>
+                  <div class="mini-radar-card__score-label">Overall Score</div>
+                </div>
+
+                <!-- TBM Card -->
+                <div class="mini-radar-card" data-type="tbm" onclick="showAssessmentTypeTab('tbm')">
+                  <div class="mini-radar-card__header">
+                    <span class="mini-radar-card__type-indicator mini-radar-card__type-indicator--tbm"></span>
+                    TBM
+                  </div>
+                  <div class="mini-radar-card__chart">
+                    <canvas id="miniRadarTbm"></canvas>
+                  </div>
+                  <div class="mini-radar-card__score" id="tbmScore">-</div>
+                  <div class="mini-radar-card__score-label">Overall Score</div>
+                </div>
+
+                <!-- FinOps Card -->
+                <div class="mini-radar-card" data-type="finops" onclick="showAssessmentTypeTab('finops')">
+                  <div class="mini-radar-card__header">
+                    <span class="mini-radar-card__type-indicator mini-radar-card__type-indicator--finops"></span>
+                    FinOps
+                  </div>
+                  <div class="mini-radar-card__chart">
+                    <canvas id="miniRadarFinops"></canvas>
+                  </div>
+                  <div class="mini-radar-card__score" id="finopsScore">-</div>
+                  <div class="mini-radar-card__score-label">Overall Score</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Cross-Type Insights Section -->
+            <div class="card" id="crossTypeInsightsCard" style="display: none;">
+              <div class="card__header">
+                <h2 class="section-title" style="margin-bottom: 0;">
+                  <svg width="20" height="20" viewBox="0 0 32 32"><path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 5a1.5 1.5 0 11-1.5 1.5A1.5 1.5 0 0116 7zm4 17h-8v-2h3v-7h-2v-2h4v9h3z"/></svg>
+                  Cross-Type Insights
+                </h2>
+              </div>
+              <div id="crossTypeInsightsContainer">
+                <!-- Insights will be rendered here -->
+              </div>
+            </div>
+
+            <!-- SPM Assessment Summary (Legacy - kept for backward compatibility) -->
             <div class="card" id="spmAssessmentSummaryCard">
               <div class="card__header">
                 <h2 class="section-title" style="margin-bottom: 0;">

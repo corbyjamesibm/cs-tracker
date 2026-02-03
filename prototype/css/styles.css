@@ -38,6 +38,12 @@
   --health-yellow: #f1c21b;
   --health-green: #24a148;
 
+  /* Assessment Type Colors */
+  --spm-color: #0f62fe;       /* Blue - Strategic Portfolio Management */
+  --tbm-color: #198038;       /* Green - Technology Business Management */
+  --finops-color: #8a3ffc;    /* Purple - Financial Operations */
+  --multi-color: #f1c21b;     /* Gold - Synergistic/Multi-type items */
+
   /* Spacing Scale */
   --cds-spacing-01: 0.125rem;
   --cds-spacing-02: 0.25rem;
@@ -4483,4 +4489,407 @@ input[type="file"].form-input::file-selector-button:hover {
 .required-badge--no {
   background: var(--cds-layer-02);
   color: var(--cds-text-secondary);
+}
+
+/* ============================================
+   MULTI-ASSESSMENT DASHBOARD STYLES
+   ============================================ */
+
+/* Maturity Dashboard Header */
+.maturity-dashboard {
+  background: linear-gradient(135deg, #161616 0%, #262626 100%);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.maturity-dashboard__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.maturity-dashboard__title {
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.maturity-dashboard__overall-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #ffffff;
+}
+
+.maturity-dashboard__score-value {
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.maturity-dashboard__score-max {
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+/* Overall Radar (3-type radar) */
+.overall-radar-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px 0;
+}
+
+.overall-radar-chart {
+  max-width: 280px;
+  max-height: 280px;
+}
+
+/* Mini Radar Cards Grid */
+.mini-radar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.mini-radar-card {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.mini-radar-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.mini-radar-card--empty {
+  background: var(--cds-layer-02);
+  opacity: 0.7;
+}
+
+.mini-radar-card__type-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.mini-radar-card__type-indicator--spm {
+  background: var(--spm-color);
+}
+
+.mini-radar-card__type-indicator--tbm {
+  background: var(--tbm-color);
+}
+
+.mini-radar-card__type-indicator--finops {
+  background: var(--finops-color);
+}
+
+.mini-radar-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin-bottom: 12px;
+}
+
+.mini-radar-card__chart {
+  max-width: 140px;
+  max-height: 140px;
+  margin: 0 auto 12px;
+}
+
+.mini-radar-card__score {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--cds-text-primary);
+}
+
+.mini-radar-card__score-label {
+  font-size: 12px;
+  color: var(--cds-text-secondary);
+}
+
+.mini-radar-card__empty-state {
+  padding: 40px 16px;
+  color: var(--cds-text-secondary);
+  font-size: 14px;
+}
+
+.mini-radar-card__action {
+  margin-top: 12px;
+}
+
+/* Assessment Type Tabs */
+.assessment-type-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  margin-bottom: 24px;
+}
+
+.assessment-type-tab {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cds-text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assessment-type-tab:hover {
+  color: var(--cds-text-primary);
+  background: var(--cds-layer-hover-01);
+}
+
+.assessment-type-tab--active {
+  color: var(--cds-interactive);
+  border-bottom-color: var(--cds-interactive);
+}
+
+.assessment-type-tab__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.assessment-type-tab__dot--spm {
+  background: var(--spm-color);
+}
+
+.assessment-type-tab__dot--tbm {
+  background: var(--tbm-color);
+}
+
+.assessment-type-tab__dot--finops {
+  background: var(--finops-color);
+}
+
+/* Assessment Type Badge */
+.assessment-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.assessment-type-badge--spm {
+  background: rgba(15, 98, 254, 0.15);
+  color: var(--spm-color);
+}
+
+.assessment-type-badge--tbm {
+  background: rgba(25, 128, 56, 0.15);
+  color: var(--tbm-color);
+}
+
+.assessment-type-badge--finops {
+  background: rgba(138, 63, 252, 0.15);
+  color: var(--finops-color);
+}
+
+.assessment-type-badge--multi {
+  background: rgba(241, 194, 27, 0.15);
+  color: #8a6d00;
+}
+
+/* Synergy Indicator */
+.synergy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: linear-gradient(135deg, rgba(241, 194, 27, 0.2), rgba(241, 194, 27, 0.1));
+  border: 1px solid var(--multi-color);
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a6d00;
+}
+
+.synergy-badge::before {
+  content: '\2728'; /* sparkles emoji */
+}
+
+/* Cross-Type Insights */
+.cross-type-insight {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.cross-type-insight--info {
+  background: rgba(0, 67, 206, 0.08);
+  border-left: 3px solid var(--cds-support-info);
+}
+
+.cross-type-insight--warning {
+  background: rgba(241, 194, 27, 0.15);
+  border-left: 3px solid var(--cds-support-warning);
+}
+
+.cross-type-insight--success {
+  background: rgba(36, 161, 72, 0.08);
+  border-left: 3px solid var(--cds-support-success);
+}
+
+.cross-type-insight__icon {
+  font-size: 18px;
+}
+
+.cross-type-insight__content {
+  flex: 1;
+}
+
+.cross-type-insight__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin-bottom: 4px;
+}
+
+.cross-type-insight__description {
+  font-size: 13px;
+  color: var(--cds-text-secondary);
+  line-height: 1.4;
+}
+
+/* Unified Roadmap Timeline */
+.unified-roadmap-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.unified-roadmap-quarter {
+  position: relative;
+}
+
+.unified-roadmap-quarter__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin-bottom: 12px;
+  padding-left: 20px;
+}
+
+.unified-roadmap-quarter__header::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cds-border-subtle-01);
+}
+
+.unified-roadmap-quarter__dot {
+  position: absolute;
+  left: -4px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cds-interactive);
+  border: 2px solid white;
+}
+
+.unified-roadmap-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-left: 20px;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.unified-roadmap-item:hover {
+  border-color: var(--cds-interactive);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.unified-roadmap-item__types {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.unified-roadmap-item__type-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.unified-roadmap-item__content {
+  flex: 1;
+}
+
+.unified-roadmap-item__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cds-text-primary);
+  margin-bottom: 4px;
+}
+
+.unified-roadmap-item__meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--cds-text-secondary);
+}
+
+.unified-roadmap-item__score {
+  font-weight: 600;
+  color: var(--cds-interactive);
+}
+
+/* Responsive for mini-radar grid */
+@media (max-width: 992px) {
+  .mini-radar-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 576px) {
+  .mini-radar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assessment-type-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .assessment-type-tab {
+    white-space: nowrap;
+  }
 }

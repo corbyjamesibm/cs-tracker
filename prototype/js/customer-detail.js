@@ -123,6 +123,9 @@ async function loadCustomerDetail() {
         // Load SPM assessments for summary display
         loadAssessments(customerId);
 
+        // Load multi-assessment dashboard
+        loadMultiAssessmentDashboard(customerId);
+
     } catch (error) {
         console.error('Failed to load customer:', error);
         if (error.message && error.message.includes('404')) {
@@ -8902,3 +8905,261 @@ window.applyFlowFilters = applyFlowFilters;
 window.resetFlowFilters = resetFlowFilters;
 window.copyFlowVisualToClipboard = copyFlowVisualToClipboard;
 window.downloadFlowVisual = downloadFlowVisual;
+
+// Multi-assessment dashboard exports
+window.loadMultiAssessmentDashboard = loadMultiAssessmentDashboard;
+window.showAssessmentTypeTab = showAssessmentTypeTab;
+
+// ============================================================
+// MULTI-ASSESSMENT DASHBOARD
+// ============================================================
+
+// Global chart instances for multi-assessment
+let overallRadarChartInstance = null;
+let miniRadarCharts = {
+    spm: null,
+    tbm: null,
+    finops: null
+};
+
+// Assessment type colors
+const ASSESSMENT_TYPE_COLORS = {
+    spm: '#0f62fe',
+    tbm: '#198038',
+    finops: '#8a3ffc'
+};
+
+// Load the multi-assessment dashboard data
+async function loadMultiAssessmentDashboard(customerId) {
+    try {
+        // Get comprehensive report data
+        const report = await API.AssessmentTypeAPI.getComprehensiveReport(customerId);
+
+        // Update overall maturity score
+        const overallScoreEl = document.getElementById('overallMaturityScore');
+        if (overallScoreEl) {
+            if (report.overall_section.overall_maturity_score !== null) {
+                overallScoreEl.textContent = report.overall_section.overall_maturity_score.toFixed(1);
+            } else {
+                overallScoreEl.textContent = '-';
+            }
+        }
+
+        // Render overall radar chart (3 axes: SPM, TBM, FinOps)
+        renderOverallRadarChart(report.overall_section.type_scores);
+
+        // Render mini radar charts for each type
+        for (const typeReport of report.assessment_reports) {
+            const typeCode = typeReport.assessment_type.code;
+            renderMiniRadarChart(typeCode, typeReport.scores);
+
+            // Update score display
+            const scoreEl = document.getElementById(`${typeCode}Score`);
+            if (scoreEl) {
+                if (typeReport.scores.overall_score !== null) {
+                    scoreEl.textContent = typeReport.scores.overall_score.toFixed(1);
+                } else {
+                    scoreEl.textContent = '-';
+                }
+            }
+
+            // Update card state (empty vs has data)
+            const cardEl = document.querySelector(`.mini-radar-card[data-type="${typeCode}"]`);
+            if (cardEl) {
+                if (!typeReport.scores.has_assessment) {
+                    cardEl.classList.add('mini-radar-card--empty');
+                } else {
+                    cardEl.classList.remove('mini-radar-card--empty');
+                }
+            }
+        }
+
+        // Render cross-type insights
+        renderCrossTypeInsights(report.cross_type_analysis);
+
+    } catch (error) {
+        console.error('Failed to load multi-assessment dashboard:', error);
+        // Show fallback or error state
+    }
+}
+
+// Render the overall radar chart showing SPM, TBM, FinOps scores
+function renderOverallRadarChart(typeScores) {
+    const ctx = document.getElementById('overallRadarChart');
+    if (!ctx) return;
+
+    // Destroy existing chart
+    if (overallRadarChartInstance) {
+        overallRadarChartInstance.destroy();
+    }
+
+    // Prepare data
+    const labels = typeScores.map(s => s.short_name);
+    const scores = typeScores.map(s => s.overall_score || 0);
+    const colors = typeScores.map(s => ASSESSMENT_TYPE_COLORS[s.type_code] || '#666');
+
+    overallRadarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Maturity Score',
+                data: scores,
+                backgroundColor: 'rgba(15, 98, 254, 0.15)',
+                borderColor: '#0f62fe',
+                borderWidth: 2,
+                pointBackgroundColor: colors,
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    min: 0,
+                    max: 5,
+                    ticks: {
+                        stepSize: 1,
+                        display: true,
+                        color: '#ffffff80',
+                        backdropColor: 'transparent'
+                    },
+                    grid: {
+                        color: '#ffffff20'
+                    },
+                    angleLines: {
+                        color: '#ffffff20'
+                    },
+                    pointLabels: {
+                        color: '#ffffff',
+                        font: {
+                            size: 12,
+                            weight: '600'
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render a mini radar chart for a specific assessment type
+function renderMiniRadarChart(typeCode, scores) {
+    const canvasId = `miniRadar${typeCode.charAt(0).toUpperCase() + typeCode.slice(1)}`;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    // Destroy existing chart
+    if (miniRadarCharts[typeCode]) {
+        miniRadarCharts[typeCode].destroy();
+    }
+
+    // If no assessment, show empty state
+    if (!scores.has_assessment || scores.dimensions.length === 0) {
+        // Clear the canvas and show placeholder
+        const context = ctx.getContext('2d');
+        context.clearRect(0, 0, ctx.width, ctx.height);
+        return;
+    }
+
+    // Prepare data
+    const labels = scores.dimensions.map(d => d.name);
+    const data = scores.dimensions.map(d => d.score || 0);
+    const typeColor = ASSESSMENT_TYPE_COLORS[typeCode] || '#666';
+
+    miniRadarCharts[typeCode] = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: `${typeColor}20`,
+                borderColor: typeColor,
+                borderWidth: 2,
+                pointBackgroundColor: typeColor,
+                pointRadius: 3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    min: 0,
+                    max: 5,
+                    ticks: {
+                        display: false
+                    },
+                    grid: {
+                        color: '#e0e0e0'
+                    },
+                    angleLines: {
+                        color: '#e0e0e0'
+                    },
+                    pointLabels: {
+                        display: false
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Render cross-type insights
+function renderCrossTypeInsights(analysis) {
+    const container = document.getElementById('crossTypeInsightsContainer');
+    const card = document.getElementById('crossTypeInsightsCard');
+
+    if (!container || !card) return;
+
+    // Hide card if no insights
+    if (!analysis.insights || analysis.insights.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = 'block';
+
+    const insightIcons = {
+        synergy: '\u2728', // sparkles
+        gap: '\u26a0\ufe0f', // warning
+        strength: '\u2705', // checkmark
+        conflict: '\u274c' // x
+    };
+
+    container.innerHTML = analysis.insights.map(insight => `
+        <div class="cross-type-insight cross-type-insight--${insight.severity}">
+            <div class="cross-type-insight__icon">${insightIcons[insight.insight_type] || '\u2139\ufe0f'}</div>
+            <div class="cross-type-insight__content">
+                <div class="cross-type-insight__title">${escapeHtml(insight.title)}</div>
+                <div class="cross-type-insight__description">${escapeHtml(insight.description)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Show assessment type tab (navigate to assessment details)
+function showAssessmentTypeTab(typeCode) {
+    // Switch to the SPM assessment section (or future type-specific sections)
+    showSection('spmAssessment');
+
+    // TODO: In future, implement tab switching within assessment section
+    // for now, just navigate to the assessment section
+    console.log(`Navigate to ${typeCode} assessment details`);
+}

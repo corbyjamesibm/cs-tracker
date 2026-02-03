@@ -428,9 +428,12 @@ const AssessmentRecommendationsAPI = {
 // Assessment API
 const AssessmentAPI = {
     // Templates
-    async getTemplates(activeOnly = false) {
-        const params = activeOnly ? '?active_only=true' : '';
-        return apiRequest(`/assessments/templates${params}`);
+    async getTemplates(activeOnly = false, type = null) {
+        const params = new URLSearchParams();
+        if (activeOnly) params.set('active_only', 'true');
+        if (type) params.set('type', type);
+        const queryString = params.toString();
+        return apiRequest(`/assessments/templates${queryString ? '?' + queryString : ''}`);
     },
 
     async getActiveTemplate() {
@@ -498,9 +501,12 @@ const AssessmentAPI = {
     },
 
     // Customer Assessments
-    async getCustomerAssessments(customerId, status = null) {
-        const params = status ? `?status=${status}` : '';
-        return apiRequest(`/assessments/customer/${customerId}${params}`);
+    async getCustomerAssessments(customerId, status = null, type = null) {
+        const params = new URLSearchParams();
+        if (status) params.set('status', status);
+        if (type) params.set('type', type);
+        const queryString = params.toString();
+        return apiRequest(`/assessments/customer/${customerId}${queryString ? '?' + queryString : ''}`);
     },
 
     async getCustomerHistory(customerId) {
@@ -907,6 +913,70 @@ const RecommendationsAPI = {
     },
 };
 
+// Assessment Types API (Multi-Assessment Support)
+const AssessmentTypeAPI = {
+    // List all assessment types
+    async getTypes(activeOnly = true) {
+        const params = `?active_only=${activeOnly}`;
+        return apiRequest(`/assessment-types${params}`);
+    },
+
+    // Get single assessment type
+    async getType(id) {
+        return apiRequest(`/assessment-types/${id}`);
+    },
+
+    // Get assessment type by code (spm, tbm, finops)
+    async getTypeByCode(code) {
+        return apiRequest(`/assessment-types/code/${code}`);
+    },
+
+    // Get customer assessment summary across all types
+    async getCustomerSummary(customerId, refresh = false) {
+        const params = refresh ? '?refresh=true' : '';
+        return apiRequest(`/assessment-types/customers/${customerId}/summary${params}`);
+    },
+
+    // Get comprehensive multi-type report
+    async getComprehensiveReport(customerId) {
+        return apiRequest(`/assessment-types/customers/${customerId}/comprehensive-report`);
+    },
+
+    // Get aggregated recommendations
+    async getAggregatedRecommendations(customerId, includeDismissed = false, includeAccepted = true) {
+        const params = new URLSearchParams({
+            include_dismissed: includeDismissed,
+            include_accepted: includeAccepted
+        });
+        return apiRequest(`/assessment-types/customers/${customerId}/recommendations/aggregated?${params}`);
+    },
+
+    // Generate/regenerate aggregated recommendations
+    async generateAggregatedRecommendations(customerId, includeDismissed = false, limit = 20) {
+        return apiRequest(`/assessment-types/customers/${customerId}/recommendations/aggregate`, {
+            method: 'POST',
+            body: JSON.stringify({
+                include_dismissed: includeDismissed,
+                limit: limit
+            }),
+        });
+    },
+
+    // Update aggregated recommendation
+    async updateAggregatedRecommendation(customerId, recommendationId, data) {
+        return apiRequest(`/assessment-types/customers/${customerId}/recommendations/aggregated/${recommendationId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    },
+
+    // Get unified roadmap
+    async getUnifiedRoadmap(customerId, includeAccepted = true) {
+        const params = `?include_accepted=${includeAccepted}`;
+        return apiRequest(`/assessment-types/customers/${customerId}/unified-roadmap${params}`);
+    },
+};
+
 // Export for use in other files
 window.API = {
     CustomerAPI,
@@ -918,6 +988,7 @@ window.API = {
     RiskAPI,
     AssessmentAPI,
     AssessmentRecommendationsAPI,
+    AssessmentTypeAPI,
     LookupAPI,
     MeetingNoteAPI,
     DocumentAPI,
