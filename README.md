@@ -11,6 +11,7 @@ A comprehensive customer success tracking application built with FastAPI and Pos
 - **Risk Management**: Track and manage customer risks with severity levels and mitigation plans
 - **Meeting Notes**: Document customer meetings with attendees, notes, and action items
 - **Assessment Templates**: Create and manage assessment templates for customer evaluations
+- **Multi-Assessment System**: Support for SPM, TBM, and FinOps assessment types with composite dashboard
 - **Admin Dashboard**: Manage use cases, categories, and system settings
 - **AI Chat Assistant**: LLM-powered chat interface for querying and acting on customer data
 - **MCP Server**: Model Context Protocol server for Claude Desktop and Claude Code integration
@@ -262,6 +263,12 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 - `POST /api/v1/assessments` - Create a customer assessment
 - `GET /api/v1/assessments/customer/{id}/flow-visualization` - Get Sankey flow data
 
+### Multi-Assessment System
+- `GET /api/v1/assessment-types` - List assessment types (SPM, TBM, FinOps)
+- `GET /api/v1/assessment-types/customers/{id}/comprehensive-report` - Get multi-type report
+- `GET /api/v1/assessment-types/customers/{id}/recommendations/aggregated` - Get cross-type recommendations
+- `GET /api/v1/assessment-types/customers/{id}/unified-roadmap` - Get unified roadmap
+
 ### TP Solutions
 - `GET /api/v1/tp-solutions` - List TargetProcess solutions
 - `GET /api/v1/tp-solutions/categories` - Get solution categories with counts
@@ -325,6 +332,32 @@ The Use Case to TP Solution Sankey diagram (`prototype/mockup-implementation-flo
 - Required solutions marked with asterisk (*)
 - Dynamic data tables showing mappings
 
+## Multi-Assessment System
+
+The application supports three assessment types that can be conducted independently and viewed together in a composite dashboard:
+
+| Assessment Type | Code | Color | Focus |
+|----------------|------|-------|-------|
+| **Strategic Portfolio Management** | SPM | Blue (#0f62fe) | Portfolio strategy and planning maturity |
+| **Technology Business Management** | TBM | Green (#198038) | IT financial management and cost transparency |
+| **Financial Operations** | FinOps | Purple (#8a3ffc) | Cloud cost optimization and governance |
+
+### Features
+
+- **Composite Dashboard**: View all assessment types together with an overall maturity radar chart
+- **Cross-Type Recommendations**: Recommendations that benefit multiple assessment types receive a synergy boost
+- **Unified Roadmap**: Consolidated roadmap showing items from all assessment types
+- **Comprehensive Report**: Full multi-type report with individual sections and aggregated insights
+
+### Synergy Boost Algorithm
+
+When a recommendation applies to multiple assessment types, its priority score is boosted:
+```
+combined_priority = base_priority × (1 + 0.15 × (type_count - 1))
+```
+
+For example, a recommendation benefiting both SPM and TBM receives a 15% priority boost.
+
 ## SPM Framework Use Cases
 
 The application tracks use case adoption across the SPM (Strategic Portfolio Management) Framework:
@@ -340,6 +373,54 @@ Each solution area covers four domains:
 - Portfolio Management
 - Resource Management
 - Financial Management
+
+## Testing
+
+The project includes both backend unit tests and frontend E2E tests.
+
+### Backend Tests (pytest)
+
+```bash
+# Run all backend tests
+./run_tests.sh
+
+# Or manually
+cd backend
+pytest tests/backend -v
+```
+
+### E2E Tests (Playwright)
+
+```bash
+# Install dependencies
+npm install
+
+# Run E2E tests
+npx playwright test
+
+# Run with UI
+npx playwright test --ui
+```
+
+### GitHub Actions CI
+
+The project includes a CI workflow (`.github/workflows/test.yml`) that runs tests automatically on push and pull requests.
+
+## Database Backups
+
+Before running database migrations, always backup your data:
+
+```bash
+# Full database backup
+podman exec cst-db pg_dump -U postgres -d cstracker \
+  -F c > backups/pre_migration_$(date +%Y%m%d_%H%M%S).dump
+
+# Restore from backup
+podman exec -i cst-db pg_restore -U postgres -d cstracker \
+  --clean --if-exists < backups/backup_file.dump
+```
+
+See `backups/README.md` for detailed backup procedures.
 
 ## License
 
