@@ -6,7 +6,7 @@ import os
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.api import customers, tasks, engagements, users, partners, use_cases, health, roadmaps, admin, auth, risks, assessments, lookups, meeting_notes, documents, chat, mappings, recommendations, ai, tp_solutions, learning
+from app.api import customers, tasks, engagements, users, partners, use_cases, health, roadmaps, admin, auth, risks, assessments, assessment_types, lookups, meeting_notes, documents, chat, mappings, recommendations, ai, tp_solutions, learning
 
 
 @asynccontextmanager
@@ -54,6 +54,7 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(risks.router, prefix="/api/v1/risks", tags=["Risks"])
 app.include_router(assessments.router, prefix="/api/v1/assessments", tags=["Assessments"])
+app.include_router(assessment_types.router, prefix="/api/v1/assessment-types", tags=["Assessment Types"])
 app.include_router(lookups.router, prefix="/api/v1/lookups", tags=["Lookups"])
 app.include_router(meeting_notes.router, prefix="/api/v1/meeting-notes", tags=["Meeting Notes"])
 app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])

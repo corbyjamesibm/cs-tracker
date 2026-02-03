@@ -74,12 +74,26 @@ class AssessmentQuestionResponse(AssessmentQuestionBase):
     created_at: datetime
 
 
+# === Assessment Type Info ===
+
+class AssessmentTypeInfo(BaseModel):
+    """Minimal assessment type info for embedding in responses"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name: str
+    short_name: str
+    color: str
+
+
 # === Assessment Template Schemas ===
 
 class AssessmentTemplateBase(BaseModel):
     name: str
     version: str
     description: Optional[str] = None
+    assessment_type_id: Optional[int] = None
 
 
 class AssessmentTemplateCreate(AssessmentTemplateBase):
@@ -92,6 +106,7 @@ class AssessmentTemplateUpdate(BaseModel):
     version: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    assessment_type_id: Optional[int] = None
 
 
 class AssessmentTemplateResponse(AssessmentTemplateBase):
@@ -99,6 +114,8 @@ class AssessmentTemplateResponse(AssessmentTemplateBase):
 
     id: int
     is_active: bool
+    assessment_type_id: Optional[int] = None
+    assessment_type: Optional[AssessmentTypeInfo] = None
     created_by_id: Optional[int] = None
     created_by: Optional[UserInfo] = None
     created_at: datetime
@@ -146,6 +163,7 @@ class AssessmentAnswerWithQuestion(AssessmentAnswerResponse):
 class CustomerAssessmentBase(BaseModel):
     assessment_date: Optional[date] = None
     notes: Optional[str] = None
+    assessment_type_id: Optional[int] = None
 
 
 class CustomerAssessmentCreate(CustomerAssessmentBase):
@@ -163,6 +181,8 @@ class CustomerAssessmentResponse(CustomerAssessmentBase):
     id: int
     customer_id: int
     template_id: int
+    assessment_type_id: Optional[int] = None
+    assessment_type: Optional[AssessmentTypeInfo] = None
     status: AssessmentStatus
     overall_score: Optional[float] = None
     dimension_scores: Optional[dict[str, Any]] = None
@@ -371,6 +391,8 @@ class FlowVisualizationResponse(BaseModel):
     """Flow visualization data for Sankey diagram"""
     customer_id: int
     assessment_id: Optional[int] = None
+    assessment_type_id: Optional[int] = None
+    assessment_type_code: Optional[str] = None
     nodes: List[FlowNode] = []
     links: List[FlowLink] = []
     # Summary stats

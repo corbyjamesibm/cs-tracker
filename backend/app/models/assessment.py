@@ -16,20 +16,26 @@ class AssessmentStatus(str, enum.Enum):
 
 
 class AssessmentTemplate(Base):
-    """Master template for SPM maturity assessments - admin managed"""
+    """Master template for assessments (SPM, TBM, FinOps) - admin managed"""
     __tablename__ = "assessment_templates"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), index=True)  # "SPM Maturity Assessment v2.0"
     version: Mapped[str] = mapped_column(String(50))  # "2.0"
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=False)  # Only one active at a time
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)  # Only one active at a time per type
+
+    # Assessment type linkage
+    assessment_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assessment_types.id"), nullable=True, index=True
+    )
 
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
+    assessment_type: Mapped[Optional["AssessmentType"]] = relationship(back_populates="templates")
     dimensions: Mapped[List["AssessmentDimension"]] = relationship(
         back_populates="template", cascade="all, delete-orphan", order_by="AssessmentDimension.display_order"
     )
@@ -108,6 +114,11 @@ class CustomerAssessment(Base):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
     template_id: Mapped[int] = mapped_column(ForeignKey("assessment_templates.id"))
 
+    # Assessment type (denormalized from template for efficient filtering)
+    assessment_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assessment_types.id"), nullable=True, index=True
+    )
+
     assessment_date: Mapped[date] = mapped_column(Date, default=date.today)
     status: Mapped[AssessmentStatus] = mapped_column(SQLEnum(AssessmentStatus), default=AssessmentStatus.DRAFT)
     overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Calculated average
@@ -123,6 +134,7 @@ class CustomerAssessment(Base):
     # Relationships
     customer: Mapped["Customer"] = relationship(back_populates="assessments")
     template: Mapped["AssessmentTemplate"] = relationship(back_populates="customer_assessments")
+    assessment_type: Mapped[Optional["AssessmentType"]] = relationship(back_populates="assessments")
     completed_by: Mapped[Optional["User"]] = relationship()
     responses: Mapped[List["AssessmentResponse"]] = relationship(
         back_populates="customer_assessment", cascade="all, delete-orphan"
@@ -259,6 +271,54 @@ class CustomerAssessmentTarget(Base):
         return f"<CustomerAssessmentTarget {self.name} for Customer {self.customer_id}>"
 
 
+class CustomerAssessmentSummary(Base):
+    """
+    Aggregated view across all assessment types for a customer.
+    Provides quick access to latest assessments of each type and overall scores.
+    """
+    __tablename__ = "customer_assessment_summaries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), unique=True, index=True)
+
+    # Latest assessment IDs for each type
+    latest_spm_assessment_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("customer_assessments.id"), nullable=True
+    )
+    latest_tbm_assessment_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("customer_assessments.id"), nullable=True
+    )
+    latest_finops_assessment_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("customer_assessments.id"), nullable=True
+    )
+
+    # Scores by type: {"spm": {"overall": 3.5, "dimensions": {...}}, "tbm": {...}}
+    scores_by_type: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, default=dict)
+
+    # Calculated overall maturity score across all types
+    overall_maturity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    last_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    customer: Mapped["Customer"] = relationship()
+    latest_spm_assessment: Mapped[Optional["CustomerAssessment"]] = relationship(
+        foreign_keys=[latest_spm_assessment_id]
+    )
+    latest_tbm_assessment: Mapped[Optional["CustomerAssessment"]] = relationship(
+        foreign_keys=[latest_tbm_assessment_id]
+    )
+    latest_finops_assessment: Mapped[Optional["CustomerAssessment"]] = relationship(
+        foreign_keys=[latest_finops_assessment_id]
+    )
+
+    def __repr__(self) -> str:
+        return f"<CustomerAssessmentSummary for Customer {self.customer_id}>"
+
+
 class AssessmentRecommendation(Base):
     """Recommendations added by assessors to assessment reports"""
     __tablename__ = "assessment_recommendations"
@@ -288,3 +348,4 @@ class AssessmentRecommendation(Base):
 # Import at bottom to avoid circular imports
 from app.models.customer import Customer
 from app.models.user import User
+from app.models.assessment_type import AssessmentType

@@ -7,18 +7,21 @@ from .use_case import UseCase, CustomerUseCase, UseCaseStatus
 from .custom_field import CustomField, CustomFieldValue, FieldType
 from .settings import AppSetting, SettingValueType
 from .risk import Risk, RiskSeverity, RiskStatus, RiskCategory
+from .assessment_type import AssessmentType, AssessmentTypeCode, ASSESSMENT_TYPE_SEED_DATA
 from .assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
     CustomerAssessment, AssessmentResponse, AssessmentStatus,
     AssessmentResponseAudit, CustomerAssessmentTarget,
-    AssessmentRecommendation, RecommendationPriority
+    AssessmentRecommendation, RecommendationPriority,
+    CustomerAssessmentSummary
 )
 from .lookup import LookupValue
 from .meeting_note import MeetingNote
 from .document import Document
 from .roadmap import Roadmap, RoadmapItem, RoadmapUpdate, RoadmapItemStatus, RoadmapItemCategory
 from .mapping import (
-    DimensionUseCaseMapping, UseCaseTPFeatureMapping, RoadmapRecommendation
+    DimensionUseCaseMapping, UseCaseTPFeatureMapping, RoadmapRecommendation,
+    AggregatedRecommendation
 )
 from .tp_solution import TPSolution, TPSolutionCategory
 from .use_case_solution_mapping import UseCaseTPSolutionMapping
@@ -37,15 +40,18 @@ __all__ = [
     "CustomField", "CustomFieldValue", "FieldType",
     "AppSetting", "SettingValueType",
     "Risk", "RiskSeverity", "RiskStatus", "RiskCategory",
+    "AssessmentType", "AssessmentTypeCode", "ASSESSMENT_TYPE_SEED_DATA",
     "AssessmentTemplate", "AssessmentDimension", "AssessmentQuestion",
     "CustomerAssessment", "AssessmentResponse", "AssessmentStatus",
     "AssessmentResponseAudit", "CustomerAssessmentTarget",
     "AssessmentRecommendation", "RecommendationPriority",
+    "CustomerAssessmentSummary",
     "LookupValue",
     "MeetingNote",
     "Document",
     "Roadmap", "RoadmapItem", "RoadmapUpdate", "RoadmapItemStatus", "RoadmapItemCategory",
     "DimensionUseCaseMapping", "UseCaseTPFeatureMapping", "RoadmapRecommendation",
+    "AggregatedRecommendation",
     "TPSolution", "TPSolutionCategory",
     "UseCaseTPSolutionMapping",
     "RecommendationFeedback", "MappingEffectiveness", "WeightAdjustmentHistory",

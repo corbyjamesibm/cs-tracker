@@ -1,7 +1,8 @@
 from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, Float, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
-from typing import Optional
+from typing import Optional, List, Any
 from datetime import datetime
 
 from app.core.database import Base
@@ -14,6 +15,11 @@ class DimensionUseCaseMapping(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     dimension_id: Mapped[int] = mapped_column(ForeignKey("assessment_dimensions.id"), index=True)
     use_case_id: Mapped[int] = mapped_column(ForeignKey("use_cases.id"), index=True)
+
+    # Assessment type for type-specific mappings
+    assessment_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assessment_types.id"), nullable=True, index=True
+    )
 
     # How much this use case improves the dimension (0.0-1.0)
     impact_weight: Mapped[float] = mapped_column(Float, default=0.5)
@@ -36,6 +42,7 @@ class DimensionUseCaseMapping(Base):
     # Relationships
     dimension: Mapped["AssessmentDimension"] = relationship()
     use_case: Mapped["UseCase"] = relationship()
+    assessment_type: Mapped[Optional["AssessmentType"]] = relationship()
 
     def __repr__(self) -> str:
         return f"<DimensionUseCaseMapping {self.dimension_id} -> {self.use_case_id}>"
@@ -81,6 +88,11 @@ class RoadmapRecommendation(Base):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
     customer_assessment_id: Mapped[int] = mapped_column(ForeignKey("customer_assessments.id"), index=True)
 
+    # Assessment type for type-specific filtering
+    assessment_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assessment_types.id"), nullable=True, index=True
+    )
+
     # What's being recommended
     use_case_id: Mapped[int] = mapped_column(ForeignKey("use_cases.id"))
     tp_feature_mapping_id: Mapped[Optional[int]] = mapped_column(
@@ -121,6 +133,7 @@ class RoadmapRecommendation(Base):
     # Relationships
     customer: Mapped["Customer"] = relationship()
     customer_assessment: Mapped["CustomerAssessment"] = relationship()
+    assessment_type: Mapped[Optional["AssessmentType"]] = relationship()
     use_case: Mapped["UseCase"] = relationship()
     tp_feature_mapping: Mapped[Optional["UseCaseTPFeatureMapping"]] = relationship()
     roadmap_item: Mapped[Optional["RoadmapItem"]] = relationship()
@@ -131,8 +144,73 @@ class RoadmapRecommendation(Base):
         return f"<RoadmapRecommendation {self.id}: {self.title}>"
 
 
+class AggregatedRecommendation(Base):
+    """
+    Cross-type recommendations with de-duplication.
+    When the same use case is recommended by multiple assessment types,
+    this aggregates them into a single recommendation with synergy boost.
+    """
+    __tablename__ = "aggregated_recommendations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+    use_case_id: Mapped[int] = mapped_column(ForeignKey("use_cases.id"), index=True)
+
+    # Recommendation details
+    title: Mapped[str] = mapped_column(String(500))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Source tracking: which assessment types recommended this
+    # e.g., ["spm", "tbm"] or ["finops"]
+    source_assessment_types: Mapped[List[str]] = mapped_column(JSONB, default=list)
+
+    # IDs of the source RoadmapRecommendations
+    # e.g., [1, 5, 12] - recommendations that were aggregated
+    source_recommendation_ids: Mapped[List[int]] = mapped_column(JSONB, default=list)
+
+    # Combined priority score with synergy boost
+    # Formula: base_score * (1 + 0.15 * (type_count - 1))
+    combined_priority_score: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Average of individual priority scores before synergy boost
+    base_priority_score: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # True if recommended by multiple assessment types
+    is_synergistic: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Estimated effort (S/M/L)
+    estimated_effort: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    # Target timeline
+    target_quarter: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # "Q1", "Q2", etc.
+    target_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Status
+    is_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Link to created roadmap item (if accepted)
+    roadmap_item_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("roadmap_items.id"), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    customer: Mapped["Customer"] = relationship()
+    use_case: Mapped["UseCase"] = relationship()
+    roadmap_item: Mapped[Optional["RoadmapItem"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<AggregatedRecommendation {self.id}: {self.title} ({', '.join(self.source_assessment_types)})>"
+
+
 # Import at bottom to avoid circular imports
 from app.models.assessment import AssessmentDimension, CustomerAssessment
+from app.models.assessment_type import AssessmentType
 from app.models.use_case import UseCase
 from app.models.customer import Customer
 from app.models.roadmap import RoadmapItem
