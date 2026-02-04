@@ -384,6 +384,9 @@ class CustomerRecommendation(Base):
     # Dimensions this recommendation impacts (e.g., ["Organization", "Strategic Planning"])
     impacted_dimensions: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
+    # Tools involved (e.g., ["Targetprocess", "Costing", "Planning", "Cloudability"])
+    tools: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, default=list)
+
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     completed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 

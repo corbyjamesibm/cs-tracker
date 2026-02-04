@@ -461,6 +461,7 @@ class CustomerRecommendationBase(BaseModel):
     assessment_type_id: Optional[int] = None
     expected_impact: Optional[float] = None
     impacted_dimensions: Optional[List[str]] = None
+    tools: Optional[List[str]] = None  # e.g., ["Targetprocess", "Costing", "Planning", "Cloudability"]
     due_date: Optional[date] = None
 
 
@@ -479,6 +480,7 @@ class CustomerRecommendationUpdate(BaseModel):
     assessment_type_id: Optional[int] = None
     expected_impact: Optional[float] = None
     impacted_dimensions: Optional[List[str]] = None
+    tools: Optional[List[str]] = None
     due_date: Optional[date] = None
     completed_date: Optional[date] = None
 

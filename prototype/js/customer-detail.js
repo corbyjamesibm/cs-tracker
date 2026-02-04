@@ -8649,6 +8649,11 @@ function renderCustomRecommendations() {
                     ${rec.due_date ? `<span>Due: ${formatDate(rec.due_date)}</span>` : ''}
                     ${rec.expected_impact ? `<span>Expected Impact: +${rec.expected_impact.toFixed(1)} maturity</span>` : ''}
                 </div>
+                ${rec.tools && rec.tools.length > 0 ? `
+                <div class="recommendation-card__tools" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+                    ${rec.tools.map(tool => `<span class="rec-tool-tag">${escapeHtml(tool)}</span>`).join('')}
+                </div>
+                ` : ''}
                 <div class="recommendation-card__footer">
                     <span style="font-size: 11px; color: var(--cds-text-secondary);">
                         Created ${formatDate(rec.created_at)}
@@ -8740,6 +8745,8 @@ function openCustomRecommendationModal(recId = null) {
     document.getElementById('recCategory').value = '';
     document.getElementById('recExpectedImpact').value = '';
     document.getElementById('recDueDate').value = '';
+    // Reset tools checkboxes
+    document.querySelectorAll('input[name="recTools"]').forEach(cb => cb.checked = false);
 
     // If editing, populate with existing data
     if (recId) {
@@ -8753,6 +8760,11 @@ function openCustomRecommendationModal(recId = null) {
             document.getElementById('recCategory').value = rec.category || '';
             document.getElementById('recExpectedImpact').value = rec.expected_impact || '';
             document.getElementById('recDueDate').value = rec.due_date || '';
+            // Set tools checkboxes
+            const tools = rec.tools || [];
+            document.querySelectorAll('input[name="recTools"]').forEach(cb => {
+                cb.checked = tools.includes(cb.value);
+            });
         }
     }
 
@@ -8774,6 +8786,10 @@ async function saveCustomRecommendation() {
         return;
     }
 
+    // Collect selected tools
+    const selectedTools = Array.from(document.querySelectorAll('input[name="recTools"]:checked'))
+        .map(cb => cb.value);
+
     const recData = {
         title,
         description: document.getElementById('recDescription').value.trim() || null,
@@ -8782,6 +8798,7 @@ async function saveCustomRecommendation() {
         status: document.getElementById('recStatus').value,
         category: document.getElementById('recCategory').value.trim() || null,
         expected_impact: document.getElementById('recExpectedImpact').value ? parseFloat(document.getElementById('recExpectedImpact').value) : null,
+        tools: selectedTools.length > 0 ? selectedTools : null,
         due_date: document.getElementById('recDueDate').value || null
     };
 

@@ -2379,6 +2379,7 @@ async def create_customer_recommendation(
         assessment_type_id=rec_in.assessment_type_id,
         expected_impact=rec_in.expected_impact,
         impacted_dimensions=rec_in.impacted_dimensions,
+        tools=rec_in.tools,
         due_date=rec_in.due_date,
         created_by_id=rec_in.created_by_id
     )

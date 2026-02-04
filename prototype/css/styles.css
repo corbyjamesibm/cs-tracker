@@ -4893,3 +4893,56 @@ input[type="file"].form-input::file-selector-button:hover {
     white-space: nowrap;
   }
 }
+
+/* Checkbox Chip Multi-select */
+.checkbox-chip {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkbox-chip input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.checkbox-chip__label {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--cds-layer-02);
+  border: 1px solid var(--cds-border-subtle-01);
+  color: var(--cds-text-secondary);
+  transition: all 0.15s ease;
+}
+
+.checkbox-chip input[type="checkbox"]:checked + .checkbox-chip__label {
+  background: var(--cds-interactive);
+  border-color: var(--cds-interactive);
+  color: white;
+}
+
+.checkbox-chip:hover .checkbox-chip__label {
+  border-color: var(--cds-border-strong);
+}
+
+.checkbox-chip input[type="checkbox"]:focus + .checkbox-chip__label {
+  outline: 2px solid var(--cds-focus);
+  outline-offset: 2px;
+}
+
+/* Tool tag display in recommendations list */
+.rec-tool-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--cds-layer-02);
+  color: var(--cds-text-secondary);
+}
