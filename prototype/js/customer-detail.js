@@ -8699,13 +8699,19 @@ function switchRecTypeTab(tabType) {
     // Show/hide panels
     const customPanel = document.getElementById('customRecommendationsPanel');
     const generatedPanel = document.getElementById('generatedRecommendationsPanel');
+    const generateBtn = document.getElementById('generateRecsBtn');
+    const addCustomBtn = document.getElementById('addCustomRecBtn');
 
     if (tabType === 'custom') {
         if (customPanel) customPanel.style.display = 'block';
         if (generatedPanel) generatedPanel.style.display = 'none';
+        if (generateBtn) generateBtn.style.display = 'none';
+        if (addCustomBtn) addCustomBtn.style.display = 'inline-flex';
     } else {
         if (customPanel) customPanel.style.display = 'none';
         if (generatedPanel) generatedPanel.style.display = 'block';
+        if (generateBtn) generateBtn.style.display = 'inline-flex';
+        if (addCustomBtn) addCustomBtn.style.display = 'none';
     }
 }
 
