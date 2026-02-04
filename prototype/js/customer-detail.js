@@ -3422,6 +3422,156 @@ let assessmentQuestions = [];
 let spmRadarChart = null;
 let currentEditingAssessmentId = null; // Track if we're editing an existing assessment
 
+// Multi-assessment type state
+let activeAssessmentTypeTab = 'spm';
+let assessmentsByType = {}; // { spm: {...}, tbm: {...}, finops: {...} }
+let targetsByType = {}; // Targets filtered by assessment type
+
+// Assessment type ID mapping
+const ASSESSMENT_TYPE_IDS = {
+    'spm': 1,
+    'tbm': 2,
+    'finops': 3
+};
+
+// Switch between assessment type tabs (SPM, TBM, FinOps)
+function switchAssessmentTypeTab(typeCode) {
+    activeAssessmentTypeTab = typeCode;
+
+    // Update tab button states
+    document.querySelectorAll('.assessment-type-tab').forEach(tab => {
+        if (tab.dataset.type === typeCode) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    // Update content based on active type
+    updateAssessmentTabContent(typeCode);
+
+    // Load targets for this type
+    const customerId = getCustomerId();
+    if (customerId) {
+        loadTargetsByType(customerId, typeCode);
+    }
+}
+
+// Update tab scores in the tab buttons
+function updateAssessmentTabScores(comprehensiveReport) {
+    if (!comprehensiveReport || !comprehensiveReport.assessment_reports) return;
+
+    for (const typeReport of comprehensiveReport.assessment_reports) {
+        const typeCode = typeReport.assessment_type.code;
+        const scoreEl = document.getElementById(`tab${typeCode.charAt(0).toUpperCase() + typeCode.slice(1)}Score`);
+        if (scoreEl) {
+            if (typeReport.scores.overall_score !== null) {
+                scoreEl.textContent = typeReport.scores.overall_score.toFixed(1);
+            } else {
+                scoreEl.textContent = '-';
+            }
+        }
+    }
+}
+
+// Update assessment content for the selected type
+function updateAssessmentTabContent(typeCode) {
+    // Use the existing comprehensive report data if available
+    const typeData = assessmentsByType[typeCode];
+
+    if (!typeData || !typeData.has_assessment) {
+        // Show empty state for this type
+        document.getElementById('noAssessmentState').style.display = 'block';
+        document.getElementById('assessmentContent').style.display = 'none';
+    } else {
+        // Show assessment content
+        document.getElementById('noAssessmentState').style.display = 'none';
+        document.getElementById('assessmentContent').style.display = 'block';
+
+        // Update radar chart and dimension scores for this type
+        if (typeData.dimensions && typeData.dimensions.length > 0) {
+            const dimensionScores = {};
+            typeData.dimensions.forEach(d => {
+                dimensionScores[d.name] = d.score;
+            });
+            renderRadarChart(dimensionScores);
+            renderDimensionScoresCards(typeData.dimensions);
+
+            // Update overall score display
+            const overallScoreValue = document.getElementById('overallScoreValue');
+            if (overallScoreValue && typeData.overall_score !== null) {
+                overallScoreValue.textContent = typeData.overall_score.toFixed(1);
+            }
+        }
+    }
+}
+
+// Render dimension score cards
+function renderDimensionScoresCards(dimensions) {
+    const container = document.getElementById('dimensionScoreCards');
+    if (!container) return;
+
+    if (!dimensions || dimensions.length === 0) {
+        container.innerHTML = '<div class="text-secondary">No dimension scores available</div>';
+        return;
+    }
+
+    let html = '';
+    for (const dim of dimensions) {
+        const score = dim.score || 0;
+        const percentage = (score / 5) * 100;
+        let statusClass = 'danger';
+        if (score >= 4) statusClass = 'success';
+        else if (score >= 3) statusClass = 'warning';
+        else if (score >= 2) statusClass = 'caution';
+
+        html += `
+            <div class="dimension-score-card">
+                <div class="dimension-score-card__header">
+                    <span class="dimension-score-card__name">${escapeHtml(dim.name)}</span>
+                    <span class="dimension-score-card__score">${score.toFixed(1)}</span>
+                </div>
+                <div class="progress" style="height: 4px;">
+                    <div class="progress__bar progress__bar--${statusClass}" style="width: ${percentage}%;"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+// Load targets filtered by assessment type
+async function loadTargetsByType(customerId, typeCode) {
+    const typeId = ASSESSMENT_TYPE_IDS[typeCode];
+
+    try {
+        const url = typeId
+            ? `${API_BASE_URL}/assessments/customer/${customerId}/targets?assessment_type_id=${typeId}`
+            : `${API_BASE_URL}/assessments/customer/${customerId}/targets`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load targets');
+        const data = await response.json();
+
+        targetsByType[typeCode] = data.items || [];
+        customerTargets = targetsByType[typeCode]; // Update global for compatibility
+        renderTargetsList();
+
+        // Update active target for chart overlay
+        activeTarget = customerTargets.find(t => t.is_active);
+
+    } catch (error) {
+        console.error('Failed to load targets by type:', error);
+        targetsByType[typeCode] = [];
+        customerTargets = [];
+        renderTargetsList();
+    }
+}
+
+// Expose tab switching function
+window.switchAssessmentTypeTab = switchAssessmentTypeTab;
+
 // Load assessments for the customer
 async function loadAssessments(customerId) {
     try {
@@ -3467,6 +3617,31 @@ async function loadAssessments(customerId) {
         renderAssessmentHistory(customerAssessments);
         // Update the overview summary card
         renderAssessmentSummary(customerAssessments);
+
+        // Populate assessmentsByType from comprehensive report for tab switching
+        try {
+            const report = await API.AssessmentTypeAPI.getComprehensiveReport(customerId);
+            if (report && report.assessment_reports) {
+                for (const typeReport of report.assessment_reports) {
+                    const typeCode = typeReport.assessment_type.code;
+                    assessmentsByType[typeCode] = {
+                        has_assessment: typeReport.scores.has_assessment,
+                        overall_score: typeReport.scores.overall_score,
+                        dimensions: typeReport.scores.dimensions || [],
+                        assessment_id: typeReport.latest_assessment?.id,
+                        assessment_date: typeReport.latest_assessment?.assessment_date
+                    };
+                }
+                // Update tab scores in the tab buttons
+                updateAssessmentTabScores(report);
+            }
+        } catch (reportError) {
+            console.warn('Could not load comprehensive report for tabs:', reportError);
+        }
+
+        // Load targets for the active tab
+        loadTargetsByType(customerId, activeAssessmentTypeTab);
+
     } catch (error) {
         console.error('Failed to load assessments:', error);
         showNoAssessmentState();
@@ -4153,16 +4328,17 @@ function renderAssessmentHistory(assessments) {
     const thead = document.getElementById('assessmentHistoryTableHead');
 
     if (!assessments || assessments.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary">No assessment history</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-secondary">No assessment history</td></tr>';
         return;
     }
 
-    // Update table header to include Compare column
+    // Update table header to include Compare and Type columns
     if (thead) {
         thead.innerHTML = `
             <tr>
                 <th style="width: 50px;">Compare</th>
                 <th>Date</th>
+                <th>Type</th>
                 <th>Version</th>
                 <th>Overall Score</th>
                 <th>Change</th>
@@ -4227,10 +4403,26 @@ function renderAssessmentHistory(assessments) {
                    Report
                </button>`;
 
+        // Assessment type display with edit capability
+        const assessmentType = assessment.assessment_type;
+        const typeColor = assessmentType?.color || '#6f6f6f';
+        const typeName = assessmentType?.short_name || 'Not Set';
+        const typeHtml = `
+            <span class="tag tag--clickable" style="background-color: ${typeColor}; color: white; cursor: pointer;"
+                  onclick="openEditAssessmentTypeModal(${assessment.id}, ${assessment.assessment_type_id || 'null'})"
+                  title="Click to change assessment type">
+                ${typeName}
+                <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor" style="margin-left: 4px; opacity: 0.7;">
+                    <path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/>
+                </svg>
+            </span>
+        `;
+
         html += `
             <tr${isIncomplete ? ' class="assessment-row--incomplete"' : ''}>
                 <td class="text-center">${compareCheckbox}</td>
                 <td>${formatDate(assessment.assessment_date)}</td>
+                <td>${typeHtml}</td>
                 <td>${assessment.template?.version || 'v1.0'}</td>
                 <td><strong>${assessment.overall_score ? assessment.overall_score.toFixed(1) : '-'}</strong> / 5.0</td>
                 <td>${changeHtml}</td>
@@ -4261,6 +4453,82 @@ async function viewAssessmentDetail(assessmentId) {
         alert('Failed to load assessment details.');
     }
 }
+
+// ============================================================
+// EDIT ASSESSMENT TYPE FUNCTIONS
+// ============================================================
+
+let cachedAssessmentTypes = null;
+
+async function loadAssessmentTypes() {
+    if (cachedAssessmentTypes) return cachedAssessmentTypes;
+    try {
+        const response = await API.AssessmentTypeAPI.getAll();
+        cachedAssessmentTypes = response.items || response;
+        return cachedAssessmentTypes;
+    } catch (error) {
+        console.error('Failed to load assessment types:', error);
+        return [];
+    }
+}
+
+async function openEditAssessmentTypeModal(assessmentId, currentTypeId) {
+    const modal = document.getElementById('editAssessmentTypeModal');
+    const select = document.getElementById('assessmentTypeSelect');
+    const hiddenInput = document.getElementById('editAssessmentTypeId');
+
+    // Store the assessment ID
+    hiddenInput.value = assessmentId;
+
+    // Load assessment types and populate dropdown
+    const types = await loadAssessmentTypes();
+    select.innerHTML = '<option value="">-- Select Type --</option>';
+    types.forEach(type => {
+        const selected = type.id === currentTypeId ? 'selected' : '';
+        select.innerHTML += `<option value="${type.id}" ${selected} style="color: ${type.color};">${type.name} (${type.short_name})</option>`;
+    });
+
+    modal.classList.add('is-visible');
+}
+
+function closeEditAssessmentTypeModal() {
+    const modal = document.getElementById('editAssessmentTypeModal');
+    modal.classList.remove('is-visible');
+}
+
+async function saveAssessmentType() {
+    const assessmentId = document.getElementById('editAssessmentTypeId').value;
+    const typeId = document.getElementById('assessmentTypeSelect').value;
+
+    if (!typeId) {
+        alert('Please select an assessment type.');
+        return;
+    }
+
+    try {
+        await API.AssessmentAPI.updateAssessment(assessmentId, {
+            assessment_type_id: parseInt(typeId)
+        });
+
+        closeEditAssessmentTypeModal();
+
+        // Reload assessments to reflect the change
+        await loadAssessments(customerId);
+
+        // Also reload the multi-assessment dashboard
+        await loadMultiAssessmentDashboard(customerId);
+
+        showToast('Assessment type updated successfully', 'success');
+    } catch (error) {
+        console.error('Failed to update assessment type:', error);
+        alert('Failed to update assessment type. Please try again.');
+    }
+}
+
+// Export functions for global access
+window.openEditAssessmentTypeModal = openEditAssessmentTypeModal;
+window.closeEditAssessmentTypeModal = closeEditAssessmentTypeModal;
+window.saveAssessmentType = saveAssessmentType;
 
 // Resume an in-progress assessment
 async function resumeAssessment(assessmentId) {
@@ -4874,10 +5142,14 @@ function setupTabSwitching() {
                 if (roadmapSection) roadmapSection.style.display = 'block';
             } else if (tabName === 'Recommendations') {
                 if (recommendationsSection) recommendationsSection.style.display = 'block';
+                loadCustomRecommendations(customerId);
                 loadRecommendations(customerId);
             } else if (tabName === 'Flow') {
                 if (implementationFlowSection) implementationFlowSection.style.display = 'block';
-                loadFlowVisualization(customerId);
+                // Load assessment options first, then load flow visualization
+                loadFlowAssessmentOptions(customerId).then(() => {
+                    loadFlowVisualization(customerId, selectedFlowAssessmentId);
+                });
             } else if (tabName === 'Documents') {
                 if (documentsSection) documentsSection.style.display = 'block';
                 loadDocuments(customerId);
@@ -7271,8 +7543,12 @@ function renderTargetsList() {
     const container = document.getElementById('targetsListContainer');
     if (!container) return;
 
+    // Get the active framework name for empty state message
+    const frameworkNames = { spm: 'SPM', tbm: 'TBM', finops: 'FinOps' };
+    const activeFramework = frameworkNames[activeAssessmentTypeTab] || 'this framework';
+
     if (customerTargets.length === 0) {
-        container.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">No targets set. Set a target to track progress toward goals.</div>';
+        container.innerHTML = `<div class="text-secondary text-center" style="padding: 24px;">No ${activeFramework} targets set. Set a target to track progress toward goals.</div>`;
         return;
     }
 
@@ -7284,11 +7560,19 @@ function renderTargetsList() {
         const targetDate = target.target_date ? formatDate(target.target_date) : 'No date set';
         const daysRemaining = target.target_date ? getDaysRemaining(target.target_date) : null;
 
+        // Get assessment type badge
+        const typeInfo = target.assessment_type;
+        const typeBadge = typeInfo ? `
+            <span class="target-type-badge" style="background-color: ${typeInfo.color}20; color: ${typeInfo.color}; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px;">
+                ${typeInfo.short_name}
+            </span>
+        ` : '';
+
         html += `
             <div class="target-card ${target.is_active ? 'active' : ''}" data-target-id="${target.id}">
                 <div class="target-card__header">
                     <div>
-                        <div class="target-card__name">${escapeHtml(target.name)}</div>
+                        <div class="target-card__name">${escapeHtml(target.name)}${typeBadge}</div>
                         <div class="target-card__date">
                             Target: ${targetDate}
                             ${daysRemaining !== null ? `(${daysRemaining > 0 ? daysRemaining + ' days remaining' : daysRemaining === 0 ? 'Due today' : Math.abs(daysRemaining) + ' days overdue'})` : ''}
@@ -7395,6 +7679,13 @@ async function openTargetModal(targetId = null) {
     document.getElementById('targetDate').value = '';
     document.getElementById('targetOverallScore').value = '';
 
+    // Pre-select current assessment type
+    const typeSelect = document.getElementById('targetAssessmentType');
+    if (typeSelect) {
+        const typeId = ASSESSMENT_TYPE_IDS[activeAssessmentTypeTab];
+        typeSelect.value = typeId || '';
+    }
+
     // Load dimensions from current template
     await loadTargetDimensions();
 
@@ -7406,6 +7697,11 @@ async function openTargetModal(targetId = null) {
             document.getElementById('targetDescription').value = target.description || '';
             document.getElementById('targetDate').value = target.target_date || '';
             document.getElementById('targetOverallScore').value = target.overall_target || '';
+
+            // Set assessment type
+            if (typeSelect && target.assessment_type_id) {
+                typeSelect.value = target.assessment_type_id;
+            }
 
             // Populate dimension scores
             for (const [dim, score] of Object.entries(target.target_scores || {})) {
@@ -7427,16 +7723,28 @@ function closeTargetModal() {
 
 async function loadTargetDimensions() {
     const container = document.getElementById('targetDimensionScores');
+    const typeSelect = document.getElementById('targetAssessmentType');
+    const selectedTypeId = typeSelect?.value ? parseInt(typeSelect.value) : ASSESSMENT_TYPE_IDS[activeAssessmentTypeTab];
 
-    // Get dimensions from current assessment or template
+    // Map type ID to type code
+    const typeCodeMap = { 1: 'spm', 2: 'tbm', 3: 'finops' };
+    const selectedTypeCode = typeCodeMap[selectedTypeId] || activeAssessmentTypeTab;
+
+    // Get dimensions from assessmentsByType cache or fetch from template
     let dimensions = [];
+    let currentScores = {};
 
-    if (currentAssessment && currentAssessment.dimension_scores) {
-        dimensions = Object.keys(currentAssessment.dimension_scores);
+    // First try to get from cached assessment data for this type
+    const typeData = assessmentsByType[selectedTypeCode];
+    if (typeData && typeData.dimensions && typeData.dimensions.length > 0) {
+        dimensions = typeData.dimensions.map(d => d.name);
+        typeData.dimensions.forEach(d => {
+            currentScores[d.name] = d.score || 0;
+        });
     } else {
-        // Try to get from active template
+        // Try to get from active template for this type
         try {
-            const response = await fetch(`${API_BASE_URL}/assessments/templates/active`);
+            const response = await fetch(`${API_BASE_URL}/assessments/templates/active?assessment_type_id=${selectedTypeId}`);
             if (response.ok) {
                 const template = await response.json();
                 if (template && template.dimensions) {
@@ -7449,13 +7757,15 @@ async function loadTargetDimensions() {
     }
 
     if (dimensions.length === 0) {
-        container.innerHTML = '<div class="text-secondary">No dimensions found. Complete an assessment first.</div>';
+        const frameworkNames = { spm: 'SPM', tbm: 'TBM', finops: 'FinOps' };
+        container.innerHTML = `<div class="text-secondary">No dimensions found for ${frameworkNames[selectedTypeCode] || 'this framework'}. Complete an assessment first or select a different framework.</div>`;
         return;
     }
 
     let html = '';
     for (const dim of dimensions) {
-        const currentScore = currentAssessment?.dimension_scores?.[dim] || 0;
+        // Use currentScores from type data, fallback to currentAssessment
+        const currentScore = currentScores[dim] ?? currentAssessment?.dimension_scores?.[dim] ?? 0;
         html += `
             <div class="target-dimension-row">
                 <span class="target-dimension-row__name">${escapeHtml(dim)}</span>
@@ -7477,6 +7787,11 @@ async function loadTargetDimensions() {
     container.innerHTML = html;
 }
 
+// Reload dimensions when assessment type changes in modal
+function onTargetAssessmentTypeChange() {
+    loadTargetDimensions();
+}
+
 function syncTargetSlider(slider, dimension) {
     const input = document.querySelector(`input[data-dimension="${dimension}"]`);
     if (input) input.value = parseFloat(slider.value).toFixed(1);
@@ -7493,6 +7808,7 @@ async function saveTarget() {
     const description = document.getElementById('targetDescription').value.trim();
     const targetDate = document.getElementById('targetDate').value;
     const overallTarget = document.getElementById('targetOverallScore').value;
+    const assessmentTypeId = document.getElementById('targetAssessmentType')?.value;
 
     if (!name) {
         alert('Please enter a target name');
@@ -7515,7 +7831,8 @@ async function saveTarget() {
         target_date: targetDate || null,
         target_scores: targetScores,
         overall_target: overallTarget ? parseFloat(overallTarget) : null,
-        is_active: customerTargets.length === 0 // First target is active by default
+        is_active: customerTargets.length === 0, // First target is active by default
+        assessment_type_id: assessmentTypeId ? parseInt(assessmentTypeId) : null
     };
 
     try {
@@ -7537,7 +7854,7 @@ async function saveTarget() {
         if (!response.ok) throw new Error('Failed to save target');
 
         closeTargetModal();
-        await loadTargets(customerId);
+        await loadTargetsByType(customerId, activeAssessmentTypeTab);
 
     } catch (error) {
         console.error('Failed to save target:', error);
@@ -7559,7 +7876,7 @@ async function deleteTarget(targetId) {
 
         if (!response.ok) throw new Error('Failed to delete target');
 
-        await loadTargets(getCustomerId());
+        await loadTargetsByType(getCustomerId(), activeAssessmentTypeTab);
 
     } catch (error) {
         console.error('Failed to delete target:', error);
@@ -7586,7 +7903,7 @@ async function setActiveTarget(targetId) {
         body: JSON.stringify({ is_active: true })
     });
 
-    await loadTargets(getCustomerId());
+    await loadTargetsByType(getCustomerId(), activeAssessmentTypeTab);
 }
 
 function overlayTargetOnChart(targetId) {
@@ -8198,8 +8515,8 @@ displayAssessment = function(assessment, comparison) {
         editBtn.style.display = 'inline-flex';
     }
 
-    // Load targets
-    loadTargets(getCustomerId());
+    // Load targets for active assessment type
+    loadTargetsByType(getCustomerId(), activeAssessmentTypeTab);
 };
 
 
@@ -8223,7 +8540,330 @@ window.viewAuditTrail = viewAuditTrail;
 window.hideAuditTrail = hideAuditTrail;
 window.syncTargetSlider = syncTargetSlider;
 window.syncTargetInput = syncTargetInput;
+window.onTargetAssessmentTypeChange = onTargetAssessmentTypeChange;
 window.loadTargets = loadTargets;
+window.loadTargetsByType = loadTargetsByType;
+
+
+// ============================================================
+// CUSTOM RECOMMENDATIONS
+// ============================================================
+
+let customerRecommendations = [];
+let currentEditingRecId = null;
+let activeRecTypeTab = 'custom';
+
+// Load customer recommendations
+async function loadCustomRecommendations(customerId) {
+    const typeFilter = document.getElementById('recAssessmentTypeFilter')?.value || '';
+    const statusFilter = document.getElementById('recStatusFilter')?.value || '';
+
+    let url = `${API_BASE_URL}/assessments/customer/${customerId}/recommendations`;
+    const params = new URLSearchParams();
+    if (typeFilter) params.append('assessment_type_id', typeFilter);
+    if (statusFilter) params.append('status', statusFilter);
+    if (params.toString()) url += '?' + params.toString();
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load recommendations');
+        const data = await response.json();
+        customerRecommendations = data.items || [];
+
+        // Update count badge
+        document.getElementById('customRecCount').textContent = customerRecommendations.length;
+
+        renderCustomRecommendations();
+    } catch (error) {
+        console.error('Failed to load recommendations:', error);
+        customerRecommendations = [];
+        renderCustomRecommendations();
+    }
+}
+
+// Render custom recommendations list
+function renderCustomRecommendations() {
+    const container = document.getElementById('customRecsList');
+    const emptyState = document.getElementById('noCustomRecsState');
+
+    if (!container) return;
+
+    if (customerRecommendations.length === 0) {
+        container.innerHTML = '';
+        if (emptyState) emptyState.style.display = 'block';
+        return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+
+    const priorityColors = {
+        high: 'var(--cds-support-error)',
+        medium: 'var(--cds-support-warning)',
+        low: 'var(--cds-support-info)'
+    };
+
+    const statusLabels = {
+        open: 'Open',
+        in_progress: 'In Progress',
+        completed: 'Completed',
+        dismissed: 'Dismissed'
+    };
+
+    const statusColors = {
+        open: 'var(--cds-interactive)',
+        in_progress: 'var(--cds-support-warning)',
+        completed: 'var(--cds-support-success)',
+        dismissed: 'var(--cds-text-secondary)'
+    };
+
+    let html = '';
+    for (const rec of customerRecommendations) {
+        const typeInfo = rec.assessment_type;
+        const typeBadge = typeInfo ? `
+            <span style="background-color: ${typeInfo.color}20; color: ${typeInfo.color}; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                ${typeInfo.short_name}
+            </span>
+        ` : '';
+
+        const priorityColor = priorityColors[rec.priority] || priorityColors.medium;
+        const statusColor = statusColors[rec.status] || statusColors.open;
+        const statusLabel = statusLabels[rec.status] || rec.status;
+
+        html += `
+            <div class="recommendation-card ${rec.status === 'completed' || rec.status === 'dismissed' ? 'completed' : ''}" data-rec-id="${rec.id}">
+                <div class="recommendation-card__header">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="background: ${priorityColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
+                            ${rec.priority}
+                        </span>
+                        ${typeBadge}
+                        ${rec.category ? `<span style="background: var(--cds-layer-02); padding: 2px 8px; border-radius: 4px; font-size: 11px;">${escapeHtml(rec.category)}</span>` : ''}
+                    </div>
+                    <span style="background: ${statusColor}20; color: ${statusColor}; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                        ${statusLabel}
+                    </span>
+                </div>
+                <div class="recommendation-card__title">${escapeHtml(rec.title)}</div>
+                ${rec.description ? `<div class="recommendation-card__description">${escapeHtml(rec.description)}</div>` : ''}
+                <div class="recommendation-card__meta">
+                    ${rec.due_date ? `<span>Due: ${formatDate(rec.due_date)}</span>` : ''}
+                    ${rec.expected_impact ? `<span>Expected Impact: +${rec.expected_impact.toFixed(1)} maturity</span>` : ''}
+                </div>
+                <div class="recommendation-card__footer">
+                    <span style="font-size: 11px; color: var(--cds-text-secondary);">
+                        Created ${formatDate(rec.created_at)}
+                    </span>
+                    <div class="recommendation-card__actions">
+                        ${rec.status === 'open' ? `
+                            <button class="btn btn--ghost btn--sm" onclick="updateRecStatus(${rec.id}, 'in_progress')" title="Start">
+                                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M7 28a1 1 0 01-1-1V5a1 1 0 011.5-.87l19 11a1 1 0 010 1.74l-19 11A1 1 0 017 28z"/></svg>
+                            </button>
+                        ` : ''}
+                        ${rec.status === 'in_progress' ? `
+                            <button class="btn btn--ghost btn--sm" onclick="updateRecStatus(${rec.id}, 'completed')" title="Complete">
+                                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M14 21.414l-5-5L10.586 15 14 18.414 21.414 11 23 12.586l-9 9z"/><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm0 26C9.4 28 4 22.6 4 16S9.4 4 16 4s12 5.4 12 12-5.4 12-12 12z"/></svg>
+                            </button>
+                        ` : ''}
+                        <button class="btn btn--ghost btn--sm" onclick="editCustomRecommendation(${rec.id})" title="Edit">
+                            <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15z"/></svg>
+                        </button>
+                        <button class="btn btn--ghost btn--sm" onclick="deleteCustomRecommendation(${rec.id})" title="Delete">
+                            <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M12 12h2v12h-2zm6 0h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+// Switch between custom and generated recommendations tabs
+function switchRecTypeTab(tabType) {
+    activeRecTypeTab = tabType;
+
+    // Update tab styles
+    document.querySelectorAll('.rec-type-tab').forEach(tab => {
+        if (tab.dataset.recType === tabType) {
+            tab.classList.add('active');
+            tab.style.borderBottomColor = 'var(--cds-interactive)';
+            tab.style.color = 'var(--cds-text-primary)';
+        } else {
+            tab.classList.remove('active');
+            tab.style.borderBottomColor = 'transparent';
+            tab.style.color = 'var(--cds-text-secondary)';
+        }
+    });
+
+    // Show/hide panels
+    const customPanel = document.getElementById('customRecommendationsPanel');
+    const generatedPanel = document.getElementById('generatedRecommendationsPanel');
+
+    if (tabType === 'custom') {
+        if (customPanel) customPanel.style.display = 'block';
+        if (generatedPanel) generatedPanel.style.display = 'none';
+    } else {
+        if (customPanel) customPanel.style.display = 'none';
+        if (generatedPanel) generatedPanel.style.display = 'block';
+    }
+}
+
+// Filter recommendations by type
+function filterRecommendationsByType() {
+    const customerId = getCustomerId();
+    if (customerId) {
+        loadCustomRecommendations(customerId);
+    }
+}
+
+// Open custom recommendation modal
+function openCustomRecommendationModal(recId = null) {
+    currentEditingRecId = recId;
+    const modal = document.getElementById('customRecommendationModal');
+    const title = document.getElementById('customRecModalTitle');
+
+    title.textContent = recId ? 'Edit Recommendation' : 'Add Recommendation';
+
+    // Reset form
+    document.getElementById('recTitle').value = '';
+    document.getElementById('recDescription').value = '';
+    document.getElementById('recAssessmentType').value = '';
+    document.getElementById('recPriority').value = 'medium';
+    document.getElementById('recStatus').value = 'open';
+    document.getElementById('recCategory').value = '';
+    document.getElementById('recExpectedImpact').value = '';
+    document.getElementById('recDueDate').value = '';
+
+    // If editing, populate with existing data
+    if (recId) {
+        const rec = customerRecommendations.find(r => r.id === recId);
+        if (rec) {
+            document.getElementById('recTitle').value = rec.title || '';
+            document.getElementById('recDescription').value = rec.description || '';
+            document.getElementById('recAssessmentType').value = rec.assessment_type_id || '';
+            document.getElementById('recPriority').value = rec.priority || 'medium';
+            document.getElementById('recStatus').value = rec.status || 'open';
+            document.getElementById('recCategory').value = rec.category || '';
+            document.getElementById('recExpectedImpact').value = rec.expected_impact || '';
+            document.getElementById('recDueDate').value = rec.due_date || '';
+        }
+    }
+
+    modal.classList.add('open');
+}
+
+function closeCustomRecommendationModal() {
+    document.getElementById('customRecommendationModal').classList.remove('open');
+    currentEditingRecId = null;
+}
+
+// Save custom recommendation
+async function saveCustomRecommendation() {
+    const customerId = getCustomerId();
+    const title = document.getElementById('recTitle').value.trim();
+
+    if (!title) {
+        alert('Please enter a title');
+        return;
+    }
+
+    const recData = {
+        title,
+        description: document.getElementById('recDescription').value.trim() || null,
+        assessment_type_id: document.getElementById('recAssessmentType').value ? parseInt(document.getElementById('recAssessmentType').value) : null,
+        priority: document.getElementById('recPriority').value,
+        status: document.getElementById('recStatus').value,
+        category: document.getElementById('recCategory').value.trim() || null,
+        expected_impact: document.getElementById('recExpectedImpact').value ? parseFloat(document.getElementById('recExpectedImpact').value) : null,
+        due_date: document.getElementById('recDueDate').value || null
+    };
+
+    try {
+        let response;
+        if (currentEditingRecId) {
+            response = await fetch(`${API_BASE_URL}/assessments/recommendations/${currentEditingRecId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(recData)
+            });
+        } else {
+            response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/recommendations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(recData)
+            });
+        }
+
+        if (!response.ok) throw new Error('Failed to save recommendation');
+
+        closeCustomRecommendationModal();
+        await loadCustomRecommendations(customerId);
+        showToast(currentEditingRecId ? 'Recommendation updated' : 'Recommendation added', 'success');
+
+    } catch (error) {
+        console.error('Failed to save recommendation:', error);
+        alert('Failed to save recommendation. Please try again.');
+    }
+}
+
+// Edit custom recommendation
+function editCustomRecommendation(recId) {
+    openCustomRecommendationModal(recId);
+}
+
+// Delete custom recommendation
+async function deleteCustomRecommendation(recId) {
+    if (!confirm('Are you sure you want to delete this recommendation?')) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/recommendations/${recId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) throw new Error('Failed to delete recommendation');
+
+        await loadCustomRecommendations(getCustomerId());
+        showToast('Recommendation deleted', 'success');
+
+    } catch (error) {
+        console.error('Failed to delete recommendation:', error);
+        alert('Failed to delete recommendation. Please try again.');
+    }
+}
+
+// Update recommendation status
+async function updateRecStatus(recId, newStatus) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/recommendations/${recId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                status: newStatus,
+                completed_date: newStatus === 'completed' ? new Date().toISOString().split('T')[0] : null
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to update status');
+
+        await loadCustomRecommendations(getCustomerId());
+
+    } catch (error) {
+        console.error('Failed to update recommendation status:', error);
+        alert('Failed to update status. Please try again.');
+    }
+}
+
+// Expose recommendation functions
+window.openCustomRecommendationModal = openCustomRecommendationModal;
+window.closeCustomRecommendationModal = closeCustomRecommendationModal;
+window.saveCustomRecommendation = saveCustomRecommendation;
+window.editCustomRecommendation = editCustomRecommendation;
+window.deleteCustomRecommendation = deleteCustomRecommendation;
+window.updateRecStatus = updateRecStatus;
+window.switchRecTypeTab = switchRecTypeTab;
+window.filterRecommendationsByType = filterRecommendationsByType;
+window.loadCustomRecommendations = loadCustomRecommendations;
 
 
 // ============================================================
@@ -8237,6 +8877,8 @@ let flowFilterState = {
     dimension: 'all',
     useCase: 'all'
 };
+let flowSpmAssessments = []; // List of SPM assessments for the flow dropdown
+let selectedFlowAssessmentId = null; // Currently selected assessment ID for flow
 
 // Get color based on dimension score
 function getDimensionColor(score) {
@@ -8254,13 +8896,85 @@ function getDimensionStatusBadge(score) {
     return { class: '', text: 'On Track' };
 }
 
+// Load SPM assessments for the flow dropdown
+async function loadFlowAssessmentOptions(customerId) {
+    const select = document.getElementById('flowAssessmentSelect');
+    if (!select) return;
+
+    try {
+        // Load SPM assessments (type=spm) for this customer
+        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}?status=completed&assessment_type_id=1`);
+        if (!response.ok) {
+            select.innerHTML = '<option value="">No SPM assessments found</option>';
+            return;
+        }
+
+        const data = await response.json();
+        flowSpmAssessments = data.items || [];
+
+        if (flowSpmAssessments.length === 0) {
+            select.innerHTML = '<option value="">No completed SPM assessments</option>';
+            return;
+        }
+
+        // Sort by assessment_date descending (most recent first)
+        flowSpmAssessments.sort((a, b) => {
+            const dateA = a.assessment_date || a.completed_at || '';
+            const dateB = b.assessment_date || b.completed_at || '';
+            return dateB.localeCompare(dateA);
+        });
+
+        // Populate dropdown
+        select.innerHTML = flowSpmAssessments.map((assessment, index) => {
+            const date = assessment.assessment_date
+                ? new Date(assessment.assessment_date).toLocaleDateString()
+                : (assessment.completed_at
+                    ? new Date(assessment.completed_at).toLocaleDateString()
+                    : 'Unknown date');
+            const score = assessment.overall_score !== null
+                ? ` (Score: ${assessment.overall_score.toFixed(1)})`
+                : '';
+            const label = index === 0 ? ' (Latest)' : '';
+            return `<option value="${assessment.id}">${date}${score}${label}</option>`;
+        }).join('');
+
+        // Default to the latest (first) assessment
+        selectedFlowAssessmentId = flowSpmAssessments[0]?.id || null;
+
+    } catch (error) {
+        console.error('Failed to load flow assessment options:', error);
+        select.innerHTML = '<option value="">Error loading assessments</option>';
+    }
+}
+
+// Handle flow assessment selection change
+function onFlowAssessmentChange() {
+    const select = document.getElementById('flowAssessmentSelect');
+    selectedFlowAssessmentId = select?.value ? parseInt(select.value) : null;
+
+    // Reload flow visualization with the selected assessment
+    const customerId = getCustomerIdFromUrl();
+    if (customerId) {
+        loadFlowVisualization(customerId, selectedFlowAssessmentId);
+    }
+}
+
 // Load flow visualization data
-async function loadFlowVisualization(customerId) {
+async function loadFlowVisualization(customerId, assessmentId = null) {
     const noFlowState = document.getElementById('noFlowState');
     const flowContent = document.getElementById('flowVisualizationContent');
 
+    // Use provided assessmentId or the currently selected one
+    const useAssessmentId = assessmentId !== null ? assessmentId : selectedFlowAssessmentId;
+
     try {
-        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/flow-visualization?threshold=3.5`);
+        // Build URL with optional assessment_id parameter
+        let url = `${API_BASE_URL}/assessments/customer/${customerId}/flow-visualization?threshold=3.5&type=spm`;
+        if (useAssessmentId) {
+            url += `&assessment_id=${useAssessmentId}`;
+        }
+
+        const response = await fetch(url);
 
         if (!response.ok) {
             showNoFlowState();
@@ -8294,9 +9008,13 @@ async function loadFlowVisualization(customerId) {
         // Render Sankey chart
         renderFlowSankeyChart('flowSankeyChart', false);
 
-        // Update export title with customer name
+        // Update export title with customer name and assessment date
         const customerName = document.getElementById('customerName')?.textContent || 'Customer';
-        document.getElementById('flowExportTitleText').textContent = `${customerName} - Implementation Flow`;
+        const selectedAssessment = flowSpmAssessments.find(a => a.id === useAssessmentId);
+        const dateStr = selectedAssessment?.assessment_date
+            ? ` - ${new Date(selectedAssessment.assessment_date).toLocaleDateString()}`
+            : '';
+        document.getElementById('flowExportTitleText').textContent = `${customerName} - Implementation Flow${dateStr}`;
 
     } catch (error) {
         console.error('Failed to load flow visualization:', error);
@@ -8457,7 +9175,7 @@ function renderFlowTPFeaturesTable() {
 function refreshFlowVisualization() {
     const customerId = getCustomerId();
     if (customerId) {
-        loadFlowVisualization(customerId);
+        loadFlowVisualization(customerId, selectedFlowAssessmentId);
     }
 }
 
@@ -8897,6 +9615,8 @@ async function downloadFlowVisual() {
 // Export flow visualization functions
 window.loadFlowVisualization = loadFlowVisualization;
 window.refreshFlowVisualization = refreshFlowVisualization;
+window.loadFlowAssessmentOptions = loadFlowAssessmentOptions;
+window.onFlowAssessmentChange = onFlowAssessmentChange;
 window.openFlowChartModal = openFlowChartModal;
 window.closeFlowChartModal = closeFlowChartModal;
 window.copyFlowChartToClipboard = copyFlowChartToClipboard;

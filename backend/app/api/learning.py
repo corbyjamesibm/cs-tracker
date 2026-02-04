@@ -69,8 +69,9 @@ async def submit_feedback(
     if request.action == 'accept' and (not request.target_quarter or not request.target_year):
         raise HTTPException(status_code=400, detail="target_quarter and target_year required for accept action")
 
-    # Use advisor_id = 1 for now (would come from auth in production)
-    advisor_id = 1
+    # Use advisor_id = 10 for now (would come from auth in production)
+    # Note: Users table starts at ID 10 in this system
+    advisor_id = 10
 
     service = AdaptiveLearningService(db)
 
@@ -158,7 +159,7 @@ async def quick_rate(
     if request.rating is None and request.thumbs is None:
         raise HTTPException(status_code=400, detail="Either rating or thumbs must be provided")
 
-    advisor_id = 1  # Would come from auth
+    advisor_id = 10  # Would come from auth (users start at ID 10)
 
     service = AdaptiveLearningService(db)
     feedback = await service.record_feedback(

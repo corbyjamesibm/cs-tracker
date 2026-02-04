@@ -7,7 +7,7 @@ recommendation quality over time.
 """
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Tuple, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
@@ -140,11 +140,11 @@ class AdaptiveLearningService:
         # Update recommendation with feedback info
         if quality_rating:
             recommendation.quality_rating = quality_rating
-            recommendation.rated_at = datetime.utcnow()
+            recommendation.rated_at = datetime.now(timezone.utc)
             recommendation.rated_by_id = advisor_id
 
         if action == 'dismiss':
-            recommendation.dismissed_at = datetime.utcnow()
+            recommendation.dismissed_at = datetime.now(timezone.utc)
             recommendation.dismissed_by_id = advisor_id
             recommendation.dismiss_reason = dismiss_reason_category
 
@@ -260,7 +260,7 @@ class AdaptiveLearningService:
         else:
             effectiveness.confidence_level = 0.0
 
-        effectiveness.last_calculated_at = datetime.utcnow()
+        effectiveness.last_calculated_at = datetime.now(timezone.utc)
 
     async def _calculate_recency_factor(self, mapping_id: int) -> float:
         """Calculate recency factor based on feedback ages."""
@@ -285,7 +285,7 @@ class AdaptiveLearningService:
             return 1.0
 
         # Calculate weighted average recency
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         total_weight = 0.0
         count = 0
 
@@ -542,7 +542,7 @@ class AdaptiveLearningService:
         elif field == "threshold_score":
             mapping.threshold_score = new_value
 
-        mapping.last_weight_update = datetime.utcnow()
+        mapping.last_weight_update = datetime.now(timezone.utc)
 
         return history
 

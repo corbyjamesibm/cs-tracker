@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Any
 from datetime import datetime, date
 
-from app.models.assessment import AssessmentStatus, RecommendationPriority
+from app.models.assessment import AssessmentStatus, RecommendationPriority, RecommendationStatus
 
 
 # === Minimal Info Classes ===
@@ -173,6 +173,8 @@ class CustomerAssessmentCreate(CustomerAssessmentBase):
 class CustomerAssessmentUpdate(BaseModel):
     status: Optional[AssessmentStatus] = None
     notes: Optional[str] = None
+    assessment_type_id: Optional[int] = None
+    assessment_date: Optional[date] = None
 
 
 class CustomerAssessmentResponse(CustomerAssessmentBase):
@@ -300,6 +302,7 @@ class TargetBase(BaseModel):
     target_scores: dict[str, float] = {}  # {"Organization": 4.0, "Strategic Planning": 4.5}
     overall_target: Optional[float] = None
     is_active: bool = True
+    assessment_type_id: Optional[int] = None
 
 
 class TargetCreate(TargetBase):
@@ -315,6 +318,7 @@ class TargetUpdate(BaseModel):
     target_scores: Optional[dict[str, float]] = None
     overall_target: Optional[float] = None
     is_active: Optional[bool] = None
+    assessment_type_id: Optional[int] = None
 
 
 class TargetResponse(TargetBase):
@@ -323,6 +327,8 @@ class TargetResponse(TargetBase):
 
     id: int
     customer_id: int
+    assessment_type_id: Optional[int] = None
+    assessment_type: Optional[AssessmentTypeInfo] = None
     created_by_id: Optional[int] = None
     created_by: Optional[UserInfo] = None
     created_at: datetime
@@ -440,4 +446,59 @@ class AssessmentRecommendationResponse(AssessmentRecommendationBase):
 class AssessmentRecommendationListResponse(BaseModel):
     """List of recommendations for an assessment"""
     items: List[AssessmentRecommendationResponse]
+    total: int
+
+
+# === Customer Recommendation Schemas ===
+
+class CustomerRecommendationBase(BaseModel):
+    """Base customer recommendation fields"""
+    title: str
+    description: Optional[str] = None
+    priority: Optional[RecommendationPriority] = RecommendationPriority.MEDIUM
+    status: Optional[RecommendationStatus] = RecommendationStatus.OPEN
+    category: Optional[str] = None
+    assessment_type_id: Optional[int] = None
+    expected_impact: Optional[float] = None
+    impacted_dimensions: Optional[List[str]] = None
+    due_date: Optional[date] = None
+
+
+class CustomerRecommendationCreate(CustomerRecommendationBase):
+    """Create a new customer recommendation"""
+    created_by_id: Optional[int] = None
+
+
+class CustomerRecommendationUpdate(BaseModel):
+    """Update an existing customer recommendation"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[RecommendationPriority] = None
+    status: Optional[RecommendationStatus] = None
+    category: Optional[str] = None
+    assessment_type_id: Optional[int] = None
+    expected_impact: Optional[float] = None
+    impacted_dimensions: Optional[List[str]] = None
+    due_date: Optional[date] = None
+    completed_date: Optional[date] = None
+
+
+class CustomerRecommendationResponse(CustomerRecommendationBase):
+    """Customer recommendation response with metadata"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    customer_id: int
+    assessment_type_id: Optional[int] = None
+    assessment_type: Optional[AssessmentTypeInfo] = None
+    completed_date: Optional[date] = None
+    created_by_id: Optional[int] = None
+    created_by: Optional[UserInfo] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CustomerRecommendationListResponse(BaseModel):
+    """List of customer recommendations"""
+    items: List[CustomerRecommendationResponse]
     total: int

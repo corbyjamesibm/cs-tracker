@@ -248,6 +248,9 @@ class CustomerAssessmentTarget(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+    assessment_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assessment_types.id"), nullable=True, index=True
+    )
 
     name: Mapped[str] = mapped_column(String(255))  # "Q4 2024 Target", "Year-End Goals"
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -266,6 +269,7 @@ class CustomerAssessmentTarget(Base):
     # Relationships
     customer: Mapped["Customer"] = relationship()
     created_by: Mapped[Optional["User"]] = relationship()
+    assessment_type: Mapped[Optional["AssessmentType"]] = relationship()
 
     def __repr__(self) -> str:
         return f"<CustomerAssessmentTarget {self.name} for Customer {self.customer_id}>"
@@ -343,6 +347,57 @@ class AssessmentRecommendation(Base):
 
     def __repr__(self) -> str:
         return f"<AssessmentRecommendation {self.id}: {self.title}>"
+
+
+class RecommendationStatus(str, enum.Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    DISMISSED = "dismissed"
+
+
+class CustomerRecommendation(Base):
+    """Customer-level recommendations that can be tied to assessment types for reporting"""
+    __tablename__ = "customer_recommendations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
+
+    # Optional link to assessment type (for reporting on impact by framework)
+    assessment_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("assessment_types.id"), nullable=True, index=True
+    )
+
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Markdown content
+    priority: Mapped[Optional[RecommendationPriority]] = mapped_column(
+        SQLEnum(RecommendationPriority), default=RecommendationPriority.MEDIUM
+    )
+    status: Mapped[RecommendationStatus] = mapped_column(
+        SQLEnum(RecommendationStatus), default=RecommendationStatus.OPEN
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Expected impact on maturity score (optional)
+    expected_impact: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Dimensions this recommendation impacts (e.g., ["Organization", "Strategic Planning"])
+    impacted_dimensions: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, default=list)
+
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    completed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    customer: Mapped["Customer"] = relationship()
+    assessment_type: Mapped[Optional["AssessmentType"]] = relationship()
+    created_by: Mapped[Optional["User"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<CustomerRecommendation {self.id}: {self.title}>"
 
 
 # Import at bottom to avoid circular imports

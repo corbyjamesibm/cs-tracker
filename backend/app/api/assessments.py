@@ -15,7 +15,8 @@ from app.core.database import get_db
 from app.models.assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
     CustomerAssessment, AssessmentResponse, AssessmentStatus,
-    AssessmentResponseAudit, CustomerAssessmentTarget, AssessmentRecommendation
+    AssessmentResponseAudit, CustomerAssessmentTarget, AssessmentRecommendation,
+    CustomerRecommendation, RecommendationStatus
 )
 from app.models.mapping import RoadmapRecommendation
 from app.schemas.assessment import (
@@ -31,7 +32,9 @@ from app.schemas.assessment import (
     DimensionGap, GapAnalysisResponse,
     FlowNode, FlowLink, FlowVisualizationResponse,
     AssessmentRecommendationCreate, AssessmentRecommendationUpdate,
-    AssessmentRecommendationResponse, AssessmentRecommendationListResponse
+    AssessmentRecommendationResponse, AssessmentRecommendationListResponse,
+    CustomerRecommendationCreate, CustomerRecommendationUpdate,
+    CustomerRecommendationResponse, CustomerRecommendationListResponse
 )
 
 router = APIRouter()
@@ -514,21 +517,44 @@ async def parse_tbm_format(
     current_dimension_desc = None
     question_number = 1
 
+    # Detect column offset - TBM files may have data starting in column B (index 1)
+    # Check first few rows to find where data starts
+    col_offset = 0
+    for row in rows[:10]:
+        if row:
+            # If column A is empty but column B has content, data starts in column B
+            if len(row) > 1 and not row[0] and row[1]:
+                col_offset = 1
+                break
+            # If column A has content, data starts in column A
+            elif row[0]:
+                col_offset = 0
+                break
+
     for row_idx, row in enumerate(rows):
-        if not row or not row[0]:
+        if not row or len(row) <= col_offset:
             continue
 
-        first_cell = str(row[0]).strip()
+        first_cell_val = row[col_offset]
+        if not first_cell_val:
+            continue
+
+        first_cell = str(first_cell_val).strip()
 
         # Skip header row and empty rows
         if first_cell.lower().startswith('tbm practice') or first_cell.lower().startswith('maturity dimension'):
             continue
 
-        # Check if this is a dimension header (single cell with no "0 - NA" in second column)
-        second_cell = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+        # Check if this is a dimension header (single cell with no "0 - NA" in response column)
+        second_col_idx = col_offset + 1
+        second_cell = str(row[second_col_idx]).strip() if len(row) > second_col_idx and row[second_col_idx] else ""
 
         # If second cell is empty or doesn't look like a score option, this might be a dimension
         if not second_cell or (not second_cell.startswith('0 -') and not second_cell.startswith('Enter')):
+            # Skip "Also Applies to:" rows and their content
+            if first_cell.lower().startswith('also applies to'):
+                continue
+
             # Check if this is a short title (dimension name) - typically short and no punctuation at end
             if len(first_cell) < 50 and not first_cell.endswith('.') and not first_cell.endswith(','):
                 # This is likely a dimension name
@@ -641,6 +667,14 @@ async def update_template(
         setattr(template, field, value)
 
     await db.flush()
+    await db.commit()
+
+    # Re-query with eager loading to return updated template
+    query = select(AssessmentTemplate).options(
+        selectinload(AssessmentTemplate.assessment_type)
+    ).where(AssessmentTemplate.id == template_id)
+    result = await db.execute(query)
+    template = result.scalar_one_or_none()
 
     return AssessmentTemplateResponse.model_validate(template)
 
@@ -857,13 +891,12 @@ async def update_assessment(
     assessment_in: CustomerAssessmentUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    """Update an assessment's status or notes."""
+    """Update an assessment's status, notes, assessment type, or date."""
+    from sqlalchemy import update as sql_update
+
+    # Get the assessment first to verify it exists
     query = select(CustomerAssessment).where(
         CustomerAssessment.id == assessment_id
-    ).options(
-        selectinload(CustomerAssessment.template),
-        selectinload(CustomerAssessment.completed_by),
-        selectinload(CustomerAssessment.assessment_type)
     )
     result = await db.execute(query)
     assessment = result.scalar_one_or_none()
@@ -873,14 +906,37 @@ async def update_assessment(
 
     update_data = assessment_in.model_dump(exclude_unset=True)
 
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    # Validate assessment_type_id if provided
+    if "assessment_type_id" in update_data and update_data["assessment_type_id"] is not None:
+        from app.models.assessment_type import AssessmentType
+        type_check = await db.get(AssessmentType, update_data["assessment_type_id"])
+        if not type_check:
+            raise HTTPException(status_code=400, detail="Invalid assessment type ID")
+
     # If completing, set completed_at
     if update_data.get("status") == AssessmentStatus.COMPLETED:
         update_data["completed_at"] = datetime.utcnow()
 
-    for field, value in update_data.items():
-        setattr(assessment, field, value)
+    # Use explicit UPDATE statement for reliability
+    stmt = sql_update(CustomerAssessment).where(
+        CustomerAssessment.id == assessment_id
+    ).values(**update_data)
+    await db.execute(stmt)
+    await db.commit()
 
-    await db.flush()
+    # Re-query with eager loading to return updated assessment
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.id == assessment_id
+    ).options(
+        selectinload(CustomerAssessment.template),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.assessment_type)
+    )
+    result = await db.execute(query)
+    assessment = result.scalar_one()
 
     return CustomerAssessmentResponse.model_validate(assessment)
 
@@ -1033,6 +1089,7 @@ async def upload_assessment_responses(
     assessment = CustomerAssessment(
         customer_id=customer_id,
         template_id=template.id,
+        assessment_type_id=template.assessment_type_id,
         assessment_date=assessment_date or date.today(),
         status=AssessmentStatus.IN_PROGRESS
     )
@@ -1614,6 +1671,7 @@ async def get_assessment_audit(
 async def list_customer_targets(
     customer_id: int,
     active_only: bool = Query(True, description="Only return active targets"),
+    assessment_type_id: Optional[int] = Query(None, description="Filter by assessment type"),
     db: AsyncSession = Depends(get_db)
 ):
     """List all assessment targets for a customer."""
@@ -1624,8 +1682,14 @@ async def list_customer_targets(
     if active_only:
         query = query.where(CustomerAssessmentTarget.is_active == True)
 
+    if assessment_type_id is not None:
+        query = query.where(CustomerAssessmentTarget.assessment_type_id == assessment_type_id)
+
     query = query.order_by(CustomerAssessmentTarget.target_date.desc().nullslast())
-    query = query.options(selectinload(CustomerAssessmentTarget.created_by))
+    query = query.options(
+        selectinload(CustomerAssessmentTarget.created_by),
+        selectinload(CustomerAssessmentTarget.assessment_type)
+    )
 
     result = await db.execute(query)
     targets = result.scalars().all()
@@ -1656,7 +1720,8 @@ async def create_customer_target(
         target_scores=target_in.target_scores,
         overall_target=overall_target,
         is_active=target_in.is_active,
-        created_by_id=target_in.created_by_id
+        created_by_id=target_in.created_by_id,
+        assessment_type_id=target_in.assessment_type_id
     )
     db.add(target)
     await db.flush()
@@ -1673,7 +1738,10 @@ async def get_target(
     """Get a specific target."""
     query = select(CustomerAssessmentTarget).where(
         CustomerAssessmentTarget.id == target_id
-    ).options(selectinload(CustomerAssessmentTarget.created_by))
+    ).options(
+        selectinload(CustomerAssessmentTarget.created_by),
+        selectinload(CustomerAssessmentTarget.assessment_type)
+    )
 
     result = await db.execute(query)
     target = result.scalar_one_or_none()
@@ -1842,6 +1910,7 @@ async def get_flow_visualization(
     customer_id: int,
     threshold: float = Query(3.5, ge=1.0, le=5.0, description="Score threshold for weak dimensions"),
     type: Optional[str] = Query(None, description="Filter by assessment type code (spm, tbm, finops)"),
+    assessment_id: Optional[int] = Query(None, description="Specific assessment ID to use (defaults to latest)"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1849,7 +1918,7 @@ async def get_flow_visualization(
     Assessment dimensions (with gaps) -> Recommended use cases -> TP solutions to implement.
 
     This provides data for a Sankey diagram visualization.
-    Optionally filter by assessment type.
+    Optionally filter by assessment type or specify a specific assessment ID.
     """
     from app.models.mapping import DimensionUseCaseMapping
     from app.models.use_case import CustomerUseCase, UseCaseStatus
@@ -1864,20 +1933,32 @@ async def get_flow_visualization(
         type_result = await db.execute(type_query)
         assessment_type_id = type_result.scalar_one_or_none()
 
-    # 1. Get customer's latest completed assessment (optionally filtered by type)
-    assessment_conditions = [
-        CustomerAssessment.customer_id == customer_id,
-        CustomerAssessment.status == AssessmentStatus.COMPLETED
-    ]
-    if assessment_type_id:
-        assessment_conditions.append(CustomerAssessment.assessment_type_id == assessment_type_id)
+    # 1. Get customer's assessment - either specific ID or latest completed
+    assessment = None
+    if assessment_id:
+        # Get specific assessment by ID
+        assessment_query = select(CustomerAssessment).where(
+            CustomerAssessment.id == assessment_id,
+            CustomerAssessment.customer_id == customer_id,
+            CustomerAssessment.status == AssessmentStatus.COMPLETED
+        )
+        result = await db.execute(assessment_query)
+        assessment = result.scalar_one_or_none()
+    else:
+        # Get latest completed assessment (optionally filtered by type)
+        assessment_conditions = [
+            CustomerAssessment.customer_id == customer_id,
+            CustomerAssessment.status == AssessmentStatus.COMPLETED
+        ]
+        if assessment_type_id:
+            assessment_conditions.append(CustomerAssessment.assessment_type_id == assessment_type_id)
 
-    assessment_query = select(CustomerAssessment).where(
-        and_(*assessment_conditions)
-    ).order_by(CustomerAssessment.completed_at.desc()).limit(1)
+        assessment_query = select(CustomerAssessment).where(
+            and_(*assessment_conditions)
+        ).order_by(CustomerAssessment.completed_at.desc()).limit(1)
 
-    result = await db.execute(assessment_query)
-    assessment = result.scalar_one_or_none()
+        result = await db.execute(assessment_query)
+        assessment = result.scalar_one_or_none()
 
     if not assessment or not assessment.dimension_scores:
         return FlowVisualizationResponse(
@@ -2231,6 +2312,158 @@ async def delete_assessment_recommendation(
             AssessmentRecommendation.id == recommendation_id,
             AssessmentRecommendation.assessment_id == assessment_id
         )
+    )
+    result = await db.execute(query)
+    recommendation = result.scalar_one_or_none()
+
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    await db.delete(recommendation)
+
+
+# ============================================================
+# CUSTOMER RECOMMENDATION ENDPOINTS
+# ============================================================
+
+@router.get("/customer/{customer_id}/recommendations", response_model=CustomerRecommendationListResponse)
+async def list_customer_recommendations(
+    customer_id: int,
+    assessment_type_id: Optional[int] = Query(None, description="Filter by assessment type"),
+    status: Optional[RecommendationStatus] = Query(None, description="Filter by status"),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all recommendations for a customer."""
+    query = select(CustomerRecommendation).where(
+        CustomerRecommendation.customer_id == customer_id
+    )
+
+    if assessment_type_id is not None:
+        query = query.where(CustomerRecommendation.assessment_type_id == assessment_type_id)
+
+    if status is not None:
+        query = query.where(CustomerRecommendation.status == status)
+
+    query = query.order_by(
+        CustomerRecommendation.priority.desc(),
+        CustomerRecommendation.created_at.desc()
+    )
+    query = query.options(
+        selectinload(CustomerRecommendation.assessment_type),
+        selectinload(CustomerRecommendation.created_by)
+    )
+
+    result = await db.execute(query)
+    recommendations = result.scalars().all()
+
+    return CustomerRecommendationListResponse(
+        items=[CustomerRecommendationResponse.model_validate(r) for r in recommendations],
+        total=len(recommendations)
+    )
+
+
+@router.post("/customer/{customer_id}/recommendations", response_model=CustomerRecommendationResponse, status_code=201)
+async def create_customer_recommendation(
+    customer_id: int,
+    rec_in: CustomerRecommendationCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new recommendation for a customer."""
+    recommendation = CustomerRecommendation(
+        customer_id=customer_id,
+        title=rec_in.title,
+        description=rec_in.description,
+        priority=rec_in.priority,
+        status=rec_in.status or RecommendationStatus.OPEN,
+        category=rec_in.category,
+        assessment_type_id=rec_in.assessment_type_id,
+        expected_impact=rec_in.expected_impact,
+        impacted_dimensions=rec_in.impacted_dimensions,
+        due_date=rec_in.due_date,
+        created_by_id=rec_in.created_by_id
+    )
+    db.add(recommendation)
+    await db.flush()
+
+    # Reload with relationships
+    query = select(CustomerRecommendation).where(
+        CustomerRecommendation.id == recommendation.id
+    ).options(
+        selectinload(CustomerRecommendation.assessment_type),
+        selectinload(CustomerRecommendation.created_by)
+    )
+    result = await db.execute(query)
+    recommendation = result.scalar_one()
+
+    return CustomerRecommendationResponse.model_validate(recommendation)
+
+
+@router.get("/recommendations/{recommendation_id}", response_model=CustomerRecommendationResponse)
+async def get_customer_recommendation(
+    recommendation_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get a specific customer recommendation."""
+    query = select(CustomerRecommendation).where(
+        CustomerRecommendation.id == recommendation_id
+    ).options(
+        selectinload(CustomerRecommendation.assessment_type),
+        selectinload(CustomerRecommendation.created_by)
+    )
+
+    result = await db.execute(query)
+    recommendation = result.scalar_one_or_none()
+
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    return CustomerRecommendationResponse.model_validate(recommendation)
+
+
+@router.patch("/recommendations/{recommendation_id}", response_model=CustomerRecommendationResponse)
+async def update_customer_recommendation(
+    recommendation_id: int,
+    rec_in: CustomerRecommendationUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update an existing customer recommendation."""
+    query = select(CustomerRecommendation).where(
+        CustomerRecommendation.id == recommendation_id
+    )
+    result = await db.execute(query)
+    recommendation = result.scalar_one_or_none()
+
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    # Update fields if provided
+    update_data = rec_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(recommendation, field, value)
+
+    await db.flush()
+
+    # Reload with relationships
+    query = select(CustomerRecommendation).where(
+        CustomerRecommendation.id == recommendation_id
+    ).options(
+        selectinload(CustomerRecommendation.assessment_type),
+        selectinload(CustomerRecommendation.created_by)
+    )
+    result = await db.execute(query)
+    recommendation = result.scalar_one()
+
+    return CustomerRecommendationResponse.model_validate(recommendation)
+
+
+@router.delete("/recommendations/{recommendation_id}", status_code=204)
+async def delete_customer_recommendation(
+    recommendation_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a customer recommendation."""
+    query = select(CustomerRecommendation).where(
+        CustomerRecommendation.id == recommendation_id
     )
     result = await db.execute(query)
     recommendation = result.scalar_one_or_none()
