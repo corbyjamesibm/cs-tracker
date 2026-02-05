@@ -850,6 +850,120 @@ window.saveUseCaseStatus = saveUseCaseStatus;
 
 let currentRoadmap = null;
 let roadmapQuarters = [];
+let allRoadmapQuarters = []; // All quarters from roadmap date range
+let roadmapZoomLevel = loadDefaultRoadmapZoom(); // Number of quarters to display (1, 2, 4, 6, 8, 10, 12)
+let roadmapViewportStart = 0; // Index of the first visible quarter
+
+// Undo stack for roadmap operations
+const roadmapUndoStack = [];
+const UNDO_STACK_MAX_SIZE = 20;
+
+// Push an action to the undo stack
+function pushToUndoStack(action) {
+    roadmapUndoStack.push({
+        ...action,
+        timestamp: Date.now()
+    });
+    // Limit stack size
+    if (roadmapUndoStack.length > UNDO_STACK_MAX_SIZE) {
+        roadmapUndoStack.shift();
+    }
+    updateUndoButtonState();
+}
+
+// Update undo button visibility/state
+function updateUndoButtonState() {
+    const undoBtn = document.getElementById('roadmapUndoBtn');
+    if (undoBtn) {
+        if (roadmapUndoStack.length > 0) {
+            undoBtn.disabled = false;
+            undoBtn.style.opacity = '1';
+            const lastAction = roadmapUndoStack[roadmapUndoStack.length - 1];
+            undoBtn.title = `Undo: ${lastAction.description} (Ctrl+Z)`;
+        } else {
+            undoBtn.disabled = true;
+            undoBtn.style.opacity = '0.5';
+            undoBtn.title = 'Nothing to undo';
+        }
+    }
+}
+
+// Undo the last roadmap action
+async function undoLastRoadmapAction() {
+    if (roadmapUndoStack.length === 0) {
+        showToast('Nothing to undo', 'info');
+        return;
+    }
+
+    const action = roadmapUndoStack.pop();
+    updateUndoButtonState();
+
+    try {
+        // Restore the previous state via API
+        const response = await fetch(`${API_BASE_URL}/roadmaps/items/${action.itemId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(action.previousState)
+        });
+
+        if (!response.ok) throw new Error('Failed to undo');
+
+        // Reload roadmap to reflect changes
+        await loadRoadmap(getCustomerId());
+
+        showToast(`Undone: ${action.description}`, 'success');
+
+    } catch (error) {
+        console.error('Failed to undo:', error);
+        showToast('Failed to undo. Please try again.', 'error');
+        // Put the action back on the stack
+        roadmapUndoStack.push(action);
+        updateUndoButtonState();
+    }
+}
+
+// Clear undo stack (e.g., when leaving roadmap view)
+function clearUndoStack() {
+    roadmapUndoStack.length = 0;
+    updateUndoButtonState();
+}
+
+// Keyboard shortcut for undo
+document.addEventListener('keydown', (e) => {
+    // Ctrl+Z or Cmd+Z for undo (only when roadmap is visible)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        const roadmapTab = document.querySelector('.tabs__tab[data-tab="roadmap"]');
+        const isRoadmapActive = roadmapTab?.classList.contains('tabs__tab--active');
+        if (isRoadmapActive && roadmapUndoStack.length > 0) {
+            e.preventDefault();
+            undoLastRoadmapAction();
+        }
+    }
+});
+
+// Load default roadmap zoom from user preferences
+function loadDefaultRoadmapZoom() {
+    const saved = localStorage.getItem('roadmapDefaultZoom');
+    if (saved) {
+        const zoom = parseInt(saved, 10);
+        const validZooms = [1, 2, 4, 6, 8, 10, 12];
+        if (validZooms.includes(zoom)) {
+            return zoom;
+        }
+    }
+    return 8; // Default to 8 quarters
+}
+
+// Save default roadmap zoom to user preferences
+function saveDefaultRoadmapZoom(quarters) {
+    localStorage.setItem('roadmapDefaultZoom', quarters.toString());
+    showToast(`Default view set to ${quarters} quarter${quarters === 1 ? '' : 's'}`, 'success');
+}
+
+// Set current zoom as the default preference
+function setCurrentZoomAsDefault() {
+    saveDefaultRoadmapZoom(roadmapZoomLevel);
+}
 
 // Load and display roadmap for this customer
 async function loadRoadmap(customerId) {
@@ -897,13 +1011,29 @@ function displayRoadmap(roadmap) {
     document.getElementById('addRoadmapItemBtn').style.display = 'inline-flex';
     document.getElementById('pushToTPBtn').style.display = 'inline-flex';
 
-    // Calculate quarters to display based on roadmap dates
-    roadmapQuarters = generateQuarters(roadmap.start_date, roadmap.end_date);
+    // Generate ALL quarters from roadmap date range
+    allRoadmapQuarters = generateAllQuarters(roadmap.start_date, roadmap.end_date);
 
-    // Update timeframe tag
+    // Reset viewport if switching roadmaps or first load
+    if (roadmapViewportStart >= allRoadmapQuarters.length) {
+        roadmapViewportStart = 0;
+    }
+
+    // Ensure zoom level doesn't exceed available quarters
+    if (roadmapZoomLevel > allRoadmapQuarters.length) {
+        roadmapZoomLevel = allRoadmapQuarters.length;
+    }
+
+    // Get visible quarters based on current viewport
+    roadmapQuarters = getVisibleQuarters();
+
+    // Update timeframe tag (shows overall roadmap range)
     const startYear = new Date(roadmap.start_date).getFullYear();
     const endYear = new Date(roadmap.end_date).getFullYear();
     document.getElementById('roadmapTimeframe').textContent = startYear === endYear ? startYear : `${startYear}-${endYear}`;
+
+    // Update zoom controls UI
+    updateRoadmapZoomUI();
 
     // Render quarter headers
     renderQuarterHeaders(roadmapQuarters);
@@ -917,8 +1047,8 @@ function displayRoadmap(roadmap) {
     }
 }
 
-// Generate quarters array between two dates
-function generateQuarters(startDate, endDate) {
+// Generate ALL quarters array between two dates (no limit)
+function generateAllQuarters(startDate, endDate) {
     const quarters = [];
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -933,16 +1063,117 @@ function generateQuarters(startDate, endDate) {
             quarter = 1;
             year++;
         }
-        // Limit to 8 quarters max for display
-        if (quarters.length >= 8) break;
+        // Safety limit to prevent infinite loops
+        if (quarters.length >= 20) break;
     }
 
     return quarters;
 }
 
+// Get visible quarters based on zoom level and viewport position
+function getVisibleQuarters() {
+    const endIdx = Math.min(roadmapViewportStart + roadmapZoomLevel, allRoadmapQuarters.length);
+    return allRoadmapQuarters.slice(roadmapViewportStart, endIdx);
+}
+
+// Update roadmap zoom controls UI
+function updateRoadmapZoomUI() {
+    const zoomLabel = document.getElementById('roadmapZoomLevel');
+    const timeRange = document.getElementById('roadmapTimeRange');
+    const prevBtn = document.getElementById('roadmapPrevBtn');
+    const nextBtn = document.getElementById('roadmapNextBtn');
+
+    if (zoomLabel) {
+        zoomLabel.textContent = `${roadmapZoomLevel} quarter${roadmapZoomLevel === 1 ? '' : 's'}`;
+    }
+
+    if (timeRange && roadmapQuarters.length > 0) {
+        const first = roadmapQuarters[0];
+        const last = roadmapQuarters[roadmapQuarters.length - 1];
+        timeRange.textContent = `${first} - ${last}`;
+    }
+
+    // Enable/disable navigation buttons
+    if (prevBtn) {
+        prevBtn.disabled = roadmapViewportStart <= 0;
+        prevBtn.style.opacity = roadmapViewportStart <= 0 ? '0.5' : '1';
+    }
+    if (nextBtn) {
+        const maxStart = allRoadmapQuarters.length - roadmapZoomLevel;
+        nextBtn.disabled = roadmapViewportStart >= maxStart;
+        nextBtn.style.opacity = roadmapViewportStart >= maxStart ? '0.5' : '1';
+    }
+}
+
+// Zoom in/out on the roadmap timeline
+function zoomRoadmap(direction) {
+    const zoomLevels = [1, 2, 4, 6, 8, 10, 12];
+    const currentIdx = zoomLevels.indexOf(roadmapZoomLevel);
+    let newIdx = currentIdx;
+
+    if (direction > 0) {
+        // Zoom in = fewer quarters
+        newIdx = Math.max(0, currentIdx - 1);
+    } else {
+        // Zoom out = more quarters
+        newIdx = Math.min(zoomLevels.length - 1, currentIdx + 1);
+    }
+
+    if (zoomLevels[newIdx] !== roadmapZoomLevel) {
+        roadmapZoomLevel = zoomLevels[newIdx];
+
+        // Ensure viewport doesn't exceed bounds
+        const maxStart = Math.max(0, allRoadmapQuarters.length - roadmapZoomLevel);
+        roadmapViewportStart = Math.min(roadmapViewportStart, maxStart);
+
+        // Re-render the roadmap
+        refreshRoadmapDisplay();
+    }
+}
+
+// Navigate the roadmap timeline
+function navigateRoadmapTime(direction) {
+    const step = Math.max(1, Math.floor(roadmapZoomLevel / 2)); // Move by half the visible quarters
+    const maxStart = Math.max(0, allRoadmapQuarters.length - roadmapZoomLevel);
+
+    if (direction < 0) {
+        roadmapViewportStart = Math.max(0, roadmapViewportStart - step);
+    } else {
+        roadmapViewportStart = Math.min(maxStart, roadmapViewportStart + step);
+    }
+
+    // Re-render the roadmap
+    refreshRoadmapDisplay();
+}
+
+// Refresh the roadmap display with current zoom/viewport settings
+function refreshRoadmapDisplay() {
+    if (!currentRoadmap) return;
+
+    // Get visible quarters based on current viewport
+    roadmapQuarters = getVisibleQuarters();
+
+    // Update UI controls
+    updateRoadmapZoomUI();
+
+    // Re-render
+    renderQuarterHeaders(roadmapQuarters);
+    renderRoadmapItems(currentRoadmap.items, roadmapQuarters);
+}
+
+// Legacy function for backward compatibility
+function generateQuarters(startDate, endDate) {
+    return generateAllQuarters(startDate, endDate);
+}
+
 // Render quarter headers
 function renderQuarterHeaders(quarters) {
     const container = document.getElementById('quarterHeaders');
+    const numQuarters = quarters.length;
+
+    // Update grid template to match number of quarters
+    container.style.gridTemplateColumns = `150px repeat(${numQuarters}, 1fr)`;
+
     container.innerHTML = `
         <div style="font-weight: 600; font-size: 12px; color: var(--cds-text-secondary);">Category</div>
         ${quarters.map(q => `
@@ -984,6 +1215,155 @@ function getQuarterIndex(date, quarters) {
     return quarters.indexOf(quarterStr);
 }
 
+// Calculate sub-quarter position from planned_start_date
+// Returns: 'early' (month 1), 'mid' (month 2), or 'late' (month 3)
+function calculateSubQuarterPosition(plannedStartDate) {
+    if (!plannedStartDate) return 'early';
+    const d = new Date(plannedStartDate);
+    const monthInQuarter = d.getMonth() % 3; // 0, 1, or 2
+    if (monthInQuarter === 0) return 'early';
+    if (monthInQuarter === 1) return 'mid';
+    return 'late';
+}
+
+// Calculate precise percentage offset within a quarter for a date
+// Returns 0-100 representing position within the quarter
+function calculateQuarterOffset(date, quarterStr) {
+    if (!date || !quarterStr) return 0;
+
+    const d = new Date(date);
+    const match = quarterStr.match(/Q(\d)\s+(\d{4})/);
+    if (!match) return 0;
+
+    const quarter = parseInt(match[1]);
+    const year = parseInt(match[2]);
+    const quarterStart = new Date(year, (quarter - 1) * 3, 1);
+    const quarterEnd = new Date(year, quarter * 3, 0); // Last day of quarter
+
+    const quarterDuration = quarterEnd.getTime() - quarterStart.getTime();
+    const dateOffset = d.getTime() - quarterStart.getTime();
+
+    return Math.max(0, Math.min(100, (dateOffset / quarterDuration) * 100));
+}
+
+// Get precise positioning style for an item based on its actual dates
+function getPreciseDatePositioning(startDate, endDate, startQuarter, endQuarter, quarters) {
+    if (!startDate || !endDate) return '';
+
+    const startOffset = calculateQuarterOffset(startDate, startQuarter);
+    const endOffset = calculateQuarterOffset(endDate, endQuarter);
+
+    // Calculate margin-left based on start position within first quarter
+    const marginLeft = startOffset * 0.95; // Scale to ~95% max to leave some padding
+
+    // Calculate width reduction based on end position within last quarter
+    // If item spans multiple quarters, only apply end offset if in last quarter
+    const startIdx = quarters.indexOf(startQuarter);
+    const endIdx = quarters.indexOf(endQuarter);
+    const spanMultipleQuarters = endIdx > startIdx;
+
+    // Width reduction: for start margin + remaining space in end quarter
+    const endReduction = (100 - endOffset) * 0.95;
+
+    let styles = '';
+    if (marginLeft > 5) {
+        styles += ` margin-left: ${marginLeft.toFixed(1)}%;`;
+    }
+    if (spanMultipleQuarters) {
+        // For multi-quarter items, reduce width by start margin and end gap
+        const totalReduction = marginLeft + endReduction;
+        if (totalReduction > 5) {
+            styles += ` width: calc(100% - ${totalReduction.toFixed(1)}%);`;
+        }
+    } else {
+        // Single quarter: width is end% - start%
+        const width = endOffset - startOffset;
+        if (width < 90 && width > 0) {
+            styles += ` width: ${(width * 0.95).toFixed(1)}%;`;
+        }
+    }
+
+    return styles;
+}
+
+// Get margin style for sub-quarter positioning (legacy, kept for compatibility)
+function getSubQuarterMargin(subQuarter) {
+    if (subQuarter === 'mid') return ' margin-left: 8%; width: calc(100% - 8%);';
+    if (subQuarter === 'late') return ' margin-left: 16%; width: calc(100% - 16%);';
+    return '';
+}
+
+// Calculate date for sub-quarter position within a quarter
+function calculateDateForSubQuarter(quarterStr, subQuarter) {
+    const match = quarterStr.match(/Q(\d)\s+(\d{4})/);
+    if (!match) return new Date();
+
+    const quarter = parseInt(match[1]);
+    const year = parseInt(match[2]);
+    const baseMonth = (quarter - 1) * 3; // Q1=0, Q2=3, Q3=6, Q4=9
+
+    let monthOffset = 0;
+    if (subQuarter === 'mid') monthOffset = 1;
+    if (subQuarter === 'late') monthOffset = 2;
+
+    return new Date(year, baseMonth + monthOffset, 1);
+}
+
+// Calculate date from pixel position within the roadmap grid
+function calculateDateFromPixelPosition(pixelX, containerRect, quarters) {
+    const categoryColWidth = 150;
+    const quarterWidth = getQuarterColumnWidth();
+    const relativeX = pixelX - containerRect.left - categoryColWidth;
+
+    // Find which quarter and position within it
+    const quarterIndex = Math.floor(relativeX / quarterWidth);
+    const positionInQuarter = (relativeX % quarterWidth) / quarterWidth; // 0-1
+
+    const clampedIndex = Math.max(0, Math.min(quarterIndex, quarters.length - 1));
+    const quarterStr = quarters[clampedIndex];
+
+    const match = quarterStr.match(/Q(\d)\s+(\d{4})/);
+    if (!match) return new Date();
+
+    const quarter = parseInt(match[1]);
+    const year = parseInt(match[2]);
+    const quarterStart = new Date(year, (quarter - 1) * 3, 1);
+    const quarterEnd = new Date(year, quarter * 3, 0);
+
+    const quarterDuration = quarterEnd.getTime() - quarterStart.getTime();
+    const dateTime = quarterStart.getTime() + (positionInQuarter * quarterDuration);
+
+    return new Date(dateTime);
+}
+
+// Calculate required padding for dependency line routing
+function calculateDependencyPadding(items) {
+    let hasDependencies = false;
+    let maxRoutingNeeded = 0;
+
+    items.forEach(item => {
+        if (item.depends_on_ids && item.depends_on_ids.length > 0) {
+            hasDependencies = true;
+            // Check if dependencies are in same category (need vertical routing)
+            item.depends_on_ids.forEach(depId => {
+                const depItem = items.find(i => i.id === depId);
+                if (depItem && depItem.category === item.category) {
+                    maxRoutingNeeded = Math.max(maxRoutingNeeded, 50);
+                } else {
+                    maxRoutingNeeded = Math.max(maxRoutingNeeded, 35);
+                }
+            });
+        }
+    });
+
+    return {
+        hasDependencies,
+        rowGap: hasDependencies ? 24 : 8,
+        containerPadding: maxRoutingNeeded,
+        bottomPadding: hasDependencies ? 40 : 10
+    };
+}
+
 // Render roadmap items grouped by category
 function renderRoadmapItems(items, quarters) {
     const container = document.getElementById('roadmapItemsContainer');
@@ -994,15 +1374,26 @@ function renderRoadmapItems(items, quarters) {
                 No items yet. Click the + button to add roadmap items.
             </div>
         `;
+        // Clear any existing dependency lines
+        const existingSvg = document.getElementById('roadmapDependencySvg');
+        if (existingSvg) existingSvg.remove();
         return;
     }
 
-    // Group items by category
+    // Calculate padding needed for dependency lines
+    const spacing = calculateDependencyPadding(items);
+
+    // Group items by category and sort by display_order
     const categories = {};
     items.forEach(item => {
         const cat = item.category || 'other';
         if (!categories[cat]) categories[cat] = [];
         categories[cat].push(item);
+    });
+
+    // Sort items within each category by display_order (ascending)
+    Object.keys(categories).forEach(cat => {
+        categories[cat].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
     });
 
     // Category display order and labels
@@ -1019,16 +1410,24 @@ function renderRoadmapItems(items, quarters) {
     let html = '';
     const gridCols = quarters.length;
 
+    // Apply container padding for dependency line routing
+    container.style.paddingRight = `${spacing.containerPadding}px`;
+    container.style.paddingBottom = `${spacing.bottomPadding}px`;
+
     categoryOrder.forEach(cat => {
         if (!categories[cat]) return;
 
+        // Check how many items are in this category (need row-gap for multiple items)
+        const itemCount = categories[cat].length;
+        const rowGapStyle = itemCount > 1 ? `row-gap: 16px;` : '';
+
         html += `
-            <div style="display: grid; grid-template-columns: 150px repeat(${gridCols}, 1fr); gap: 4px; margin-bottom: 8px; align-items: start;">
-                <div style="font-weight: 500; font-size: 13px; padding: 8px 0;">${categoryLabels[cat]}</div>
+            <div class="roadmap-category-row" data-category="${cat}" style="display: grid; grid-template-columns: 150px repeat(${gridCols}, 1fr); gap: 4px; margin-bottom: ${spacing.rowGap}px; align-items: start; ${rowGapStyle}">
+                <div style="font-weight: 500; font-size: 13px; padding: 8px 0; grid-row: 1 / span ${itemCount};">${categoryLabels[cat]}</div>
         `;
 
         // Render each item with proper column span based on dates
-        categories[cat].forEach(item => {
+        categories[cat].forEach((item, itemIndex) => {
             let colStart, colEnd;
 
             if (item.planned_start_date && item.planned_end_date) {
@@ -1058,12 +1457,60 @@ function renderRoadmapItems(items, quarters) {
                 ? `${formatDate(item.planned_start_date)} - ${formatDate(item.planned_end_date)}`
                 : item.target_quarter;
 
+            // Check if item has dependencies
+            const hasDeps = item.depends_on_ids && item.depends_on_ids.length > 0;
+            const depIndicator = hasDeps ? `<span style="font-size: 10px; opacity: 0.8;" title="Has dependencies">🔗</span>` : '';
+
+            // Calculate precise positioning based on actual dates
+            const startQuarter = quarters[colStart - 2] || quarters[0];
+            const endQuarter = quarters[colEnd - 3] || quarters[quarters.length - 1];
+            const precisePositioning = getPreciseDatePositioning(
+                item.planned_start_date,
+                item.planned_end_date,
+                startQuarter,
+                endQuarter,
+                quarters
+            );
+
+            // Calculate sub-quarter position for data attribute
+            const subQuarter = calculateSubQuarterPosition(item.planned_start_date);
+
             html += `
-                <div style="grid-column: ${colStart} / ${colEnd}; background: ${bgColor}; color: ${textColor}; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;"
-                     onclick="editRoadmapItem(${item.id})"
-                     title="${item.title}\n${dateRange}\n${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' (' + item.progress_percent + '%)' : ''}">
-                    <div style="font-weight: 500;">${truncateText(item.title, 30)}</div>
-                    <div style="opacity: 0.8; font-size: 10px;">${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' - ' + item.progress_percent + '%' : ''}</div>
+                <div class="roadmap-item"
+                     data-roadmap-item-id="${item.id}"
+                     data-col-start="${colStart}"
+                     data-col-end="${colEnd}"
+                     data-category="${cat}"
+                     data-display-order="${item.display_order || itemIndex}"
+                     data-sub-quarter="${subQuarter}"
+                     data-start-date="${item.planned_start_date || ''}"
+                     data-end-date="${item.planned_end_date || ''}"
+                     data-depends-on="${(item.depends_on_ids || []).join(',')}"
+                     style="grid-column: ${colStart} / ${colEnd}; background: ${bgColor}; color: ${textColor}; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: grab; position: relative; user-select: none;${precisePositioning}"
+                     title="${item.title}\n${dateRange}\n${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' (' + item.progress_percent + '%)' : ''}${hasDeps ? '\nDepends on: ' + item.depends_on_ids.length + ' item(s)' : ''}\n\nClick to edit • Drag to move • Drag edges to resize">
+                    <!-- Left resize handle -->
+                    <div class="roadmap-resize-handle roadmap-resize-left"
+                         onmousedown="startRoadmapResize(event, ${item.id}, 'left')"
+                         title="Drag to change start date"></div>
+                    <!-- Right resize handle -->
+                    <div class="roadmap-resize-handle roadmap-resize-right"
+                         onmousedown="startRoadmapResize(event, ${item.id}, 'right')"
+                         title="Drag to change end date"></div>
+                    <!-- Anchor points for dependency lines -->
+                    <div class="roadmap-anchor roadmap-anchor--top" data-anchor="top" data-item-id="${item.id}" title="Drag to create dependency"></div>
+                    <div class="roadmap-anchor roadmap-anchor--bottom" data-anchor="bottom" data-item-id="${item.id}" title="Drag to create dependency"></div>
+                    <div class="roadmap-anchor roadmap-anchor--left" data-anchor="left" data-item-id="${item.id}" title="Drag to create dependency"></div>
+                    <div class="roadmap-anchor roadmap-anchor--right" data-anchor="right" data-item-id="${item.id}" title="Drag to create dependency"></div>
+                    <!-- Content (draggable area) -->
+                    <div class="roadmap-item-content"
+                         style="pointer-events: auto; overflow: hidden; width: 100%;"
+                         onmousedown="startRoadmapDrag(event, ${item.id})">
+                        <div class="roadmap-item-title" style="font-weight: 500; line-height: 1.3; position: relative;">
+                            <span style="display: block; overflow-wrap: break-word; word-wrap: break-word; hyphens: auto; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding-right: ${hasDeps ? '20px' : '0'};">${item.title}</span>
+                            ${hasDeps ? `<span style="position: absolute; top: 0; right: 0; font-size: 10px; opacity: 0.8;" title="Has dependencies">🔗</span>` : ''}
+                        </div>
+                        <div style="opacity: 0.8; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;">${getRoadmapStatusLabel(item.status)}${item.progress_percent > 0 ? ' - ' + item.progress_percent + '%' : ''}</div>
+                    </div>
                 </div>
             `;
         });
@@ -1072,6 +1519,1966 @@ function renderRoadmapItems(items, quarters) {
     });
 
     container.innerHTML = html;
+
+    // Draw dependency lines after a short delay to ensure DOM is rendered
+    setTimeout(() => drawDependencyLines(items), 100);
+}
+
+// State for anchor drag editing
+let anchorDragState = null;
+
+// State for selected dependency (for deletion)
+let selectedDependency = null;
+
+// Select a dependency line (for deletion)
+function selectDependencyLine(dependentItemId, prereqItemId, fromName, toName, group) {
+    // Deselect any previously selected dependency
+    deselectDependency();
+
+    // Store selection state
+    selectedDependency = {
+        dependentItemId,
+        prereqItemId,
+        fromName,
+        toName,
+        group
+    };
+
+    // Add selected class to the line group
+    group.classList.add('dependency-line--selected');
+
+    // Highlight connected items
+    const fromEl = document.querySelector(`.roadmap-item[data-item-id="${prereqItemId}"]`);
+    const toEl = document.querySelector(`.roadmap-item[data-item-id="${dependentItemId}"]`);
+    if (fromEl) fromEl.classList.add('roadmap-item--dependency-selected');
+    if (toEl) toEl.classList.add('roadmap-item--dependency-selected');
+
+    // Show popover
+    showDependencyPopover(fromName, toName, group);
+}
+
+// Deselect the currently selected dependency
+function deselectDependency() {
+    if (!selectedDependency) return;
+
+    // Remove selected class from line
+    if (selectedDependency.group) {
+        selectedDependency.group.classList.remove('dependency-line--selected');
+    }
+
+    // Remove highlight from connected items
+    document.querySelectorAll('.roadmap-item--dependency-selected').forEach(el => {
+        el.classList.remove('roadmap-item--dependency-selected');
+    });
+
+    // Hide popover
+    closeDependencyPopover();
+
+    selectedDependency = null;
+}
+
+// Show the dependency action popover
+function showDependencyPopover(fromName, toName, group) {
+    const popover = document.getElementById('dependencyPopover');
+    if (!popover) return;
+
+    // Update popover content
+    document.getElementById('dependencyFromName').textContent = fromName;
+    document.getElementById('dependencyToName').textContent = toName;
+
+    // Position popover near the middle of the dependency line
+    const container = document.getElementById('roadmapItemsContainer');
+    const containerRect = container.getBoundingClientRect();
+
+    // Get the path element to find its bounding box
+    const path = group.querySelector('path.dependency-path');
+    if (path) {
+        const pathRect = path.getBoundingClientRect();
+        const midX = pathRect.left + pathRect.width / 2 - containerRect.left;
+        const midY = pathRect.top - containerRect.top - 10; // Above the line
+
+        // Adjust for popover size
+        const popoverWidth = 300;
+        let left = midX - popoverWidth / 2;
+        let top = midY - 180; // Popover height estimate
+
+        // Keep within container bounds
+        left = Math.max(10, Math.min(left, containerRect.width - popoverWidth - 10));
+        top = Math.max(10, top);
+
+        // If popover would be above the container, show it below the line instead
+        if (top < 10) {
+            top = midY + 30;
+        }
+
+        popover.style.left = `${left}px`;
+        popover.style.top = `${top}px`;
+    }
+
+    popover.style.display = 'block';
+
+    // Focus the delete button for keyboard accessibility
+    setTimeout(() => {
+        document.getElementById('deleteDependencyBtn')?.focus();
+    }, 50);
+}
+
+// Close the dependency popover
+function closeDependencyPopover() {
+    const popover = document.getElementById('dependencyPopover');
+    if (popover) {
+        popover.style.display = 'none';
+    }
+}
+
+// Delete the selected dependency
+async function deleteSelectedDependency() {
+    if (!selectedDependency) return;
+
+    const { dependentItemId, prereqItemId, fromName, toName } = selectedDependency;
+
+    // Find the dependent item in our roadmap data
+    const roadmapItems = currentRoadmap?.items || [];
+    const dependentItem = roadmapItems.find(item => item.id === dependentItemId);
+    if (!dependentItem) {
+        showToast('Error: Could not find roadmap item', 'error');
+        return;
+    }
+
+    // Remove the prerequisite from depends_on_ids
+    const currentDeps = dependentItem.depends_on_ids || [];
+    const newDeps = currentDeps.filter(id => id !== prereqItemId);
+
+    // Also clean up dependency_anchors if they exist
+    const anchors = { ...(dependentItem.dependency_anchors || {}) };
+    delete anchors[String(prereqItemId)];
+
+    try {
+        // Update via API
+        const response = await fetch(`${API_BASE_URL}/roadmaps/items/${dependentItemId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                depends_on_ids: newDeps,
+                dependency_anchors: anchors
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete dependency');
+        }
+
+        // Update local data
+        dependentItem.depends_on_ids = newDeps;
+        dependentItem.dependency_anchors = anchors;
+
+        // Clear selection and close popover
+        deselectDependency();
+
+        // Redraw dependency lines
+        drawDependencyLines(roadmapItems);
+
+        // Show success message
+        showToast(`Removed dependency: ${fromName} → ${toName}`, 'success');
+
+    } catch (error) {
+        console.error('Failed to delete dependency:', error);
+        showToast('Failed to delete dependency', 'error');
+    }
+}
+
+// Handle keyboard events for dependency management
+function handleDependencyKeyboard(event) {
+    if (!selectedDependency) return;
+
+    if (event.key === 'Escape') {
+        deselectDependency();
+        event.preventDefault();
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Only if not focused on an input
+        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+            deleteSelectedDependency();
+            event.preventDefault();
+        }
+    }
+}
+
+// Initialize dependency keyboard listener
+document.addEventListener('keydown', handleDependencyKeyboard);
+
+// Close popover when clicking outside
+document.addEventListener('click', (event) => {
+    if (!selectedDependency) return;
+
+    const popover = document.getElementById('dependencyPopover');
+    const clickedOnPopover = popover?.contains(event.target);
+    const clickedOnDependencyLine = event.target.closest('.dependency-line-group');
+
+    if (!clickedOnPopover && !clickedOnDependencyLine) {
+        deselectDependency();
+    }
+});
+
+// Get anchor point position on an element
+function getAnchorPosition(element, anchor, containerRect) {
+    const rect = element.getBoundingClientRect();
+    const positions = {
+        left: { x: rect.left - containerRect.left, y: rect.top + rect.height / 2 - containerRect.top },
+        right: { x: rect.right - containerRect.left, y: rect.top + rect.height / 2 - containerRect.top },
+        top: { x: rect.left + rect.width / 2 - containerRect.left, y: rect.top - containerRect.top },
+        bottom: { x: rect.left + rect.width / 2 - containerRect.left, y: rect.bottom - containerRect.top }
+    };
+    return positions[anchor] || positions.right;
+}
+
+// Get all anchor positions for an element (in screen coordinates)
+function getAllAnchorPositions(element) {
+    const rect = element.getBoundingClientRect();
+    return {
+        left: { x: rect.left, y: rect.top + rect.height / 2 },
+        right: { x: rect.right, y: rect.top + rect.height / 2 },
+        top: { x: rect.left + rect.width / 2, y: rect.top },
+        bottom: { x: rect.left + rect.width / 2, y: rect.bottom }
+    };
+}
+
+// Show drop targets on all roadmap items
+function showAllDropTargets(excludeItemId = null) {
+    // Remove existing drop targets
+    hideAllDropTargets();
+
+    const items = document.querySelectorAll('.roadmap-item');
+    const anchors = ['top', 'bottom', 'left', 'right'];
+
+    items.forEach(itemEl => {
+        const itemId = parseInt(itemEl.dataset.roadmapItemId);
+        if (excludeItemId && itemId === excludeItemId) return;
+
+        anchors.forEach(anchor => {
+            createDropTarget(itemEl, itemId, anchor);
+        });
+    });
+}
+
+// Show drop targets only on a specific item - more prominent
+function showDropTargetsOnItem(itemId) {
+    hideAllDropTargets();
+
+    const itemEl = document.querySelector(`.roadmap-item[data-roadmap-item-id="${itemId}"]`);
+    if (!itemEl) return;
+
+    const anchors = ['top', 'bottom', 'left', 'right'];
+    const labels = { top: 'Top', bottom: 'Bottom', left: 'Left', right: 'Right' };
+
+    anchors.forEach(anchor => {
+        const target = document.createElement('div');
+        target.className = 'roadmap-drop-target';
+        target.dataset.anchor = anchor;
+        target.dataset.itemId = itemId;
+
+        // Position based on anchor - larger and more visible
+        const posStyles = {
+            top: 'top: -20px; left: 50%; transform: translateX(-50%);',
+            bottom: 'bottom: -20px; left: 50%; transform: translateX(-50%);',
+            left: 'left: -20px; top: 50%; transform: translateY(-50%);',
+            right: 'right: -20px; top: 50%; transform: translateY(-50%);'
+        };
+
+        target.innerHTML = `
+            <div class="drop-target-circle"></div>
+            <span class="drop-target-label">${labels[anchor]}</span>
+        `;
+
+        target.style.cssText = `
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 100;
+            pointer-events: none;
+            ${posStyles[anchor]}
+        `;
+
+        // Style the inner circle
+        const circle = target.querySelector('.drop-target-circle');
+        circle.style.cssText = `
+            width: 24px;
+            height: 24px;
+            background: rgba(138, 63, 252, 0.2);
+            border: 3px dashed #8a3ffc;
+            border-radius: 50%;
+            transition: all 0.15s ease;
+            animation: pulse-drop-target 1.5s ease-in-out infinite;
+        `;
+
+        // Style the label
+        const label = target.querySelector('.drop-target-label');
+        label.style.cssText = `
+            font-size: 10px;
+            font-weight: 600;
+            color: #8a3ffc;
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        `;
+
+        itemEl.appendChild(target);
+    });
+
+    // Add pulse animation if not exists
+    if (!document.getElementById('dropTargetAnimationStyle')) {
+        const style = document.createElement('style');
+        style.id = 'dropTargetAnimationStyle';
+        style.textContent = `
+            @keyframes pulse-drop-target {
+                0%, 100% { transform: scale(1); opacity: 0.7; }
+                50% { transform: scale(1.15); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
+
+// Create a single drop target element
+function createDropTarget(itemEl, itemId, anchor) {
+    const target = document.createElement('div');
+    target.className = 'roadmap-drop-target';
+    target.dataset.anchor = anchor;
+    target.dataset.itemId = itemId;
+
+    const posStyles = {
+        top: 'top: -8px; left: 50%; transform: translateX(-50%);',
+        bottom: 'bottom: -8px; left: 50%; transform: translateX(-50%);',
+        left: 'left: -8px; top: 50%; transform: translateY(-50%);',
+        right: 'right: -8px; top: 50%; transform: translateY(-50%);'
+    };
+
+    target.style.cssText = `
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        background: rgba(138, 63, 252, 0.3);
+        border: 2px dashed #8a3ffc;
+        border-radius: 50%;
+        z-index: 25;
+        pointer-events: none;
+        transition: transform 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
+        ${posStyles[anchor]}
+    `;
+
+    itemEl.appendChild(target);
+}
+
+// Hide all drop targets and cleanup
+function hideAllDropTargets() {
+    document.querySelectorAll('.roadmap-drop-target').forEach(el => el.remove());
+    // Reset any highlighted items
+    document.querySelectorAll('.roadmap-item').forEach(el => {
+        el.style.outline = '';
+        el.style.outlineOffset = '';
+        el.style.boxShadow = '';
+    });
+}
+
+// Highlight a specific drop target (when snapping)
+function highlightDropTarget(itemId, anchor) {
+    // Reset all targets
+    document.querySelectorAll('.roadmap-drop-target').forEach(el => {
+        const circle = el.querySelector('.drop-target-circle') || el;
+        circle.style.background = 'rgba(138, 63, 252, 0.2)';
+        circle.style.borderStyle = 'dashed';
+        circle.style.transform = '';
+        circle.style.boxShadow = '';
+        const label = el.querySelector('.drop-target-label');
+        if (label) label.style.color = '#8a3ffc';
+    });
+
+    // Highlight the specified one with strong visual feedback
+    const target = document.querySelector(`.roadmap-drop-target[data-item-id="${itemId}"][data-anchor="${anchor}"]`);
+    if (target) {
+        const circle = target.querySelector('.drop-target-circle') || target;
+        circle.style.background = '#8a3ffc';
+        circle.style.borderStyle = 'solid';
+        circle.style.transform = 'scale(1.3)';
+        circle.style.boxShadow = '0 0 15px rgba(138, 63, 252, 0.9)';
+        circle.style.animation = 'none'; // Stop pulsing when highlighted
+        const label = target.querySelector('.drop-target-label');
+        if (label) {
+            label.style.color = 'white';
+            label.style.background = '#8a3ffc';
+            label.style.padding = '2px 6px';
+            label.style.borderRadius = '3px';
+        }
+    }
+}
+
+// Find nearest drop target to a point
+function findNearestDropTarget(x, y, validItemId = null) {
+    const targets = document.querySelectorAll('.roadmap-drop-target');
+    let nearest = null;
+    let nearestDist = Infinity;
+    const snapDistance = 30; // pixels
+
+    targets.forEach(target => {
+        const itemId = parseInt(target.dataset.itemId);
+        // If validItemId is specified, only consider that item
+        if (validItemId !== null && itemId !== validItemId) return;
+
+        const rect = target.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+
+        if (dist < snapDistance && dist < nearestDist) {
+            nearestDist = dist;
+            nearest = {
+                itemId: itemId,
+                anchor: target.dataset.anchor,
+                x: centerX,
+                y: centerY
+            };
+        }
+    });
+
+    return nearest;
+}
+
+// Start dragging an anchor endpoint
+function startAnchorDrag(event, dependentItemId, prereqItemId, editingEnd, circleElement = null) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const container = document.getElementById('roadmapItemsContainer');
+    const containerRect = container.getBoundingClientRect();
+
+    // Determine which item we're editing the anchor on
+    // 'from' anchor is on the dependent item, 'to' anchor is on the prerequisite item
+    const targetItemId = editingEnd === 'from' ? dependentItemId : prereqItemId;
+    const targetItem = container.querySelector(`[data-roadmap-item-id="${targetItemId}"]`);
+    const targetItemName = targetItem?.querySelector('.roadmap-item-content div')?.textContent || 'item';
+
+    anchorDragState = {
+        dependentItemId,
+        prereqItemId,
+        editingEnd,
+        targetItemId,
+        containerRect,
+        startX: event.clientX,
+        startY: event.clientY,
+        circleElement
+    };
+
+    // Show drop targets only on the target item (not all items)
+    showDropTargetsOnItem(targetItemId);
+
+    // Highlight the target item
+    if (targetItem) {
+        targetItem.style.outline = '3px solid #8a3ffc';
+        targetItem.style.outlineOffset = '2px';
+        targetItem.style.boxShadow = '0 0 20px rgba(138, 63, 252, 0.4)';
+    }
+
+    // Create a dragging indicator with label
+    const dragIndicator = document.createElement('div');
+    dragIndicator.id = 'anchorDragIndicator';
+    dragIndicator.innerHTML = `
+        <div style="width: 20px; height: 20px; background: #8a3ffc; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 12px rgba(0,0,0,0.4);"></div>
+        <div style="margin-top: 4px; background: #8a3ffc; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+            Drag to anchor on "${targetItemName}"
+        </div>
+    `;
+    dragIndicator.style.cssText = `
+        position: fixed;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        pointer-events: none;
+        z-index: 1000;
+        transform: translate(-50%, -50%);
+        left: ${event.clientX}px;
+        top: ${event.clientY}px;
+    `;
+    document.body.appendChild(dragIndicator);
+
+    // Add event listeners
+    document.addEventListener('mousemove', handleAnchorDrag);
+    document.addEventListener('mouseup', endAnchorDrag);
+
+    // Add visual feedback
+    document.body.style.cursor = 'grabbing';
+}
+
+// Handle dragging
+function handleAnchorDrag(event) {
+    if (!anchorDragState) return;
+
+    const dragIndicator = document.getElementById('anchorDragIndicator');
+    if (dragIndicator) {
+        dragIndicator.style.left = `${event.clientX}px`;
+        dragIndicator.style.top = `${event.clientY}px`;
+    }
+
+    // Find nearest drop target (only on the valid target item)
+    const nearest = findNearestDropTarget(event.clientX, event.clientY, anchorDragState.targetItemId);
+
+    // Update the drag indicator label
+    const labelEl = dragIndicator?.querySelector('div:last-child');
+
+    if (nearest) {
+        highlightDropTarget(nearest.itemId, nearest.anchor);
+
+        // Update label to show we're snapping
+        if (labelEl) {
+            labelEl.textContent = `Drop on ${nearest.anchor.toUpperCase()} anchor`;
+            labelEl.style.background = '#24a148'; // Green for valid
+        }
+
+        // Snap the drag indicator to the target
+        if (dragIndicator) {
+            dragIndicator.style.left = `${nearest.x}px`;
+            dragIndicator.style.top = `${nearest.y}px`;
+        }
+    } else {
+        // Reset highlights if not near any target
+        document.querySelectorAll('.roadmap-drop-target').forEach(el => {
+            const circle = el.querySelector('.drop-target-circle') || el;
+            circle.style.background = 'rgba(138, 63, 252, 0.2)';
+            circle.style.borderStyle = 'dashed';
+            circle.style.transform = '';
+            circle.style.boxShadow = '';
+            circle.style.animation = 'pulse-drop-target 1.5s ease-in-out infinite';
+            const label = el.querySelector('.drop-target-label');
+            if (label) {
+                label.style.color = '#8a3ffc';
+                label.style.background = '';
+                label.style.padding = '';
+            }
+        });
+
+        // Update label to show we need to find a target
+        if (labelEl) {
+            labelEl.textContent = 'Move to an anchor point';
+            labelEl.style.background = '#8a3ffc';
+        }
+    }
+}
+
+// End anchor drag
+async function endAnchorDrag(event) {
+    if (!anchorDragState) return;
+
+    const { dependentItemId, prereqItemId, editingEnd, targetItemId, circleElement } = anchorDragState;
+
+    // Find the drop target
+    const nearest = findNearestDropTarget(event.clientX, event.clientY, targetItemId);
+
+    // Clean up event listeners
+    document.removeEventListener('mousemove', handleAnchorDrag);
+    document.removeEventListener('mouseup', endAnchorDrag);
+    document.body.style.cursor = '';
+
+    // Reset the grabbed circle cursor
+    if (circleElement) {
+        circleElement.style.cursor = 'grab';
+    }
+
+    const dragIndicator = document.getElementById('anchorDragIndicator');
+    if (dragIndicator) dragIndicator.remove();
+
+    hideAllDropTargets();
+
+    // If dropped on a valid target, save the anchor
+    if (nearest && nearest.itemId === targetItemId) {
+        await saveAnchorConfiguration(dependentItemId, prereqItemId, editingEnd, nearest.anchor);
+    }
+
+    anchorDragState = null;
+}
+
+// Save anchor configuration to API
+async function saveAnchorConfiguration(dependentItemId, prereqItemId, editingEnd, newAnchor) {
+    const dependentItem = currentRoadmap.items.find(i => i.id === dependentItemId);
+    if (!dependentItem) return;
+
+    // Store original anchors for undo
+    const originalAnchors = JSON.parse(JSON.stringify(dependentItem.dependency_anchors || {}));
+
+    // Update the anchor configuration
+    const anchors = { ...(dependentItem.dependency_anchors || {}) };
+    const depKey = String(prereqItemId);
+    if (!anchors[depKey]) {
+        anchors[depKey] = { from_anchor: 'right', to_anchor: 'left' };
+    }
+
+    const oldAnchor = editingEnd === 'from' ? anchors[depKey].from_anchor : anchors[depKey].to_anchor;
+
+    if (editingEnd === 'from') {
+        anchors[depKey].from_anchor = newAnchor;
+    } else {
+        anchors[depKey].to_anchor = newAnchor;
+    }
+
+    // Save to API
+    try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps/items/${dependentItemId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dependency_anchors: anchors })
+        });
+
+        if (response.ok) {
+            // Push to undo stack
+            const itemTitle = document.querySelector(`[data-roadmap-item-id="${dependentItemId}"] .roadmap-item-content div`)?.textContent || 'Item';
+            pushToUndoStack({
+                type: 'anchor',
+                itemId: dependentItemId,
+                description: `Change anchor on "${itemTitle}" (${oldAnchor} → ${newAnchor})`,
+                previousState: { dependency_anchors: originalAnchors }
+            });
+
+            // Update local state
+            dependentItem.dependency_anchors = anchors;
+            showToast(`Anchor changed to ${newAnchor}`, 'success');
+
+            // Redraw lines
+            if (currentRoadmap && currentRoadmap.items) {
+                drawDependencyLines(currentRoadmap.items);
+            }
+        } else {
+            showToast('Failed to save anchor', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving anchor:', error);
+        showToast('Error saving anchor', 'error');
+    }
+}
+
+// Calculate optimal anchor points for a dependency based on relative positions
+// Uses Gantt chart best practices: minimize line crossings, prefer horizontal flow
+function calculateOptimalAnchors(dependentItemId, prereqItemId) {
+    const container = document.getElementById('roadmapItemsContainer');
+    if (!container) return { from_anchor: 'right', to_anchor: 'left' };
+
+    const dependentEl = container.querySelector(`[data-roadmap-item-id="${dependentItemId}"]`);
+    const prereqEl = container.querySelector(`[data-roadmap-item-id="${prereqItemId}"]`);
+
+    if (!dependentEl || !prereqEl) return { from_anchor: 'right', to_anchor: 'left' };
+
+    const depRect = dependentEl.getBoundingClientRect();
+    const prereqRect = prereqEl.getBoundingClientRect();
+
+    // Calculate relative positions
+    const depCenterX = depRect.left + depRect.width / 2;
+    const depCenterY = depRect.top + depRect.height / 2;
+    const prereqCenterX = prereqRect.left + prereqRect.width / 2;
+    const prereqCenterY = prereqRect.top + prereqRect.height / 2;
+
+    const dx = prereqCenterX - depCenterX;
+    const dy = prereqCenterY - depCenterY;
+
+    // Determine primary direction
+    const isHorizontalPrimary = Math.abs(dx) > Math.abs(dy);
+    const horizontalGap = Math.abs(depRect.right < prereqRect.left ? prereqRect.left - depRect.right :
+                                   prereqRect.right < depRect.left ? depRect.left - prereqRect.right : 0);
+    const verticalGap = Math.abs(depRect.bottom < prereqRect.top ? prereqRect.top - depRect.bottom :
+                                 prereqRect.bottom < depRect.top ? depRect.top - prereqRect.bottom : 0);
+
+    // Default anchor configuration (for standard left-to-right flow)
+    let fromAnchor = 'right';  // Exit from dependent item
+    let toAnchor = 'left';     // Enter to prerequisite item
+
+    // Case 1: Prerequisite is to the RIGHT of dependent (standard flow)
+    if (prereqRect.left > depRect.right) {
+        fromAnchor = 'right';
+        toAnchor = 'left';
+    }
+    // Case 2: Prerequisite is to the LEFT of dependent (reverse flow)
+    else if (prereqRect.right < depRect.left) {
+        fromAnchor = 'left';
+        toAnchor = 'right';
+    }
+    // Case 3: Items overlap horizontally - use vertical routing
+    else {
+        // Prerequisite is ABOVE dependent
+        if (prereqRect.bottom < depRect.top) {
+            fromAnchor = 'top';
+            toAnchor = 'bottom';
+        }
+        // Prerequisite is BELOW dependent
+        else if (prereqRect.top > depRect.bottom) {
+            fromAnchor = 'bottom';
+            toAnchor = 'top';
+        }
+        // Items overlap significantly - use diagonal approach
+        else {
+            // Choose based on which side has more room
+            if (dx > 0) {
+                // Prereq center is to the right
+                fromAnchor = 'right';
+                toAnchor = dy < 0 ? 'bottom' : 'top';
+            } else {
+                // Prereq center is to the left
+                fromAnchor = 'left';
+                toAnchor = dy < 0 ? 'bottom' : 'top';
+            }
+        }
+    }
+
+    return { from_anchor: fromAnchor, to_anchor: toAnchor };
+}
+
+// Calculate optimal anchors for all new dependencies after DOM is rendered
+async function applySmartRoutingForNewDependencies(itemId, oldDeps, newDeps) {
+    // Find truly new dependencies (not in old list)
+    const addedDeps = newDeps.filter(depId => !oldDeps.includes(depId));
+    if (addedDeps.length === 0) return;
+
+    // Wait for DOM to be rendered so we can calculate positions
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    const item = currentRoadmap?.items?.find(i => i.id === parseInt(itemId));
+    if (!item) return;
+
+    const anchors = { ...(item.dependency_anchors || {}) };
+
+    // Calculate optimal anchors for each new dependency
+    addedDeps.forEach(prereqId => {
+        const optimal = calculateOptimalAnchors(parseInt(itemId), prereqId);
+        anchors[String(prereqId)] = optimal;
+    });
+
+    // Save to API
+    try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dependency_anchors: anchors })
+        });
+
+        if (response.ok) {
+            item.dependency_anchors = anchors;
+            // Redraw lines with new anchors
+            if (currentRoadmap && currentRoadmap.items) {
+                drawDependencyLines(currentRoadmap.items);
+            }
+        }
+    } catch (error) {
+        console.error('Error applying smart routing:', error);
+    }
+}
+
+// Draw dependency lines between roadmap items using SVG with improved routing
+function drawDependencyLines(items) {
+    // Clear any selected dependency before redrawing
+    deselectDependency();
+
+    // Remove existing SVG
+    const existingSvg = document.getElementById('roadmapDependencySvg');
+    if (existingSvg) existingSvg.remove();
+
+    // Find items with dependencies
+    const itemsWithDeps = items.filter(item => item.depends_on_ids && item.depends_on_ids.length > 0);
+    if (itemsWithDeps.length === 0) return;
+
+    // Get the container for positioning reference
+    const container = document.getElementById('roadmapItemsContainer');
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+
+    // Create SVG overlay
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'roadmapDependencySvg';
+    svg.style.cssText = `position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; overflow: visible;`;
+
+    // Define markers for arrows
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+
+    // Arrow marker
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'arrowhead');
+    marker.setAttribute('markerWidth', '8');
+    marker.setAttribute('markerHeight', '6');
+    marker.setAttribute('refX', '7');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('orient', 'auto');
+    marker.setAttribute('markerUnits', 'strokeWidth');
+    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    polygon.setAttribute('points', '0 0, 8 3, 0 6');
+    polygon.setAttribute('fill', '#8a3ffc');
+    marker.appendChild(polygon);
+    defs.appendChild(marker);
+
+    // Dot marker for start point
+    const startMarker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    startMarker.setAttribute('id', 'startDot');
+    startMarker.setAttribute('markerWidth', '6');
+    startMarker.setAttribute('markerHeight', '6');
+    startMarker.setAttribute('refX', '3');
+    startMarker.setAttribute('refY', '3');
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', '3');
+    circle.setAttribute('cy', '3');
+    circle.setAttribute('r', '2');
+    circle.setAttribute('fill', '#8a3ffc');
+    startMarker.appendChild(circle);
+    defs.appendChild(startMarker);
+
+    svg.appendChild(defs);
+
+    // Track vertical offsets for lines at same positions to avoid overlap
+    const lineOffsets = {};
+    let lineIndex = 0;
+
+    // Collect all connection info first for better routing
+    // Arrow points TO the prerequisite (the item that must be completed first)
+    // Line goes FROM the dependent item TO the prerequisite
+    const connections = [];
+    itemsWithDeps.forEach(item => {
+        const dependentEl = container.querySelector(`[data-roadmap-item-id="${item.id}"]`);
+        if (!dependentEl) return;
+
+        item.depends_on_ids.forEach(depId => {
+            const prereqEl = container.querySelector(`[data-roadmap-item-id="${depId}"]`);
+            if (!prereqEl) return;
+
+            // Get custom anchor configuration if available
+            // Note: from_anchor/to_anchor in stored config refer to prereq→dependent direction
+            // We reverse it here so arrow points to prerequisite
+            const anchors = item.dependency_anchors?.[String(depId)] ||
+                           { from_anchor: 'right', to_anchor: 'left' };
+
+            connections.push({
+                from: dependentEl,      // Line starts at dependent item
+                to: prereqEl,           // Arrow points to prerequisite
+                fromId: item.id,
+                toId: depId,
+                fromAnchor: anchors.to_anchor || 'left',   // Swap anchors
+                toAnchor: anchors.from_anchor || 'right'   // Swap anchors
+            });
+        });
+    });
+
+    // Sort connections by vertical distance for better layering
+    connections.sort((a, b) => {
+        const aFromRect = a.from.getBoundingClientRect();
+        const aToRect = a.to.getBoundingClientRect();
+        const bFromRect = b.from.getBoundingClientRect();
+        const bToRect = b.to.getBoundingClientRect();
+        return Math.abs(aFromRect.top - aToRect.top) - Math.abs(bFromRect.top - bToRect.top);
+    });
+
+    // Draw each connection with custom anchor-based routing
+    connections.forEach((conn, idx) => {
+        const prereqRect = conn.from.getBoundingClientRect();
+        const depRect = conn.to.getBoundingClientRect();
+
+        // Calculate positions based on custom anchors
+        const startPos = getAnchorPosition(conn.from, conn.fromAnchor, containerRect);
+        const endPos = getAnchorPosition(conn.to, conn.toAnchor, containerRect);
+
+        const startX = startPos.x;
+        const startY = startPos.y;
+        const endX = endPos.x;
+        const endY = endPos.y;
+
+        // Create the path element
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+        // Offset for multiple lines at similar positions
+        const offsetKey = `${Math.round(startY/20)}-${Math.round(endY/20)}`;
+        if (!lineOffsets[offsetKey]) lineOffsets[offsetKey] = 0;
+        const vertOffset = lineOffsets[offsetKey] * 8;
+        lineOffsets[offsetKey]++;
+
+        const cornerRadius = 10;
+        const padding = 25 + vertOffset;
+
+        // Generate path based on anchor positions
+        // Direction vectors for each anchor type
+        const anchorDirs = {
+            left: { x: -1, y: 0 },
+            right: { x: 1, y: 0 },
+            top: { x: 0, y: -1 },
+            bottom: { x: 0, y: 1 }
+        };
+
+        const fromDir = anchorDirs[conn.fromAnchor];
+        const toDir = anchorDirs[conn.toAnchor];
+
+        // Calculate control points for the path
+        let d;
+        const dx = endX - startX;
+        const dy = endY - startY;
+
+        // Simple case: horizontal anchors (right-to-left or left-to-right)
+        if ((conn.fromAnchor === 'right' && conn.toAnchor === 'left') ||
+            (conn.fromAnchor === 'left' && conn.toAnchor === 'right')) {
+            // S-curve for horizontal connections
+            const midX = (startX + endX) / 2;
+            d = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
+        }
+        // Vertical anchors (top-to-bottom or bottom-to-top)
+        else if ((conn.fromAnchor === 'bottom' && conn.toAnchor === 'top') ||
+                 (conn.fromAnchor === 'top' && conn.toAnchor === 'bottom')) {
+            const midY = (startY + endY) / 2;
+            d = `M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`;
+        }
+        // Mixed: horizontal to vertical
+        else if ((conn.fromAnchor === 'right' || conn.fromAnchor === 'left') &&
+                 (conn.toAnchor === 'top' || conn.toAnchor === 'bottom')) {
+            const outX = startX + (fromDir.x * padding);
+            const inY = endY + (toDir.y * padding);
+            d = `M ${startX} ${startY}
+                 L ${outX} ${startY}
+                 Q ${outX + cornerRadius * fromDir.x} ${startY}, ${outX + cornerRadius * fromDir.x} ${startY + cornerRadius * Math.sign(inY - startY)}
+                 L ${outX + cornerRadius * fromDir.x} ${inY - cornerRadius * toDir.y}
+                 Q ${outX + cornerRadius * fromDir.x} ${inY}, ${outX + cornerRadius * fromDir.x + cornerRadius * Math.sign(endX - startX)} ${inY}
+                 L ${endX} ${inY}
+                 L ${endX} ${endY}`;
+        }
+        // Mixed: vertical to horizontal
+        else if ((conn.fromAnchor === 'top' || conn.fromAnchor === 'bottom') &&
+                 (conn.toAnchor === 'left' || conn.toAnchor === 'right')) {
+            const outY = startY + (fromDir.y * padding);
+            const inX = endX + (toDir.x * padding);
+            d = `M ${startX} ${startY}
+                 L ${startX} ${outY}
+                 Q ${startX} ${outY + cornerRadius * fromDir.y}, ${startX + cornerRadius * Math.sign(inX - startX)} ${outY + cornerRadius * fromDir.y}
+                 L ${inX - cornerRadius * toDir.x} ${outY + cornerRadius * fromDir.y}
+                 Q ${inX} ${outY + cornerRadius * fromDir.y}, ${inX} ${outY + cornerRadius * fromDir.y + cornerRadius * Math.sign(endY - startY)}
+                 L ${inX} ${endY}
+                 L ${endX} ${endY}`;
+        }
+        // Same side connections (need to route around)
+        else {
+            const routeOffset = padding + 30;
+            if (conn.fromAnchor === 'right' && conn.toAnchor === 'right') {
+                const routeX = Math.max(startX, endX) + routeOffset;
+                d = `M ${startX} ${startY} L ${routeX} ${startY} L ${routeX} ${endY} L ${endX} ${endY}`;
+            } else if (conn.fromAnchor === 'left' && conn.toAnchor === 'left') {
+                const routeX = Math.min(startX, endX) - routeOffset;
+                d = `M ${startX} ${startY} L ${routeX} ${startY} L ${routeX} ${endY} L ${endX} ${endY}`;
+            } else if (conn.fromAnchor === 'top' && conn.toAnchor === 'top') {
+                const routeY = Math.min(startY, endY) - routeOffset;
+                d = `M ${startX} ${startY} L ${startX} ${routeY} L ${endX} ${routeY} L ${endX} ${endY}`;
+            } else if (conn.fromAnchor === 'bottom' && conn.toAnchor === 'bottom') {
+                const routeY = Math.max(startY, endY) + routeOffset;
+                d = `M ${startX} ${startY} L ${startX} ${routeY} L ${endX} ${routeY} L ${endX} ${endY}`;
+            } else {
+                // Fallback: simple curved line
+                const midX = (startX + endX) / 2;
+                const midY = (startY + endY) / 2;
+                d = `M ${startX} ${startY} Q ${midX} ${startY}, ${midX} ${midY} Q ${midX} ${endY}, ${endX} ${endY}`;
+            }
+        }
+
+        path.setAttribute('d', d);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', '#8a3ffc');
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('marker-end', 'url(#arrowhead)');
+        path.setAttribute('marker-start', 'url(#startDot)');
+        path.setAttribute('opacity', '0.6');
+
+        // Add hover effect group
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.classList.add('dependency-line-group');
+        group.style.cssText = 'cursor: pointer; pointer-events: auto;';
+        group.dataset.fromId = conn.fromId;
+        group.dataset.toId = conn.toId;
+
+        // Add class to path for CSS targeting
+        path.classList.add('dependency-path');
+
+        // Invisible wider path for easier hovering/clicking (narrower to avoid overlapping cards)
+        const hoverPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hoverPath.setAttribute('d', d);
+        hoverPath.setAttribute('fill', 'none');
+        hoverPath.setAttribute('stroke', 'transparent');
+        hoverPath.setAttribute('stroke-width', '8');
+        hoverPath.style.pointerEvents = 'stroke';
+
+        group.appendChild(hoverPath);
+        group.appendChild(path);
+
+        // Get item names for popover display
+        const fromTitle = conn.from.querySelector('.roadmap-item-content div')?.textContent || 'Item';
+        const toTitle = conn.to.querySelector('.roadmap-item-content div')?.textContent || 'Item';
+
+        // Draggable anchor circles at start and end points - larger and more visible
+        const startCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        startCircle.setAttribute('cx', startX);
+        startCircle.setAttribute('cy', startY);
+        startCircle.setAttribute('r', '8');
+        startCircle.setAttribute('fill', '#8a3ffc');
+        startCircle.setAttribute('stroke', 'white');
+        startCircle.setAttribute('stroke-width', '3');
+        startCircle.classList.add('dependency-anchor-circle');
+        startCircle.style.cssText = 'cursor: grab; pointer-events: all; opacity: 0; transition: all 0.15s ease;';
+        startCircle.dataset.editEnd = 'from';
+
+        const endCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        endCircle.setAttribute('cx', endX);
+        endCircle.setAttribute('cy', endY);
+        endCircle.setAttribute('r', '8');
+        endCircle.setAttribute('fill', '#8a3ffc');
+        endCircle.setAttribute('stroke', 'white');
+        endCircle.setAttribute('stroke-width', '3');
+        endCircle.classList.add('dependency-anchor-circle');
+        endCircle.style.cssText = 'cursor: grab; pointer-events: all; opacity: 0; transition: all 0.15s ease;';
+        endCircle.dataset.editEnd = 'to';
+
+        group.appendChild(startCircle);
+        group.appendChild(endCircle);
+
+        // Hover effects on circles themselves - make them obvious they're draggable
+        [startCircle, endCircle].forEach(circle => {
+            circle.addEventListener('mouseenter', () => {
+                circle.setAttribute('r', '10');
+                circle.setAttribute('fill', '#6929c4');
+                circle.style.cursor = 'grab';
+                circle.style.filter = 'drop-shadow(0 0 6px rgba(138, 63, 252, 0.8))';
+            });
+            circle.addEventListener('mouseleave', () => {
+                circle.setAttribute('r', '8');
+                circle.setAttribute('fill', '#8a3ffc');
+                circle.style.filter = '';
+            });
+        });
+
+        // Hover effects on line - show edit circles
+        group.addEventListener('mouseenter', () => {
+            if (group.classList.contains('dependency-line--selected')) return;
+
+            path.setAttribute('stroke-width', '3');
+            path.setAttribute('opacity', '1');
+            conn.from.style.outline = '2px solid #8a3ffc';
+            conn.to.style.outline = '2px solid #8a3ffc';
+            startCircle.style.opacity = '1';
+            endCircle.style.opacity = '1';
+        });
+        group.addEventListener('mouseleave', () => {
+            if (group.classList.contains('dependency-line--selected')) return;
+
+            path.setAttribute('stroke-width', '2');
+            path.setAttribute('opacity', '0.6');
+            conn.from.style.outline = '';
+            conn.to.style.outline = '';
+            startCircle.style.opacity = '0';
+            endCircle.style.opacity = '0';
+        });
+
+        // Drag anchor circles to reroute
+        // conn.fromId = dependent item, conn.toId = prerequisite item
+        startCircle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startCircle.style.cursor = 'grabbing';
+            startAnchorDrag(e, conn.fromId, conn.toId, 'from', startCircle);
+        });
+        endCircle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            endCircle.style.cursor = 'grabbing';
+            startAnchorDrag(e, conn.fromId, conn.toId, 'to', endCircle);
+        });
+
+        // Click to select dependency (for deletion)
+        group.addEventListener('click', (e) => {
+            // Don't select if clicking on anchor circles (for dragging)
+            if (e.target === startCircle || e.target === endCircle) return;
+
+            e.stopPropagation();
+            selectDependencyLine(conn.fromId, conn.toId, fromTitle, toTitle, group);
+        });
+
+        // Add title/tooltip - shows "Dependent item → Prerequisite" matching arrow direction
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = `${fromTitle} depends on ${toTitle}\nClick to select • Drag circles to reroute`;
+        group.appendChild(title);
+
+        svg.appendChild(group);
+    });
+
+    // Add SVG to container
+    container.style.position = 'relative';
+    container.appendChild(svg);
+}
+
+// ==========================================
+// ROADMAP DRAG AND DROP / RESIZE
+// ==========================================
+
+let roadmapDragState = null; // Tracks current drag operation
+
+// Get the quarter column width from the grid
+function getQuarterColumnWidth() {
+    const container = document.getElementById('roadmapItemsContainer');
+    if (!container) return 100;
+
+    const firstRow = container.querySelector('[style*="grid-template-columns"]');
+    if (!firstRow) return 100;
+
+    // Calculate based on container width minus category column
+    const containerWidth = container.clientWidth;
+    const categoryColWidth = 150;
+    const numQuarters = roadmapQuarters.length;
+
+    return (containerWidth - categoryColWidth - (numQuarters * 4)) / numQuarters; // 4px gap
+}
+
+// Convert pixel position to quarter index
+function pixelToQuarterIndex(pixelX, containerRect) {
+    const categoryColWidth = 150;
+    const quarterWidth = getQuarterColumnWidth();
+    const relativeX = pixelX - containerRect.left - categoryColWidth;
+
+    const quarterIndex = Math.floor(relativeX / quarterWidth);
+    return Math.max(0, Math.min(quarterIndex, roadmapQuarters.length - 1));
+}
+
+// Get date from quarter string (returns first day of quarter)
+function getDateFromQuarter(quarterStr) {
+    const match = quarterStr.match(/Q(\d)\s+(\d{4})/);
+    if (!match) return new Date();
+
+    const quarter = parseInt(match[1]);
+    const year = parseInt(match[2]);
+    const month = (quarter - 1) * 3; // Q1=0, Q2=3, Q3=6, Q4=9
+
+    return new Date(year, month, 1);
+}
+
+// Get end date from quarter string (returns last day of quarter)
+function getEndDateFromQuarter(quarterStr) {
+    const startDate = getDateFromQuarter(quarterStr);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 3);
+    endDate.setDate(endDate.getDate() - 1);
+    return endDate;
+}
+
+// Start dragging a roadmap item
+function startRoadmapDrag(event, itemId) {
+    // Ignore if clicking on resize handles
+    if (event.target.classList.contains('roadmap-resize-handle')) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const itemEl = document.querySelector(`[data-roadmap-item-id="${itemId}"]`);
+    if (!itemEl) return;
+
+    const container = document.getElementById('roadmapItemsContainer');
+    const containerRect = container.getBoundingClientRect();
+    const itemRect = itemEl.getBoundingClientRect();
+
+    // Find all items in the same category for vertical reordering
+    const category = itemEl.dataset.category;
+    const categoryRow = itemEl.closest('.roadmap-category-row');
+    const categoryItems = categoryRow ? Array.from(categoryRow.querySelectorAll('.roadmap-item')) : [];
+
+    roadmapDragState = {
+        type: 'move',
+        dragMode: null, // Will be determined by movement: 'horizontal', 'vertical', or 'sub-quarter'
+        hasMoved: false, // Track if significant movement occurred (for click-to-edit)
+        itemId: itemId,
+        itemEl: itemEl,
+        container: container,
+        containerRect: containerRect,
+        itemRect: itemRect,
+        startX: event.clientX,
+        startY: event.clientY,
+        originalColStart: parseInt(itemEl.dataset.colStart),
+        originalColEnd: parseInt(itemEl.dataset.colEnd),
+        originalDisplayOrder: parseInt(itemEl.dataset.displayOrder) || 0,
+        originalSubQuarter: itemEl.dataset.subQuarter || 'early',
+        category: category,
+        categoryRow: categoryRow,
+        categoryItems: categoryItems,
+        quarterWidth: getQuarterColumnWidth(),
+        newDisplayOrder: null,
+        newSubQuarter: null
+    };
+
+    // Add mouse move and up handlers
+    document.addEventListener('mousemove', handleRoadmapDrag);
+    document.addEventListener('mouseup', endRoadmapDrag);
+}
+
+// Start resizing a roadmap item
+function startRoadmapResize(event, itemId, side) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const itemEl = document.querySelector(`[data-roadmap-item-id="${itemId}"]`);
+    if (!itemEl) return;
+
+    const container = document.getElementById('roadmapItemsContainer');
+    const containerRect = container.getBoundingClientRect();
+    const itemRect = itemEl.getBoundingClientRect();
+
+    // Get original dates from data attributes
+    const originalStartDate = itemEl.dataset.startDate || null;
+    const originalEndDate = itemEl.dataset.endDate || null;
+
+    roadmapDragState = {
+        type: 'resize',
+        side: side, // 'left' or 'right'
+        itemId: itemId,
+        itemEl: itemEl,
+        container: container,
+        containerRect: containerRect,
+        itemRect: itemRect,
+        startX: event.clientX,
+        originalColStart: parseInt(itemEl.dataset.colStart),
+        originalColEnd: parseInt(itemEl.dataset.colEnd),
+        originalStartDate: originalStartDate,
+        originalEndDate: originalEndDate,
+        quarterWidth: getQuarterColumnWidth(),
+        // Track precise dates during resize
+        newStartDate: originalStartDate ? new Date(originalStartDate) : null,
+        newEndDate: originalEndDate ? new Date(originalEndDate) : null
+    };
+
+    // Add visual feedback
+    itemEl.style.opacity = '0.9';
+    itemEl.style.zIndex = '100';
+
+    // Show quarter drop zones
+    showQuarterDropZones();
+
+    // Add mouse move and up handlers
+    document.addEventListener('mousemove', handleRoadmapDrag);
+    document.addEventListener('mouseup', endRoadmapDrag);
+}
+
+// Handle mouse move during drag/resize
+function handleRoadmapDrag(event) {
+    if (!roadmapDragState) return;
+
+    const { type, side, itemEl, containerRect, startX, startY, originalColStart, originalColEnd, quarterWidth } = roadmapDragState;
+
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    const absDeltaX = Math.abs(deltaX);
+    const absDeltaY = Math.abs(deltaY);
+
+    // For move operations, determine drag mode based on movement direction
+    if (type === 'move') {
+        // Mark as moved if we've moved more than a threshold (for click-to-edit detection)
+        if (absDeltaX > 5 || absDeltaY > 5) {
+            roadmapDragState.hasMoved = true;
+
+            // Apply visual feedback once drag starts
+            if (!itemEl.classList.contains('dragging')) {
+                itemEl.classList.add('dragging');
+                showQuarterDropZones();
+            }
+        }
+
+        // Determine drag mode if not yet set and we've moved enough
+        if (!roadmapDragState.dragMode && roadmapDragState.hasMoved) {
+            const movementThreshold = 10;
+            if (absDeltaX > movementThreshold || absDeltaY > movementThreshold) {
+                // Vertical movement is primary → reorder mode
+                if (absDeltaY > absDeltaX * 1.5) {
+                    roadmapDragState.dragMode = 'vertical';
+                }
+                // Large horizontal movement → cross-quarter move
+                else if (absDeltaX > quarterWidth * 0.3) {
+                    roadmapDragState.dragMode = 'horizontal';
+                }
+                // Small horizontal within quarter → sub-quarter timing
+                else if (absDeltaX > movementThreshold) {
+                    roadmapDragState.dragMode = 'sub-quarter';
+                }
+            }
+        }
+
+        // Handle based on drag mode
+        if (roadmapDragState.dragMode === 'vertical') {
+            handleVerticalReorder(event);
+            return;
+        } else if (roadmapDragState.dragMode === 'sub-quarter') {
+            handleSubQuarterDrag(event);
+            return;
+        } else if (roadmapDragState.dragMode === 'horizontal' || (roadmapDragState.hasMoved && !roadmapDragState.dragMode)) {
+            // Default horizontal movement (cross-quarter)
+            handleHorizontalDrag(event);
+            return;
+        }
+        return;
+    }
+
+    // Handle resize operations with sub-quarter precision
+    if (type === 'resize') {
+        handlePreciseResize(event);
+    }
+}
+
+// Handle precise resize with sub-quarter granularity
+function handlePreciseResize(event) {
+    const {
+        side, itemEl, containerRect, startX, itemRect,
+        originalColStart, originalColEnd, quarterWidth,
+        originalStartDate, originalEndDate
+    } = roadmapDragState;
+
+    const deltaX = event.clientX - startX;
+
+    // Calculate the new date based on pixel position
+    let newDate;
+    if (side === 'left') {
+        // Resizing from left - calculate new start date
+        const newPixelX = itemRect.left + deltaX;
+        newDate = calculateDateFromPixelPosition(newPixelX, containerRect, roadmapQuarters);
+
+        // Ensure start date doesn't go past end date (minimum 1 week gap)
+        const endDate = originalEndDate ? new Date(originalEndDate) : null;
+        if (endDate) {
+            const minEndDate = new Date(endDate);
+            minEndDate.setDate(minEndDate.getDate() - 7);
+            if (newDate > minEndDate) {
+                newDate = minEndDate;
+            }
+        }
+
+        // Ensure start date doesn't go before first visible quarter
+        const firstQuarter = roadmapQuarters[0];
+        const firstQuarterDate = getDateFromQuarter(firstQuarter);
+        if (newDate < firstQuarterDate) {
+            newDate = firstQuarterDate;
+        }
+
+        roadmapDragState.newStartDate = newDate;
+
+        // Calculate new column start based on which quarter the date falls in
+        const newColStart = getQuarterIndex(newDate.toISOString().split('T')[0], roadmapQuarters) + 2;
+        roadmapDragState.newColStart = Math.max(2, newColStart);
+        roadmapDragState.newColEnd = originalColEnd;
+
+    } else {
+        // Resizing from right - calculate new end date
+        const newPixelX = itemRect.right + deltaX;
+        newDate = calculateDateFromPixelPosition(newPixelX, containerRect, roadmapQuarters);
+
+        // Ensure end date doesn't go before start date (minimum 1 week gap)
+        const startDate = originalStartDate ? new Date(originalStartDate) : null;
+        if (startDate) {
+            const minStartDate = new Date(startDate);
+            minStartDate.setDate(minStartDate.getDate() + 7);
+            if (newDate < minStartDate) {
+                newDate = minStartDate;
+            }
+        }
+
+        // Ensure end date doesn't go past last visible quarter
+        const lastQuarter = roadmapQuarters[roadmapQuarters.length - 1];
+        const lastQuarterEndDate = getEndDateFromQuarter(lastQuarter);
+        if (newDate > lastQuarterEndDate) {
+            newDate = lastQuarterEndDate;
+        }
+
+        roadmapDragState.newEndDate = newDate;
+
+        // Calculate new column end based on which quarter the date falls in
+        const newColEnd = getQuarterIndex(newDate.toISOString().split('T')[0], roadmapQuarters) + 3;
+        roadmapDragState.newColStart = originalColStart;
+        roadmapDragState.newColEnd = Math.min(roadmapQuarters.length + 2, Math.max(originalColStart + 1, newColEnd));
+    }
+
+    // Update visual position (grid columns)
+    const { newColStart, newColEnd } = roadmapDragState;
+    itemEl.style.gridColumn = `${newColStart} / ${newColEnd}`;
+
+    // Update visual width/margin for precise positioning
+    const startDate = roadmapDragState.newStartDate || (originalStartDate ? new Date(originalStartDate) : null);
+    const endDate = roadmapDragState.newEndDate || (originalEndDate ? new Date(originalEndDate) : null);
+
+    if (startDate && endDate) {
+        const startQuarter = roadmapQuarters[newColStart - 2] || roadmapQuarters[0];
+        const endQuarter = roadmapQuarters[newColEnd - 3] || roadmapQuarters[roadmapQuarters.length - 1];
+        const preciseStyles = getPreciseDatePositioning(
+            startDate.toISOString().split('T')[0],
+            endDate.toISOString().split('T')[0],
+            startQuarter,
+            endQuarter,
+            roadmapQuarters
+        );
+
+        // Apply precise positioning
+        if (preciseStyles) {
+            const marginMatch = preciseStyles.match(/margin-left:\s*([\d.]+)%/);
+            const widthMatch = preciseStyles.match(/width:\s*calc\(100%\s*-\s*([\d.]+)%\)/);
+
+            if (marginMatch) {
+                itemEl.style.marginLeft = marginMatch[1] + '%';
+            } else {
+                itemEl.style.marginLeft = '';
+            }
+
+            if (widthMatch) {
+                itemEl.style.width = `calc(100% - ${widthMatch[1]}%)`;
+            } else {
+                itemEl.style.width = '';
+            }
+        }
+    }
+
+    // Highlight target quarters
+    highlightTargetQuarters(newColStart - 2, newColEnd - 2);
+
+    // Show date preview in a tooltip or status area
+    showResizeDatePreview(roadmapDragState.newStartDate, roadmapDragState.newEndDate, originalStartDate, originalEndDate);
+}
+
+// Show date preview during resize
+function showResizeDatePreview(newStartDate, newEndDate, originalStartDate, originalEndDate) {
+    // Create or update preview element
+    let preview = document.getElementById('resizeDatePreview');
+    if (!preview) {
+        preview = document.createElement('div');
+        preview.id = 'resizeDatePreview';
+        preview.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #161616;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        document.body.appendChild(preview);
+    }
+
+    const startStr = newStartDate ? formatDate(newStartDate.toISOString().split('T')[0]) :
+                     (originalStartDate ? formatDate(originalStartDate) : '-');
+    const endStr = newEndDate ? formatDate(newEndDate.toISOString().split('T')[0]) :
+                   (originalEndDate ? formatDate(originalEndDate) : '-');
+
+    preview.textContent = `${startStr} - ${endStr}`;
+    preview.style.display = 'block';
+}
+
+// Hide resize date preview
+function hideResizeDatePreview() {
+    const preview = document.getElementById('resizeDatePreview');
+    if (preview) {
+        preview.style.display = 'none';
+    }
+}
+
+// Handle horizontal drag (cross-quarter movement)
+function handleHorizontalDrag(event) {
+    const { itemEl, startX, originalColStart, originalColEnd, quarterWidth } = roadmapDragState;
+
+    const deltaX = event.clientX - startX;
+    const quartersDelta = Math.round(deltaX / quarterWidth);
+
+    let newColStart = originalColStart + quartersDelta;
+    let newColEnd = originalColEnd + quartersDelta;
+
+    // Constrain to valid range (col 2 is first quarter, considering category column)
+    const minCol = 2;
+    const maxCol = roadmapQuarters.length + 2;
+
+    if (newColStart < minCol) {
+        newColStart = minCol;
+        newColEnd = originalColEnd - originalColStart + minCol;
+    }
+    if (newColEnd > maxCol) {
+        newColEnd = maxCol;
+        newColStart = newColEnd - (originalColEnd - originalColStart);
+    }
+
+    // Update visual position
+    itemEl.style.gridColumn = `${newColStart} / ${newColEnd}`;
+
+    // Update stored values for final save
+    roadmapDragState.newColStart = newColStart;
+    roadmapDragState.newColEnd = newColEnd;
+
+    // Highlight target quarters
+    highlightTargetQuarters(newColStart - 2, newColEnd - 2);
+}
+
+// Handle vertical drag (reordering within category)
+function handleVerticalReorder(event) {
+    const { itemEl, categoryRow, categoryItems, originalDisplayOrder, startY } = roadmapDragState;
+
+    if (!categoryRow || categoryItems.length <= 1) return;
+
+    const deltaY = event.clientY - startY;
+
+    // Find where the item should be inserted based on Y position
+    let targetIndex = originalDisplayOrder;
+    const itemHeight = itemEl.offsetHeight + 16; // item height + gap
+
+    // Calculate new index based on movement
+    const indexDelta = Math.round(deltaY / itemHeight);
+    targetIndex = Math.max(0, Math.min(categoryItems.length - 1, originalDisplayOrder + indexDelta));
+
+    // Show insertion indicator
+    showInsertionIndicator(categoryRow, categoryItems, targetIndex, originalDisplayOrder);
+
+    roadmapDragState.newDisplayOrder = targetIndex;
+}
+
+// Handle sub-quarter positioning drag
+function handleSubQuarterDrag(event) {
+    const { itemEl, startX, quarterWidth, originalSubQuarter } = roadmapDragState;
+
+    const deltaX = event.clientX - startX;
+
+    // Calculate sub-quarter position based on movement
+    // Each sub-quarter is ~1/3 of a quarter
+    const subQuarterWidth = quarterWidth / 3;
+    const subQuarterDelta = Math.round(deltaX / subQuarterWidth);
+
+    // Convert current sub-quarter to index
+    const subQuarterOrder = ['early', 'mid', 'late'];
+    const currentIdx = subQuarterOrder.indexOf(originalSubQuarter);
+    const newIdx = Math.max(0, Math.min(2, currentIdx + subQuarterDelta));
+    const newSubQuarter = subQuarterOrder[newIdx];
+
+    // Update visual preview
+    const margin = getSubQuarterMargin(newSubQuarter);
+    if (margin) {
+        itemEl.style.marginLeft = newSubQuarter === 'mid' ? '8%' : '16%';
+        itemEl.style.width = newSubQuarter === 'mid' ? 'calc(100% - 8%)' : 'calc(100% - 16%)';
+    } else {
+        itemEl.style.marginLeft = '';
+        itemEl.style.width = '';
+    }
+
+    // Show sub-quarter zone indicator
+    showSubQuarterZone(itemEl, newSubQuarter);
+
+    roadmapDragState.newSubQuarter = newSubQuarter;
+}
+
+// Show insertion indicator for vertical reordering
+function showInsertionIndicator(categoryRow, items, targetIndex, currentIndex) {
+    // Remove existing indicator
+    hideInsertionIndicator();
+
+    if (targetIndex === currentIndex) return;
+
+    const indicator = document.createElement('div');
+    indicator.className = 'roadmap-insertion-indicator';
+    indicator.id = 'roadmapInsertionIndicator';
+
+    // Position indicator
+    let topPosition;
+    if (targetIndex <= currentIndex) {
+        // Moving up - show indicator above the target
+        const targetItem = items[targetIndex];
+        if (targetItem) {
+            const itemRect = targetItem.getBoundingClientRect();
+            const rowRect = categoryRow.getBoundingClientRect();
+            topPosition = itemRect.top - rowRect.top - 8;
+        }
+    } else {
+        // Moving down - show indicator below the target
+        const targetItem = items[targetIndex];
+        if (targetItem) {
+            const itemRect = targetItem.getBoundingClientRect();
+            const rowRect = categoryRow.getBoundingClientRect();
+            topPosition = itemRect.bottom - rowRect.top + 4;
+        }
+    }
+
+    if (topPosition !== undefined) {
+        indicator.style.top = `${topPosition}px`;
+        categoryRow.style.position = 'relative';
+        categoryRow.appendChild(indicator);
+    }
+}
+
+// Hide insertion indicator
+function hideInsertionIndicator() {
+    const indicator = document.getElementById('roadmapInsertionIndicator');
+    if (indicator) indicator.remove();
+}
+
+// Show sub-quarter zone indicator
+function showSubQuarterZone(itemEl, subQuarter) {
+    // For now, just update the data attribute - CSS handles visual feedback
+    itemEl.dataset.subQuarter = subQuarter;
+}
+
+// End drag/resize operation
+async function endRoadmapDrag(event) {
+    if (!roadmapDragState) return;
+
+    const {
+        type, itemId, itemEl,
+        originalColStart, originalColEnd, newColStart, newColEnd,
+        dragMode, hasMoved, originalDisplayOrder, newDisplayOrder,
+        originalSubQuarter, newSubQuarter,
+        originalStartDate, originalEndDate,
+        newStartDate: preciseStartDate, newEndDate: preciseEndDate
+    } = roadmapDragState;
+
+    // Remove event listeners
+    document.removeEventListener('mousemove', handleRoadmapDrag);
+    document.removeEventListener('mouseup', endRoadmapDrag);
+
+    // Reset visual feedback
+    itemEl.classList.remove('dragging');
+    itemEl.style.opacity = '1';
+    itemEl.style.cursor = 'grab';
+    itemEl.style.zIndex = '';
+    itemEl.style.boxShadow = '';
+    itemEl.style.marginLeft = '';
+    itemEl.style.width = '';
+
+    // Hide drop zones and indicators
+    hideQuarterDropZones();
+    hideInsertionIndicator();
+    hideResizeDatePreview();
+
+    // Click-to-edit: If no significant movement, open edit modal
+    if (type === 'move' && !hasMoved) {
+        roadmapDragState = null;
+        editRoadmapItem(itemId);
+        return;
+    }
+
+    // Handle based on drag mode
+    if (type === 'move') {
+        if (dragMode === 'vertical') {
+            // Vertical reorder - update display_order
+            if (newDisplayOrder !== null && newDisplayOrder !== originalDisplayOrder) {
+                await saveVerticalReorder(itemId, itemEl, newDisplayOrder);
+            }
+            roadmapDragState = null;
+            return;
+        }
+
+        if (dragMode === 'sub-quarter') {
+            // Sub-quarter positioning - update planned_start_date
+            if (newSubQuarter !== null && newSubQuarter !== originalSubQuarter) {
+                await saveSubQuarterPosition(itemId, itemEl, newSubQuarter);
+            } else {
+                // Revert visual if no change
+                itemEl.style.marginLeft = '';
+                itemEl.style.width = '';
+            }
+            roadmapDragState = null;
+            return;
+        }
+
+        // Horizontal move (default) - check if position changed
+        if (newColStart === originalColStart && newColEnd === originalColEnd) {
+            roadmapDragState = null;
+            return;
+        }
+    }
+
+    // Handle resize with precise dates
+    if (type === 'resize') {
+        const { side } = roadmapDragState;
+
+        // For resize, we need to preserve the unchanged date
+        // Left resize: change start, keep original end
+        // Right resize: keep original start, change end
+        let finalStartDate, finalEndDate;
+
+        if (side === 'left') {
+            // Left resize: use new start date, keep ORIGINAL end date (not the initialized Date object)
+            finalStartDate = preciseStartDate || (originalStartDate ? new Date(originalStartDate) : null);
+            finalEndDate = originalEndDate ? new Date(originalEndDate) : null;
+        } else {
+            // Right resize: keep ORIGINAL start date, use new end date
+            finalStartDate = originalStartDate ? new Date(originalStartDate) : null;
+            finalEndDate = preciseEndDate || (originalEndDate ? new Date(originalEndDate) : null);
+        }
+
+        // Check if the relevant date actually changed
+        const startChanged = side === 'left' && preciseStartDate && originalStartDate &&
+            preciseStartDate.toISOString().split('T')[0] !== originalStartDate;
+        const endChanged = side === 'right' && preciseEndDate && originalEndDate &&
+            preciseEndDate.toISOString().split('T')[0] !== originalEndDate;
+
+        if (!startChanged && !endChanged) {
+            roadmapDragState = null;
+            return;
+        }
+
+        // Calculate target quarter from start date
+        const startQuarterIdx = getQuarterIndex(
+            finalStartDate.toISOString().split('T')[0],
+            roadmapQuarters
+        );
+        const startQuarter = roadmapQuarters[Math.max(0, startQuarterIdx)] || roadmapQuarters[0];
+
+        // Get item title and original state for undo
+        const currentItem = currentRoadmap?.items?.find(i => i.id === itemId);
+        const itemTitle = itemEl.querySelector('.roadmap-item-content div')?.textContent || 'Item';
+
+        // Update the item via API with precise dates
+        try {
+            const response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_quarter: startQuarter,
+                    target_year: finalStartDate.getFullYear(),
+                    planned_start_date: finalStartDate.toISOString().split('T')[0],
+                    planned_end_date: finalEndDate.toISOString().split('T')[0]
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to update item');
+
+            // Push to undo stack
+            pushToUndoStack({
+                type: 'resize',
+                itemId: itemId,
+                description: `Resize "${itemTitle}"`,
+                previousState: {
+                    target_quarter: currentItem?.target_quarter,
+                    target_year: currentItem?.target_year,
+                    planned_start_date: originalStartDate,
+                    planned_end_date: originalEndDate
+                }
+            });
+
+            // Reload roadmap to get updated data
+            await loadRoadmap(getCustomerId());
+
+            const startStr = formatDate(finalStartDate.toISOString().split('T')[0]);
+            const endStr = formatDate(finalEndDate.toISOString().split('T')[0]);
+            showToast(`Updated to ${startStr} - ${endStr}`, 'success');
+
+        } catch (error) {
+            console.error('Failed to update roadmap item:', error);
+            showToast('Failed to update item. Please try again.', 'error');
+        }
+
+        roadmapDragState = null;
+        return;
+    }
+
+    // Handle horizontal move - update dates (preserve duration)
+    if (type === 'move' && (dragMode === 'horizontal' || !dragMode)) {
+        // Check if position actually changed
+        if ((newColStart === undefined || newColStart === originalColStart) &&
+            (newColEnd === undefined || newColEnd === originalColEnd)) {
+            roadmapDragState = null;
+            return;
+        }
+
+        // Get item title and original state for undo
+        const currentItem = currentRoadmap?.items?.find(i => i.id === itemId);
+        const itemTitle = itemEl.querySelector('.roadmap-item-content div')?.textContent || 'Item';
+
+        // Calculate original duration to preserve it
+        const origStart = new Date(originalStartDate);
+        const origEnd = new Date(originalEndDate);
+        const durationMs = origEnd.getTime() - origStart.getTime();
+
+        // Calculate quarters moved
+        const oldStartQuarterIdx = originalColStart - 2;
+        const newStartQuarterIdx = (newColStart || originalColStart) - 2;
+        const quartersDelta = newStartQuarterIdx - oldStartQuarterIdx;
+
+        // Shift the start date by the quarter delta (3 months per quarter)
+        const newStartDate = new Date(origStart);
+        newStartDate.setMonth(newStartDate.getMonth() + (quartersDelta * 3));
+
+        // End date = start date + original duration (preserves exact duration)
+        const newEndDate = new Date(newStartDate.getTime() + durationMs);
+
+        // Get the target quarter string for the new start date
+        const startQuarter = getQuarterFromDate(newStartDate);
+
+        // Update the item via API
+        try {
+            const response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_quarter: startQuarter,
+                    target_year: newStartDate.getFullYear(),
+                    planned_start_date: newStartDate.toISOString().split('T')[0],
+                    planned_end_date: newEndDate.toISOString().split('T')[0]
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to update item');
+
+            // Push to undo stack
+            pushToUndoStack({
+                type: 'move',
+                itemId: itemId,
+                description: `Move "${itemTitle}"`,
+                previousState: {
+                    target_quarter: currentItem?.target_quarter,
+                    target_year: currentItem?.target_year,
+                    planned_start_date: originalStartDate,
+                    planned_end_date: originalEndDate
+                }
+            });
+
+            // Reload roadmap to get updated data
+            await loadRoadmap(getCustomerId());
+
+            showToast(`Updated "${itemTitle}" schedule`, 'success');
+
+        } catch (error) {
+            console.error('Failed to update roadmap item:', error);
+            showToast('Failed to update item. Please try again.', 'error');
+
+            // Revert visual position
+            itemEl.style.gridColumn = `${originalColStart} / ${originalColEnd}`;
+        }
+    }
+
+    roadmapDragState = null;
+}
+
+// Save vertical reorder (display_order change)
+async function saveVerticalReorder(itemId, itemEl, newDisplayOrder) {
+    // Get current item for undo
+    const currentItem = currentRoadmap?.items?.find(i => i.id === itemId);
+    const originalDisplayOrder = currentItem?.display_order;
+    const itemTitle = itemEl.querySelector('.roadmap-item-content div')?.textContent || 'Item';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                display_order: newDisplayOrder
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to update item order');
+
+        // Push to undo stack before reloading
+        pushToUndoStack({
+            type: 'reorder',
+            itemId: itemId,
+            description: `Reorder "${itemTitle}"`,
+            previousState: { display_order: originalDisplayOrder }
+        });
+
+        // Reload roadmap to get updated data
+        await loadRoadmap(getCustomerId());
+
+        showToast(`Reordered "${itemTitle}"`, 'success');
+
+    } catch (error) {
+        console.error('Failed to update roadmap item order:', error);
+        showToast('Failed to reorder item. Please try again.', 'error');
+    }
+}
+
+// Save sub-quarter position (shifts both start and end dates to preserve duration)
+async function saveSubQuarterPosition(itemId, itemEl, newSubQuarter) {
+    // Get current item for undo
+    const currentItem = currentRoadmap?.items?.find(i => i.id === itemId);
+    const originalStartDate = currentItem?.planned_start_date;
+    const originalEndDate = currentItem?.planned_end_date;
+    const itemTitle = itemEl.querySelector('.roadmap-item-content div')?.textContent || 'Item';
+
+    try {
+        // Get the current item's start quarter to calculate new date
+        const startQuarterIdx = parseInt(itemEl.dataset.colStart) - 2;
+        const startQuarter = roadmapQuarters[Math.max(0, startQuarterIdx)];
+
+        // Calculate new start date based on sub-quarter position
+        const newStartDate = calculateDateForSubQuarter(startQuarter, newSubQuarter);
+
+        // Calculate how much the start date shifted
+        const origStart = new Date(originalStartDate);
+        const shiftMs = newStartDate.getTime() - origStart.getTime();
+
+        // Shift end date by the same amount to preserve duration
+        const origEnd = new Date(originalEndDate);
+        const newEndDate = new Date(origEnd.getTime() + shiftMs);
+
+        const response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                planned_start_date: newStartDate.toISOString().split('T')[0],
+                planned_end_date: newEndDate.toISOString().split('T')[0]
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to update item timing');
+
+        // Push to undo stack
+        const positionLabel = newSubQuarter === 'early' ? 'Early' : newSubQuarter === 'mid' ? 'Mid' : 'Late';
+        pushToUndoStack({
+            type: 'sub-quarter',
+            itemId: itemId,
+            description: `Move "${itemTitle}" to ${positionLabel}`,
+            previousState: {
+                planned_start_date: originalStartDate,
+                planned_end_date: originalEndDate
+            }
+        });
+
+        // Reload roadmap to get updated data
+        await loadRoadmap(getCustomerId());
+
+        showToast(`Moved "${itemTitle}" to ${positionLabel} ${startQuarter}`, 'success');
+
+    } catch (error) {
+        console.error('Failed to update roadmap item timing:', error);
+        showToast('Failed to update item timing. Please try again.', 'error');
+
+        // Revert visual position
+        itemEl.style.marginLeft = '';
+        itemEl.style.width = '';
+    }
+}
+
+// Show visual indicators for quarter drop zones
+function showQuarterDropZones() {
+    const headerContainer = document.getElementById('quarterHeaders');
+    if (!headerContainer) return;
+
+    // Add highlight class to quarter headers
+    const quarterDivs = headerContainer.querySelectorAll('div:not(:first-child)');
+    quarterDivs.forEach((div, idx) => {
+        div.dataset.quarterIdx = idx;
+        div.style.transition = 'background 0.15s ease';
+    });
+}
+
+// Hide quarter drop zones
+function hideQuarterDropZones() {
+    const headerContainer = document.getElementById('quarterHeaders');
+    if (!headerContainer) return;
+
+    const quarterDivs = headerContainer.querySelectorAll('div:not(:first-child)');
+    quarterDivs.forEach(div => {
+        div.style.background = 'var(--cds-layer-02)';
+    });
+}
+
+// Highlight target quarters during drag
+function highlightTargetQuarters(startIdx, endIdx) {
+    const headerContainer = document.getElementById('quarterHeaders');
+    if (!headerContainer) return;
+
+    const quarterDivs = headerContainer.querySelectorAll('div:not(:first-child)');
+    quarterDivs.forEach((div, idx) => {
+        if (idx >= startIdx && idx < endIdx) {
+            div.style.background = 'rgba(138, 63, 252, 0.2)';
+        } else {
+            div.style.background = 'var(--cds-layer-02)';
+        }
+    });
 }
 
 // Calculate end date from duration
@@ -1093,6 +3500,37 @@ function getQuarterFromDate(date) {
     const d = new Date(date);
     const quarter = Math.floor(d.getMonth() / 3) + 1;
     return `Q${quarter} ${d.getFullYear()}`;
+}
+
+// Populate dependency checkboxes in the roadmap item modal
+function populateDependencyCheckboxes(excludeItemId = null, selectedIds = []) {
+    const container = document.getElementById('roadmapItemDependencies');
+    if (!container || !currentRoadmap || !currentRoadmap.items) {
+        container.innerHTML = '<div style="color: var(--cds-text-secondary); font-size: 13px;">No other roadmap items available</div>';
+        return;
+    }
+
+    // Filter out the current item being edited
+    const availableItems = currentRoadmap.items.filter(item => item.id !== excludeItemId);
+
+    if (availableItems.length === 0) {
+        container.innerHTML = '<div style="color: var(--cds-text-secondary); font-size: 13px;">No other roadmap items available</div>';
+        return;
+    }
+
+    container.innerHTML = availableItems.map(item => {
+        const isChecked = selectedIds.includes(item.id) ? 'checked' : '';
+        const statusBadge = getRoadmapStatusLabel(item.status);
+        return `
+            <label style="display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px;"
+                   onmouseover="this.style.background='var(--cds-layer-hover-01)'"
+                   onmouseout="this.style.background='transparent'">
+                <input type="checkbox" name="roadmapItemDeps" value="${item.id}" ${isChecked} style="margin: 0;">
+                <span style="flex: 1; font-size: 13px;">${escapeHtml(item.title)}</span>
+                <span style="font-size: 11px; color: var(--cds-text-secondary);">${statusBadge}</span>
+            </label>
+        `;
+    }).join('');
 }
 
 // Open roadmap item modal for creating
@@ -1119,6 +3557,9 @@ function openRoadmapItemModal() {
     document.getElementById('roadmapItemStartDate').value = startDate.toISOString().split('T')[0];
     document.getElementById('roadmapItemEndDate').value = endDate.toISOString().split('T')[0];
     document.getElementById('roadmapItemDuration').value = '3';
+
+    // Populate dependency checkboxes (no item excluded, none selected)
+    populateDependencyCheckboxes(null, []);
 
     // Hide delete button for new items
     document.getElementById('roadmapItemDeleteBtn').style.display = 'none';
@@ -1162,6 +3603,10 @@ function editRoadmapItem(itemId) {
     }
     document.getElementById('roadmapItemDuration').value = ''; // Custom
 
+    // Populate dependency checkboxes (exclude current item, select existing dependencies)
+    const existingDeps = item.depends_on_ids || [];
+    populateDependencyCheckboxes(itemId, existingDeps);
+
     // Show delete button for existing items
     document.getElementById('roadmapItemDeleteBtn').style.display = 'block';
 
@@ -1182,6 +3627,14 @@ async function handleRoadmapItemSubmit(event) {
     const quarter = getQuarterFromDate(startDate);
     const targetYear = new Date(startDate).getFullYear();
 
+    // Collect selected dependencies
+    const selectedDeps = Array.from(document.querySelectorAll('input[name="roadmapItemDeps"]:checked'))
+        .map(cb => parseInt(cb.value));
+
+    // Track existing dependencies for smart routing (only for existing items)
+    const existingItem = isEdit ? currentRoadmap?.items?.find(i => i.id === parseInt(itemId)) : null;
+    const oldDeps = existingItem?.depends_on_ids || [];
+
     const data = {
         title: document.getElementById('roadmapItemTitle').value,
         description: document.getElementById('roadmapItemDescription').value || null,
@@ -1192,11 +3645,13 @@ async function handleRoadmapItemSubmit(event) {
         planned_start_date: startDate,
         planned_end_date: endDate,
         progress_percent: parseInt(document.getElementById('roadmapItemProgress').value) || 0,
-        notes: document.getElementById('roadmapItemNotes').value || null
+        notes: document.getElementById('roadmapItemNotes').value || null,
+        depends_on_ids: selectedDeps
     };
 
     try {
         let response;
+        let savedItemId = itemId;
         if (isEdit) {
             response = await fetch(`${API_BASE_URL}/roadmaps/items/${itemId}`, {
                 method: 'PATCH',
@@ -1209,6 +3664,11 @@ async function handleRoadmapItemSubmit(event) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
+            // Get the new item ID from response for smart routing
+            if (response.ok) {
+                const newItem = await response.json();
+                savedItemId = newItem.id;
+            }
         }
 
         if (!response.ok) throw new Error('Failed to save roadmap item');
@@ -1218,6 +3678,11 @@ async function handleRoadmapItemSubmit(event) {
         // Reload roadmap to refresh display
         const customerId = getCustomerId();
         await loadRoadmap(customerId);
+
+        // Apply smart routing for any new dependencies
+        if (selectedDeps.length > 0) {
+            applySmartRoutingForNewDependencies(savedItemId, oldDeps, selectedDeps);
+        }
 
     } catch (error) {
         console.error('Failed to save roadmap item:', error);
@@ -2150,6 +4615,8 @@ window.closeRoadmapItemModal = closeRoadmapItemModal;
 window.editRoadmapItem = editRoadmapItem;
 window.handleRoadmapItemSubmit = handleRoadmapItemSubmit;
 window.deleteRoadmapItem = deleteRoadmapItem;
+window.closeDependencyPopover = closeDependencyPopover;
+window.deleteSelectedDependency = deleteSelectedDependency;
 window.openCreateRoadmapModal = openCreateRoadmapModal;
 window.closeCreateRoadmapModal = closeCreateRoadmapModal;
 window.handleCreateRoadmap = handleCreateRoadmap;
@@ -2158,6 +4625,22 @@ window.openPushToTPModal = openPushToTPModal;
 window.closePushToTPModal = closePushToTPModal;
 window.handlePushToTP = handlePushToTP;
 window.toggleAllPushItems = toggleAllPushItems;
+window.zoomRoadmap = zoomRoadmap;
+window.navigateRoadmapTime = navigateRoadmapTime;
+window.populateDependencyCheckboxes = populateDependencyCheckboxes;
+window.startRoadmapDrag = startRoadmapDrag;
+window.startRoadmapResize = startRoadmapResize;
+
+// Redraw dependency lines on window resize
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        if (currentRoadmap && currentRoadmap.items) {
+            drawDependencyLines(currentRoadmap.items);
+        }
+    }, 250);
+});
 
 // ============================================
 // ENGAGEMENTS TAB FUNCTIONS
@@ -3497,6 +5980,16 @@ function updateAssessmentTabContent(typeCode) {
             renderRadarChart(dimensionScores);
             renderDimensionScoresCards(typeData.dimensions);
 
+            // Update currentAssessment to reflect the selected framework's data
+            // This ensures the modal and other features use the correct framework
+            currentAssessment = {
+                ...currentAssessment,
+                dimension_scores: dimensionScores,
+                id: typeData.assessment_id,
+                assessment_date: typeData.assessment_date,
+                assessment_type_code: typeCode
+            };
+
             // Update overall score display
             const overallScoreValue = document.getElementById('overallScoreValue');
             if (overallScoreValue && typeData.overall_score !== null) {
@@ -3634,6 +6127,9 @@ async function loadAssessments(customerId) {
                 }
                 // Update tab scores in the tab buttons
                 updateAssessmentTabScores(report);
+
+                // Update content to show the active tab's assessment (not just the most recent)
+                updateAssessmentTabContent(activeAssessmentTypeTab);
             }
         } catch (reportError) {
             console.warn('Could not load comprehensive report for tabs:', reportError);
@@ -4025,6 +6521,17 @@ function openRadarChartModal() {
 
     const modal = document.getElementById('radarChartModal');
     modal.classList.add('open');
+
+    // Update modal title based on active framework tab
+    const frameworkNames = {
+        'spm': 'SPM Maturity Assessment',
+        'tbm': 'TBM Maturity Assessment',
+        'finops': 'FinOps Maturity Assessment'
+    };
+    const modalTitle = modal.querySelector('.modal__title');
+    if (modalTitle) {
+        modalTitle.textContent = frameworkNames[activeAssessmentTypeTab] || 'Maturity Assessment';
+    }
 
     // Render larger chart after modal is visible
     setTimeout(() => {
@@ -5079,6 +7586,7 @@ function setupTabSwitching() {
         const spmAssessmentSection = document.getElementById('spmAssessmentSection');
         const recommendationsSection = document.getElementById('recommendationsSection');
         const implementationFlowSection = document.getElementById('implementationFlowSection');
+        const reportsSection = document.getElementById('reportsSection');
         const overviewGrid = document.querySelector('.grid.grid--2');
 
         if (tasksSection) tasksSection.style.display = 'none';
@@ -5091,6 +7599,7 @@ function setupTabSwitching() {
         if (spmAssessmentSection) spmAssessmentSection.style.display = 'none';
         if (recommendationsSection) recommendationsSection.style.display = 'none';
         if (implementationFlowSection) implementationFlowSection.style.display = 'none';
+        if (reportsSection) reportsSection.style.display = 'none';
         if (overviewGrid) overviewGrid.style.display = 'none';
     }
 
@@ -5119,6 +7628,7 @@ function setupTabSwitching() {
             const spmAssessmentSection = document.getElementById('spmAssessmentSection');
             const recommendationsSection = document.getElementById('recommendationsSection');
             const implementationFlowSection = document.getElementById('implementationFlowSection');
+            const reportsSection = document.getElementById('reportsSection');
             const overviewGrid = document.querySelector('.grid.grid--2');
 
             // Show appropriate section based on tab
@@ -5144,12 +7654,16 @@ function setupTabSwitching() {
                 if (recommendationsSection) recommendationsSection.style.display = 'block';
                 loadCustomRecommendations(customerId);
                 loadRecommendations(customerId);
-            } else if (tabName === 'Flow') {
+            } else if (tabName === 'Journey') {
                 if (implementationFlowSection) implementationFlowSection.style.display = 'block';
-                // Load assessment options first, then load flow visualization
+                // Update title for current framework and load tab scores
+                updateFlowChartTitle(selectedFlowAssessmentType);
+                loadFlowTabScores(customerId);
                 loadFlowAssessmentOptions(customerId).then(() => {
                     loadFlowVisualization(customerId, selectedFlowAssessmentId);
                 });
+            } else if (tabName === 'Reports') {
+                if (reportsSection) reportsSection.style.display = 'block';
             } else if (tabName === 'Documents') {
                 if (documentsSection) documentsSection.style.display = 'block';
                 loadDocuments(customerId);
@@ -5177,7 +7691,8 @@ function showSection(sectionName) {
         'targetprocess': 'TargetProcess',
         'roadmap': 'Roadmap',
         'recommendations': 'Recommendations',
-        'implementationFlow': 'Flow',
+        'implementationFlow': 'Journey',
+        'reports': 'Reports',
         'documents': 'Documents'
     };
 
@@ -5925,9 +8440,9 @@ let recommendationsCache = [];
  * Load recommendations for the customer
  */
 async function loadRecommendations(customerId) {
-    const noState = document.getElementById('noRecommendationsState');
-    const content = document.getElementById('recommendationsContent');
+    const noState = document.getElementById('noGeneratedRecsState');
     const listEl = document.getElementById('recommendationsList');
+    const countBadge = document.getElementById('generatedRecCount');
 
     try {
         const response = await fetch(`${API_BASE_URL}/recommendations/customer/${customerId}?include_accepted=true&include_dismissed=false`);
@@ -5939,14 +8454,18 @@ async function loadRecommendations(customerId) {
         const data = await response.json();
         recommendationsCache = data.items || [];
 
+        // Update count badge
+        if (countBadge) {
+            countBadge.textContent = recommendationsCache.length;
+        }
+
         if (recommendationsCache.length === 0) {
-            noState.style.display = 'block';
-            content.style.display = 'none';
+            if (noState) noState.style.display = 'block';
+            if (listEl) listEl.innerHTML = '';
             return;
         }
 
-        noState.style.display = 'none';
-        content.style.display = 'block';
+        if (noState) noState.style.display = 'none';
 
         // Render weak dimensions
         if (data.weak_dimensions && data.weak_dimensions.length > 0) {
@@ -5965,9 +8484,19 @@ async function loadRecommendations(customerId) {
         // Render recommendations
         listEl.innerHTML = recommendationsCache.map(r => renderRecommendationCard(r)).join('');
 
+        // Update all recommendation counts
+        updateAllRecCounts();
+
+        // If "All" tab is active, re-render it
+        if (activeRecTypeTab === 'all') {
+            renderAllRecommendations();
+        }
+
     } catch (error) {
         console.error('Failed to load recommendations:', error);
-        listEl.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Failed to load recommendations</div>';
+        if (listEl) {
+            listEl.innerHTML = '<div class="text-secondary text-center" style="padding: 24px;">Failed to load recommendations</div>';
+        }
     }
 }
 
@@ -5978,19 +8507,31 @@ function renderRecommendationCard(rec) {
     const priorityScore = Math.round(rec.priority_score);
     const isAccepted = rec.is_accepted;
 
+    // Build tools display
+    const toolsHtml = rec.tools && rec.tools.length > 0
+        ? rec.tools.map(t => `<span class="tag tag--outline">${escapeHtml(t)}</span>`).join('')
+        : '';
+
     return `
         <div class="recommendation-card ${isAccepted ? 'accepted' : ''}" data-rec-id="${rec.id}">
             <div class="recommendation-card__header">
                 <div>
                     <div class="recommendation-card__title">${escapeHtml(rec.title)}</div>
                     <div class="recommendation-card__meta">
+                        ${rec.category ? `<span class="tag tag--purple">${escapeHtml(rec.category)}</span>` : ''}
                         ${rec.solution_area ? `<span class="tag tag--blue">${escapeHtml(rec.solution_area)}</span>` : ''}
                         ${rec.tp_feature_name ? `<span>TP: ${escapeHtml(rec.tp_feature_name)}</span>` : ''}
+                        ${toolsHtml}
                     </div>
                 </div>
-                <span class="recommendation-card__priority">Score: ${priorityScore}</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button class="btn btn--ghost btn--small" onclick="openEditRecommendationGeneratedModal(${rec.id})" title="Edit recommendation">
+                        <svg width="16" height="16" viewBox="0 0 32 32"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                    </button>
+                    <span class="recommendation-card__priority">Score: ${priorityScore}</span>
+                </div>
             </div>
-            <div class="recommendation-card__description">${escapeHtml(rec.description)}</div>
+            <div class="recommendation-card__description">${escapeHtml(rec.description || '')}</div>
             <div class="recommendation-card__footer">
                 <span class="recommendation-card__improvement">
                     Potential improvement: +${rec.improvement_potential.toFixed(1)} in ${escapeHtml(rec.dimension_name)}
@@ -6326,6 +8867,333 @@ async function rateRecommendation(recId, thumbsUp) {
     }
 }
 
+/**
+ * Open modal to edit an AI-generated recommendation
+ */
+function openEditRecommendationGeneratedModal(recId) {
+    // recommendationsCache is an array, not an object with items property
+    const rec = recommendationsCache?.find(r => r.id === recId);
+    if (!rec) {
+        showToast('Recommendation not found', 'error');
+        return;
+    }
+
+    // Store the ID for saving
+    document.getElementById('editRecGeneratedId').value = recId;
+
+    // Populate form fields
+    document.getElementById('editRecGeneratedTitle').value = rec.title || '';
+    document.getElementById('editRecGeneratedDescription').value = rec.description || '';
+    document.getElementById('editRecGeneratedDimension').value = rec.dimension_name || '';
+    document.getElementById('editRecGeneratedScore').value = rec.priority_score || 50;
+    document.getElementById('editRecGeneratedCategory').value = rec.category || '';
+
+    // Set priority dropdown based on score
+    const prioritySelect = document.getElementById('editRecGeneratedPriority');
+    if (rec.priority_score >= 70) {
+        prioritySelect.value = 'high';
+    } else if (rec.priority_score >= 40) {
+        prioritySelect.value = 'medium';
+    } else {
+        prioritySelect.value = 'low';
+    }
+
+    // Set tools checkboxes
+    const toolCheckboxes = document.querySelectorAll('input[name="editRecGeneratedTools"]');
+    const recTools = rec.tools || [];
+    toolCheckboxes.forEach(cb => {
+        cb.checked = recTools.includes(cb.value);
+    });
+
+    // Open modal
+    document.getElementById('editRecGeneratedModal').classList.add('open');
+}
+
+/**
+ * Close the edit recommendation modal
+ */
+function closeEditRecommendationGeneratedModal() {
+    document.getElementById('editRecGeneratedModal').classList.remove('open');
+    document.getElementById('editRecGeneratedForm').reset();
+}
+
+/**
+ * Handle edit recommendation form submission
+ */
+async function handleEditRecommendationGeneratedSubmit(event) {
+    event.preventDefault();
+
+    const recId = document.getElementById('editRecGeneratedId').value;
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="loading-spinner"></span> Saving...';
+
+    // Get priority score from dropdown or direct input
+    const priorityDropdown = document.getElementById('editRecGeneratedPriority').value;
+    let priorityScore = parseFloat(document.getElementById('editRecGeneratedScore').value) || 50;
+
+    // If dropdown changed, calculate score from priority level
+    if (priorityDropdown === 'high' && priorityScore < 70) {
+        priorityScore = 80;
+    } else if (priorityDropdown === 'medium' && (priorityScore >= 70 || priorityScore < 40)) {
+        priorityScore = 55;
+    } else if (priorityDropdown === 'low' && priorityScore >= 40) {
+        priorityScore = 25;
+    }
+
+    // Collect selected tools
+    const selectedTools = Array.from(document.querySelectorAll('input[name="editRecGeneratedTools"]:checked'))
+        .map(cb => cb.value);
+
+    const data = {
+        title: document.getElementById('editRecGeneratedTitle').value,
+        description: document.getElementById('editRecGeneratedDescription').value,
+        priority_score: priorityScore,
+        dimension_name: document.getElementById('editRecGeneratedDimension').value,
+        category: document.getElementById('editRecGeneratedCategory').value || null,
+        tools: selectedTools.length > 0 ? selectedTools : null
+    };
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/recommendations/${recId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update recommendation');
+        }
+
+        const updatedRec = await response.json();
+
+        // Update the cache (recommendationsCache is an array)
+        if (recommendationsCache && Array.isArray(recommendationsCache)) {
+            const idx = recommendationsCache.findIndex(r => r.id === parseInt(recId));
+            if (idx !== -1) {
+                recommendationsCache[idx] = updatedRec;
+            }
+        }
+
+        closeEditRecommendationGeneratedModal();
+        showToast('Recommendation updated', 'success');
+
+        // Re-render the recommendations
+        const customerId = getCustomerId();
+        await loadRecommendations(customerId);
+
+    } catch (error) {
+        console.error('Failed to update recommendation:', error);
+        showToast(error.message || 'Failed to update recommendation', 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+// Track which type of recommendation is being added to roadmap
+let addToRoadmapRecType = null;
+
+/**
+ * Unified function to open add-to-roadmap modal for any recommendation type
+ */
+function openAddToRoadmapModal(recId, recType = 'generated') {
+    addToRoadmapRecType = recType;
+
+    let rec;
+    if (recType === 'custom') {
+        rec = customerRecommendations.find(r => r.id === recId);
+    } else {
+        rec = recommendationsCache.find(r => r.id === recId);
+    }
+
+    if (!rec) {
+        showToast('Recommendation not found', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('acceptRecommendationModal');
+    document.getElementById('acceptRecId').value = recId;
+    document.getElementById('acceptRecTitle').textContent = rec.title;
+
+    // Reset rating
+    acceptRecRatingValue = null;
+    document.getElementById('acceptRecRatingValue').value = '';
+    const buttons = document.querySelectorAll('#acceptRecRating .star-btn');
+    buttons.forEach(btn => btn.classList.remove('star-btn--active'));
+
+    // Populate year options
+    const yearSelect = document.getElementById('acceptRecYear');
+    const currentYear = new Date().getFullYear();
+    yearSelect.innerHTML = '';
+    for (let y = currentYear; y <= currentYear + 3; y++) {
+        const option = document.createElement('option');
+        option.value = y;
+        option.textContent = y;
+        yearSelect.appendChild(option);
+    }
+
+    // Default to next quarter
+    const currentQuarter = Math.ceil((new Date().getMonth() + 1) / 3);
+    const nextQuarter = currentQuarter >= 4 ? 1 : currentQuarter + 1;
+    document.getElementById('acceptRecQuarter').value = `Q${nextQuarter}`;
+    if (nextQuarter === 1) {
+        document.getElementById('acceptRecYear').value = currentYear + 1;
+    }
+
+    // Reset notes
+    document.getElementById('acceptRecNotes').value = '';
+
+    // Reset and populate tools checkboxes
+    const toolCheckboxes = document.querySelectorAll('input[name="acceptRecTools"]');
+    const existingTools = rec.tools || [];
+    toolCheckboxes.forEach(cb => {
+        cb.checked = existingTools.includes(cb.value);
+    });
+
+    modal.classList.add('open');
+}
+
+/**
+ * Handle adding recommendation to roadmap (unified handler)
+ */
+async function handleAddToRoadmap(event) {
+    event.preventDefault();
+
+    const recId = parseInt(document.getElementById('acceptRecId').value);
+    const quarter = document.getElementById('acceptRecQuarter').value;
+    const year = parseInt(document.getElementById('acceptRecYear').value);
+    const notes = document.getElementById('acceptRecNotes').value.trim();
+    const rating = acceptRecRatingValue;
+
+    // Collect selected tools
+    const selectedTools = Array.from(document.querySelectorAll('input[name="acceptRecTools"]:checked'))
+        .map(cb => cb.value);
+
+    const btn = document.getElementById('acceptRecSubmitBtn');
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner"></span> Adding...';
+
+    try {
+        const customerId = getCustomerId();
+
+        if (addToRoadmapRecType === 'custom') {
+            // For custom recommendations, create a roadmap item directly
+            const rec = customerRecommendations.find(r => r.id === recId);
+            if (!rec) throw new Error('Recommendation not found');
+
+            // Ensure roadmap exists
+            if (!currentRoadmap) {
+                // Create a default roadmap if none exists
+                const roadmapResponse = await fetch(`${API_BASE_URL}/roadmaps`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        customer_id: customerId,
+                        name: `${new Date().getFullYear()} Roadmap`,
+                        start_date: new Date().toISOString().split('T')[0],
+                        end_date: new Date(new Date().getFullYear() + 1, 11, 31).toISOString().split('T')[0]
+                    })
+                });
+                if (!roadmapResponse.ok) throw new Error('Failed to create roadmap');
+                currentRoadmap = await roadmapResponse.json();
+            }
+
+            // Determine category based on assessment type
+            // Valid categories: feature, enhancement, integration, migration, optimization, other
+            let category = 'enhancement';
+            if (rec.assessment_type) {
+                const typeCode = rec.assessment_type.code || '';
+                if (typeCode === 'finops') category = 'optimization';
+                else if (typeCode === 'tbm') category = 'optimization';
+            }
+
+            // Calculate dates based on quarter
+            const quarterNum = parseInt(quarter.replace('Q', ''));
+            const startMonth = (quarterNum - 1) * 3;
+            const startDate = new Date(year, startMonth, 1);
+            const endDate = new Date(year, startMonth + 3, 0);
+
+            // Create roadmap item with correct schema fields
+            const itemResponse = await fetch(`${API_BASE_URL}/roadmaps/${currentRoadmap.id}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: rec.title,
+                    description: rec.description || notes || '',
+                    category: category,
+                    target_quarter: quarter,
+                    target_year: year,
+                    planned_start_date: startDate.toISOString().split('T')[0],
+                    planned_end_date: endDate.toISOString().split('T')[0],
+                    tools: selectedTools.length > 0 ? selectedTools : null
+                })
+            });
+
+            if (!itemResponse.ok) {
+                const error = await itemResponse.json();
+                throw new Error(error.detail || 'Failed to create roadmap item');
+            }
+
+            // Update the recommendation status to in_progress and save tools
+            await fetch(`${API_BASE_URL}/assessments/recommendations/${recId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'in_progress',
+                    tools: selectedTools.length > 0 ? selectedTools : null
+                })
+            });
+
+        } else {
+            // For generated recommendations, use the existing accept endpoint
+            const requestBody = {
+                target_quarter: quarter,
+                target_year: year,
+                notes: notes || null,
+                tools: selectedTools.length > 0 ? selectedTools : null
+            };
+
+            if (rating) {
+                requestBody.quality_rating = rating;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/recommendations/${recId}/accept`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to accept recommendation');
+            }
+        }
+
+        closeAcceptRecommendationModal();
+        showToast('Recommendation added to roadmap', 'success');
+
+        // Reload recommendations and roadmap
+        if (addToRoadmapRecType === 'custom') {
+            await loadCustomRecommendations(customerId);
+        } else {
+            await loadRecommendations(customerId);
+        }
+        loadRoadmap(customerId);
+
+    } catch (error) {
+        console.error('Failed to add to roadmap:', error);
+        showToast(error.message || 'Failed to add to roadmap', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
 // Export recommendation functions
 window.loadRecommendations = loadRecommendations;
 window.generateRecommendations = generateRecommendations;
@@ -6339,6 +9207,8 @@ window.handleDismissRecommendation = handleDismissRecommendation;
 window.setDismissRating = setDismissRating;
 window.rateRecommendation = rateRecommendation;
 window.setAcceptRating = setAcceptRating;
+window.openAddToRoadmapModal = openAddToRoadmapModal;
+window.handleAddToRoadmap = handleAddToRoadmap;
 
 // ==================== END RECOMMENDATIONS ====================
 
@@ -8551,7 +11421,10 @@ window.loadTargetsByType = loadTargetsByType;
 
 let customerRecommendations = [];
 let currentEditingRecId = null;
-let activeRecTypeTab = 'custom';
+let activeRecTypeTab = 'all';
+
+// Store all recommendations (unfiltered) for client-side filtering
+let allCustomerRecommendations = [];
 
 // Load customer recommendations
 async function loadCustomRecommendations(customerId) {
@@ -8568,16 +11441,39 @@ async function loadCustomRecommendations(customerId) {
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load recommendations');
         const data = await response.json();
-        customerRecommendations = data.items || [];
+        allCustomerRecommendations = data.items || [];
 
-        // Update count badge
-        document.getElementById('customRecCount').textContent = customerRecommendations.length;
-
-        renderCustomRecommendations();
+        // Apply client-side tool filter
+        applyToolFilter();
     } catch (error) {
         console.error('Failed to load recommendations:', error);
+        allCustomerRecommendations = [];
         customerRecommendations = [];
         renderCustomRecommendations();
+    }
+}
+
+// Apply tool filter (client-side)
+function applyToolFilter() {
+    const toolFilter = document.getElementById('recToolFilter')?.value || '';
+
+    if (toolFilter) {
+        customerRecommendations = allCustomerRecommendations.filter(rec => {
+            return rec.tools && Array.isArray(rec.tools) && rec.tools.includes(toolFilter);
+        });
+    } else {
+        customerRecommendations = [...allCustomerRecommendations];
+    }
+
+    // Update count badges
+    document.getElementById('customRecCount').textContent = customerRecommendations.length;
+    updateAllRecCounts();
+
+    renderCustomRecommendations();
+
+    // If "All" tab is active, re-render it
+    if (activeRecTypeTab === 'all') {
+        renderAllRecommendations();
     }
 }
 
@@ -8638,6 +11534,12 @@ function renderCustomRecommendations() {
                         </span>
                         ${typeBadge}
                         ${rec.category ? `<span style="background: var(--cds-layer-02); padding: 2px 8px; border-radius: 4px; font-size: 11px;">${escapeHtml(rec.category)}</span>` : ''}
+                        ${rec.status === 'in_progress' ? `
+                            <span style="background: var(--cds-interactive); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                                <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M28 4H4a2 2 0 00-2 2v20a2 2 0 002 2h24a2 2 0 002-2V6a2 2 0 00-2-2zM4 26V6h24v20z"/><path d="M6 12h20v2H6zm0 6h12v2H6z"/></svg>
+                                On Roadmap
+                            </span>
+                        ` : ''}
                     </div>
                     <span style="background: ${statusColor}20; color: ${statusColor}; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500;">
                         ${statusLabel}
@@ -8669,6 +11571,12 @@ function renderCustomRecommendations() {
                                 <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M14 21.414l-5-5L10.586 15 14 18.414 21.414 11 23 12.586l-9 9z"/><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm0 26C9.4 28 4 22.6 4 16S9.4 4 16 4s12 5.4 12 12-5.4 12-12 12z"/></svg>
                             </button>
                         ` : ''}
+                        ${rec.status === 'open' ? `
+                            <button class="btn btn--primary btn--sm" onclick="openAddToRoadmapModal(${rec.id}, 'custom')" title="Add to Roadmap">
+                                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+                                Roadmap
+                            </button>
+                        ` : ''}
                         <button class="btn btn--ghost btn--sm" onclick="editCustomRecommendation(${rec.id})" title="Edit">
                             <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15z"/></svg>
                         </button>
@@ -8690,38 +11598,236 @@ function switchRecTypeTab(tabType) {
 
     // Update tab styles
     document.querySelectorAll('.rec-type-tab').forEach(tab => {
+        const badge = tab.querySelector('.rec-count-badge');
         if (tab.dataset.recType === tabType) {
             tab.classList.add('active');
             tab.style.borderBottomColor = 'var(--cds-interactive)';
             tab.style.color = 'var(--cds-text-primary)';
+            if (badge) {
+                badge.style.background = 'var(--cds-interactive)';
+                badge.style.color = 'white';
+            }
         } else {
             tab.classList.remove('active');
             tab.style.borderBottomColor = 'transparent';
             tab.style.color = 'var(--cds-text-secondary)';
+            if (badge) {
+                badge.style.background = 'var(--cds-layer-02)';
+                badge.style.color = 'var(--cds-text-primary)';
+            }
         }
     });
 
     // Show/hide panels
+    const allPanel = document.getElementById('allRecommendationsPanel');
     const customPanel = document.getElementById('customRecommendationsPanel');
     const generatedPanel = document.getElementById('generatedRecommendationsPanel');
     const generateBtn = document.getElementById('generateRecsBtn');
     const addCustomBtn = document.getElementById('addCustomRecBtn');
 
-    if (tabType === 'custom') {
+    // Hide all panels first
+    if (allPanel) allPanel.style.display = 'none';
+    if (customPanel) customPanel.style.display = 'none';
+    if (generatedPanel) generatedPanel.style.display = 'none';
+
+    if (tabType === 'all') {
+        if (allPanel) allPanel.style.display = 'block';
+        if (generateBtn) generateBtn.style.display = 'inline-flex';
+        if (addCustomBtn) addCustomBtn.style.display = 'inline-flex';
+        renderAllRecommendations();
+    } else if (tabType === 'custom') {
         if (customPanel) customPanel.style.display = 'block';
-        if (generatedPanel) generatedPanel.style.display = 'none';
         if (generateBtn) generateBtn.style.display = 'none';
         if (addCustomBtn) addCustomBtn.style.display = 'inline-flex';
     } else {
-        if (customPanel) customPanel.style.display = 'none';
         if (generatedPanel) generatedPanel.style.display = 'block';
         if (generateBtn) generateBtn.style.display = 'inline-flex';
         if (addCustomBtn) addCustomBtn.style.display = 'none';
     }
 }
 
-// Filter recommendations by type
+// Render all recommendations (combined custom + AI generated)
+function renderAllRecommendations() {
+    const container = document.getElementById('allRecsList');
+    const emptyState = document.getElementById('noAllRecsState');
+    const countBadge = document.getElementById('allRecCount');
+
+    if (!container) return;
+
+    // Combine custom and AI-generated recommendations
+    const customRecs = (customerRecommendations || []).map(rec => ({
+        ...rec,
+        _type: 'custom',
+        _sortDate: rec.created_at || rec.updated_at
+    }));
+
+    const aiRecs = (recommendationsCache || []).map(rec => ({
+        ...rec,
+        _type: 'generated',
+        _sortDate: rec.created_at || rec.accepted_at
+    }));
+
+    const allRecs = [...customRecs, ...aiRecs];
+
+    // Sort by date (newest first)
+    allRecs.sort((a, b) => {
+        const dateA = new Date(a._sortDate || 0);
+        const dateB = new Date(b._sortDate || 0);
+        return dateB - dateA;
+    });
+
+    // Update count badge
+    if (countBadge) countBadge.textContent = allRecs.length;
+
+    if (allRecs.length === 0) {
+        container.innerHTML = '';
+        if (emptyState) emptyState.style.display = 'block';
+        return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+
+    const priorityColors = {
+        high: 'var(--cds-support-error)',
+        medium: 'var(--cds-support-warning)',
+        low: 'var(--cds-support-info)'
+    };
+
+    const statusLabels = {
+        open: 'Open',
+        in_progress: 'In Progress',
+        completed: 'Completed',
+        dismissed: 'Dismissed'
+    };
+
+    const statusColors = {
+        open: 'var(--cds-interactive)',
+        in_progress: 'var(--cds-support-warning)',
+        completed: 'var(--cds-support-success)',
+        dismissed: 'var(--cds-text-secondary)'
+    };
+
+    let html = '';
+    for (const rec of allRecs) {
+        const isCustom = rec._type === 'custom';
+        const isGenerated = rec._type === 'generated';
+
+        // Type badge for custom vs AI
+        const sourceBadge = isCustom
+            ? '<span style="background: #8a3ffc20; color: #8a3ffc; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;">CUSTOM</span>'
+            : '<span style="background: #0f62fe20; color: #0f62fe; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;">AI</span>';
+
+        // Framework badge
+        const typeInfo = rec.assessment_type;
+        const typeBadge = typeInfo ? `
+            <span style="background-color: ${typeInfo.color}20; color: ${typeInfo.color}; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                ${typeInfo.short_name}
+            </span>
+        ` : '';
+
+        // Priority
+        const priority = rec.priority || (rec.priority_score > 70 ? 'high' : rec.priority_score > 40 ? 'medium' : 'low');
+        const priorityColor = priorityColors[priority] || priorityColors.medium;
+
+        // Status
+        const status = rec.status || (rec.is_accepted ? 'in_progress' : rec.is_dismissed ? 'dismissed' : 'open');
+        const statusColor = statusColors[status] || statusColors.open;
+        const statusLabel = statusLabels[status] || status;
+
+        // Category
+        const category = rec.category || rec.dimension_name;
+
+        html += `
+            <div class="recommendation-card ${status === 'completed' || status === 'dismissed' ? 'completed' : ''}" data-rec-id="${rec.id}" data-rec-type="${rec._type}">
+                <div class="recommendation-card__header">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        ${sourceBadge}
+                        <span style="background: ${priorityColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
+                            ${priority}
+                        </span>
+                        ${typeBadge}
+                        ${category ? `<span style="background: var(--cds-layer-02); padding: 2px 8px; border-radius: 4px; font-size: 11px;">${escapeHtml(category)}</span>` : ''}
+                    </div>
+                    <span style="background: ${statusColor}20; color: ${statusColor}; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                        ${statusLabel}
+                    </span>
+                </div>
+                <div class="recommendation-card__title">${escapeHtml(rec.title)}</div>
+                ${rec.description ? `<div class="recommendation-card__description">${escapeHtml(rec.description)}</div>` : ''}
+                <div class="recommendation-card__meta">
+                    ${rec.due_date ? `<span>Due: ${formatDate(rec.due_date)}</span>` : ''}
+                    ${rec.expected_impact ? `<span>Expected Impact: +${rec.expected_impact.toFixed(1)} maturity</span>` : ''}
+                    ${rec.priority_score ? `<span>Score: ${rec.priority_score.toFixed(0)}</span>` : ''}
+                </div>
+                ${rec.tools && rec.tools.length > 0 ? `
+                <div class="recommendation-card__tools" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+                    ${rec.tools.map(tool => `<span class="rec-tool-tag">${escapeHtml(tool)}</span>`).join('')}
+                </div>
+                ` : ''}
+                <div class="recommendation-card__footer">
+                    <span style="font-size: 11px; color: var(--cds-text-secondary);">
+                        ${rec.created_at ? `Created ${formatDate(rec.created_at)}` : ''}
+                    </span>
+                    <div class="recommendation-card__actions">
+                        ${isCustom && status === 'open' ? `
+                            <button class="btn btn--ghost btn--sm" onclick="openAddToRoadmapModal(${rec.id}, 'custom')" title="Add to Roadmap">
+                                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+                            </button>
+                        ` : ''}
+                        ${isGenerated && !rec.is_accepted && !rec.is_dismissed ? `
+                            <button class="btn btn--primary btn--sm" onclick="openAcceptRecommendationModal(${rec.id})" title="Accept to Roadmap">
+                                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M14 21.414l-5-5L10.586 15 14 18.414 21.414 11 23 12.586l-9 9z"/></svg>
+                                Accept
+                            </button>
+                        ` : ''}
+                        <button class="btn btn--ghost btn--sm" onclick="${isCustom ? `editCustomRecommendation(${rec.id})` : `openEditRecommendationGeneratedModal(${rec.id})`}" title="Edit">
+                            <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+// Update all recommendation counts
+function updateAllRecCounts() {
+    const customCount = (customerRecommendations || []).length;
+    const generatedCount = (recommendationsCache || []).length;
+    const allCount = customCount + generatedCount;
+
+    const customBadge = document.getElementById('customRecCount');
+    const generatedBadge = document.getElementById('generatedRecCount');
+    const allBadge = document.getElementById('allRecCount');
+
+    if (customBadge) customBadge.textContent = customCount;
+    if (generatedBadge) generatedBadge.textContent = generatedCount;
+    if (allBadge) allBadge.textContent = allCount;
+}
+
+// Filter recommendations (unified filter function)
+function filterRecommendations() {
+    const customerId = getCustomerId();
+    if (customerId) {
+        // Always reload from API to apply server-side filters (type, status)
+        // Tool filter is then applied client-side after load
+        loadCustomRecommendations(customerId);
+    }
+}
+
+// Legacy function name for compatibility
 function filterRecommendationsByType() {
+    filterRecommendations();
+}
+
+// Clear all recommendation filters
+function clearRecFilters() {
+    document.getElementById('recAssessmentTypeFilter').value = '';
+    document.getElementById('recStatusFilter').value = '';
+    document.getElementById('recToolFilter').value = '';
+
     const customerId = getCustomerId();
     if (customerId) {
         loadCustomRecommendations(customerId);
@@ -8886,6 +11992,9 @@ window.deleteCustomRecommendation = deleteCustomRecommendation;
 window.updateRecStatus = updateRecStatus;
 window.switchRecTypeTab = switchRecTypeTab;
 window.filterRecommendationsByType = filterRecommendationsByType;
+window.filterRecommendations = filterRecommendations;
+window.clearRecFilters = clearRecFilters;
+window.applyToolFilter = applyToolFilter;
 window.loadCustomRecommendations = loadCustomRecommendations;
 
 
@@ -8900,8 +12009,9 @@ let flowFilterState = {
     dimension: 'all',
     useCase: 'all'
 };
-let flowSpmAssessments = []; // List of SPM assessments for the flow dropdown
+let flowAssessments = []; // List of assessments for the flow dropdown
 let selectedFlowAssessmentId = null; // Currently selected assessment ID for flow
+let selectedFlowAssessmentType = 'spm'; // Currently selected assessment type (spm, tbm, finops)
 
 // Get color based on dimension score
 function getDimensionColor(score) {
@@ -8919,36 +12029,97 @@ function getDimensionStatusBadge(score) {
     return { class: '', text: 'On Track' };
 }
 
-// Load SPM assessments for the flow dropdown
+// Assessment type display names (ASSESSMENT_TYPE_IDS is defined earlier in the file)
+const ASSESSMENT_TYPE_NAMES = {
+    'spm': 'SPM',
+    'tbm': 'TBM',
+    'finops': 'FinOps'
+};
+
+// Framework-specific feature names for the flow chart title
+const FLOW_FEATURE_NAMES = {
+    'spm': 'TP Feature',
+    'tbm': 'Apptio Feature',
+    'finops': 'Cloudability Feature'
+};
+
+// Update the flow chart title based on selected framework
+function updateFlowChartTitle(typeCode) {
+    const titleEl = document.getElementById('flowChartTitle');
+    const subtitleEl = document.getElementById('flowExportSubtitle');
+    const featureName = FLOW_FEATURE_NAMES[typeCode] || 'TP Feature';
+
+    if (titleEl) {
+        titleEl.textContent = `Assessment Gap -> Use Case -> ${featureName} Flow`;
+    }
+    if (subtitleEl) {
+        subtitleEl.textContent = `Assessment Gaps → Recommended Use Cases → ${featureName}s`;
+    }
+}
+
+// Switch flow assessment type (used by tab buttons)
+function switchFlowAssessmentType(typeCode) {
+    selectedFlowAssessmentType = typeCode || 'spm';
+
+    // Update tab active state
+    document.querySelectorAll('#flowAssessmentTypeTabs .assessment-type-tab').forEach(tab => {
+        if (tab.dataset.type === typeCode) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    // Update the flow chart title
+    updateFlowChartTitle(typeCode);
+
+    // Reload assessments for the selected type
+    const customerId = getCustomerId();
+    if (customerId) {
+        loadFlowAssessmentOptions(customerId);
+    }
+}
+
+// Legacy function for backward compatibility
+function onFlowAssessmentTypeChange() {
+    const typeSelect = document.getElementById('flowAssessmentTypeSelect');
+    if (typeSelect) {
+        switchFlowAssessmentType(typeSelect.value || 'spm');
+    }
+}
+
+// Load assessments for the flow dropdown based on selected type
 async function loadFlowAssessmentOptions(customerId) {
     const select = document.getElementById('flowAssessmentSelect');
     if (!select) return;
 
+    const typeName = ASSESSMENT_TYPE_NAMES[selectedFlowAssessmentType] || 'SPM';
+
     try {
-        // Load SPM assessments (type=spm) for this customer
-        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}?status=completed&assessment_type_id=1`);
+        // Load assessments for the selected type - use 'type' parameter with code (spm/tbm/finops)
+        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}?status=completed&type=${selectedFlowAssessmentType}`);
         if (!response.ok) {
-            select.innerHTML = '<option value="">No SPM assessments found</option>';
+            select.innerHTML = `<option value="">No ${typeName} assessments found</option>`;
             return;
         }
 
         const data = await response.json();
-        flowSpmAssessments = data.items || [];
+        flowAssessments = data.items || [];
 
-        if (flowSpmAssessments.length === 0) {
-            select.innerHTML = '<option value="">No completed SPM assessments</option>';
+        if (flowAssessments.length === 0) {
+            select.innerHTML = `<option value="">No completed ${typeName} assessments</option>`;
             return;
         }
 
         // Sort by assessment_date descending (most recent first)
-        flowSpmAssessments.sort((a, b) => {
+        flowAssessments.sort((a, b) => {
             const dateA = a.assessment_date || a.completed_at || '';
             const dateB = b.assessment_date || b.completed_at || '';
             return dateB.localeCompare(dateA);
         });
 
         // Populate dropdown
-        select.innerHTML = flowSpmAssessments.map((assessment, index) => {
+        select.innerHTML = flowAssessments.map((assessment, index) => {
             const date = assessment.assessment_date
                 ? new Date(assessment.assessment_date).toLocaleDateString()
                 : (assessment.completed_at
@@ -8962,11 +12133,47 @@ async function loadFlowAssessmentOptions(customerId) {
         }).join('');
 
         // Default to the latest (first) assessment
-        selectedFlowAssessmentId = flowSpmAssessments[0]?.id || null;
+        selectedFlowAssessmentId = flowAssessments[0]?.id || null;
+
+        // Load the visualization with the first assessment
+        loadFlowVisualization(customerId, selectedFlowAssessmentId);
 
     } catch (error) {
         console.error('Failed to load flow assessment options:', error);
         select.innerHTML = '<option value="">Error loading assessments</option>';
+    }
+}
+
+// Load all flow tab scores (called when Journey tab is opened)
+async function loadFlowTabScores(customerId) {
+    const types = ['spm', 'tbm', 'finops'];
+
+    for (const typeCode of types) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}?status=completed&type=${typeCode}`);
+            if (response.ok) {
+                const data = await response.json();
+                const assessments = data.items || [];
+
+                // Get the latest assessment's score
+                if (assessments.length > 0) {
+                    const latestAssessment = assessments[0];
+                    const scoreEl = document.getElementById(`flowTab${typeCode.charAt(0).toUpperCase() + typeCode.slice(1)}Score`);
+                    if (scoreEl) {
+                        scoreEl.textContent = latestAssessment.overall_score !== null
+                            ? latestAssessment.overall_score.toFixed(1)
+                            : '-';
+                    }
+                } else {
+                    const scoreEl = document.getElementById(`flowTab${typeCode.charAt(0).toUpperCase() + typeCode.slice(1)}Score`);
+                    if (scoreEl) {
+                        scoreEl.textContent = '-';
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to load ${typeCode} score:`, error);
+        }
     }
 }
 
@@ -8976,7 +12183,7 @@ function onFlowAssessmentChange() {
     selectedFlowAssessmentId = select?.value ? parseInt(select.value) : null;
 
     // Reload flow visualization with the selected assessment
-    const customerId = getCustomerIdFromUrl();
+    const customerId = getCustomerId();
     if (customerId) {
         loadFlowVisualization(customerId, selectedFlowAssessmentId);
     }
@@ -8991,8 +12198,8 @@ async function loadFlowVisualization(customerId, assessmentId = null) {
     const useAssessmentId = assessmentId !== null ? assessmentId : selectedFlowAssessmentId;
 
     try {
-        // Build URL with optional assessment_id parameter
-        let url = `${API_BASE_URL}/assessments/customer/${customerId}/flow-visualization?threshold=3.5&type=spm`;
+        // Build URL with assessment type and optional assessment_id parameter
+        let url = `${API_BASE_URL}/assessments/customer/${customerId}/flow-visualization?threshold=3.5&type=${selectedFlowAssessmentType}`;
         if (useAssessmentId) {
             url += `&assessment_id=${useAssessmentId}`;
         }
@@ -9020,7 +12227,9 @@ async function loadFlowVisualization(customerId, assessmentId = null) {
         document.getElementById('flowUseCasesCount').textContent = flowVisualizationData.recommended_use_cases_count;
         document.getElementById('flowTPFeaturesCount').textContent = flowVisualizationData.tp_solutions_count;
 
-        // Populate filter dropdowns
+        // Reset filter state and populate filter dropdowns
+        flowFilterState.dimension = 'all';
+        flowFilterState.useCase = 'all';
         populateFlowFilters();
 
         // Render tables
@@ -9033,7 +12242,7 @@ async function loadFlowVisualization(customerId, assessmentId = null) {
 
         // Update export title with customer name and assessment date
         const customerName = document.getElementById('customerName')?.textContent || 'Customer';
-        const selectedAssessment = flowSpmAssessments.find(a => a.id === useAssessmentId);
+        const selectedAssessment = flowAssessments.find(a => a.id === useAssessmentId);
         const dateStr = selectedAssessment?.assessment_date
             ? ` - ${new Date(selectedAssessment.assessment_date).toLocaleDateString()}`
             : '';
@@ -9395,6 +12604,14 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
     const ctx = document.getElementById(canvasId);
     if (!ctx || !flowVisualizationData) return;
 
+    console.log('renderFlowSankeyChart called with:', {
+        canvasId,
+        isLarge,
+        totalNodes: flowVisualizationData.nodes?.length,
+        totalLinks: flowVisualizationData.links?.length,
+        filterState: flowFilterState
+    });
+
     // Destroy existing chart
     if (isLarge && largeFlowSankeyChart) {
         largeFlowSankeyChart.destroy();
@@ -9460,6 +12677,13 @@ function renderFlowSankeyChart(canvasId, isLarge = false) {
             targetType: targetNode.type
         };
     }).filter(Boolean);
+
+    console.log('Sankey chart data:', {
+        filteredNodes: filteredData.nodes?.length,
+        filteredLinks: filteredData.links?.length,
+        chartDataPoints: chartData.length,
+        sampleData: chartData.slice(0, 3)
+    });
 
     if (chartData.length === 0) {
         ctx.parentElement.innerHTML = '<div class="text-secondary text-center" style="padding: 48px;">No data matches the current filter</div>';
@@ -9639,7 +12863,11 @@ async function downloadFlowVisual() {
 window.loadFlowVisualization = loadFlowVisualization;
 window.refreshFlowVisualization = refreshFlowVisualization;
 window.loadFlowAssessmentOptions = loadFlowAssessmentOptions;
+window.loadFlowTabScores = loadFlowTabScores;
 window.onFlowAssessmentChange = onFlowAssessmentChange;
+window.onFlowAssessmentTypeChange = onFlowAssessmentTypeChange;
+window.switchFlowAssessmentType = switchFlowAssessmentType;
+window.updateFlowChartTitle = updateFlowChartTitle;
 window.openFlowChartModal = openFlowChartModal;
 window.closeFlowChartModal = closeFlowChartModal;
 window.copyFlowChartToClipboard = copyFlowChartToClipboard;
@@ -9906,3 +13134,1053 @@ function showAssessmentTypeTab(typeCode) {
     // for now, just navigate to the assessment section
     console.log(`Navigate to ${typeCode} assessment details`);
 }
+
+// ==================== REPORT BUILDER ====================
+
+// Global report data storage
+let reportData = {
+    customer: null,
+    comprehensiveReport: null,
+    recommendations: [],
+    roadmap: [],
+    flowVisualization: null,
+    targets: null,
+    risks: []
+};
+
+// Report generation state
+let reportGenerated = false;
+
+// Load all data needed for report generation
+async function loadReportData(customerId) {
+    try {
+        // Fetch all data in parallel for efficiency
+        const [
+            customer,
+            comprehensiveReport,
+            recommendations,
+            roadmap,
+            risks
+        ] = await Promise.all([
+            API.CustomerAPI.getById(customerId),
+            fetchComprehensiveReport(customerId),
+            fetchRecommendations(customerId),
+            fetchRoadmap(customerId),
+            fetchRisks(customerId)
+        ]);
+
+        // Also try to fetch flow visualization and targets (these may not exist)
+        let flowVisualization = null;
+        let targets = null;
+
+        try {
+            flowVisualization = await fetchFlowVisualization(customerId);
+        } catch (e) {
+            console.log('Flow visualization not available');
+        }
+
+        try {
+            targets = await fetchTargets(customerId);
+        } catch (e) {
+            console.log('Targets not available');
+        }
+
+        reportData = {
+            customer,
+            comprehensiveReport,
+            recommendations: recommendations || [],
+            roadmap: roadmap || [],
+            flowVisualization,
+            targets,
+            risks: risks || []
+        };
+
+        return reportData;
+    } catch (error) {
+        console.error('Error loading report data:', error);
+        throw error;
+    }
+}
+
+// Fetch comprehensive report data
+async function fetchComprehensiveReport(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessment-types/customers/${customerId}/comprehensive-report`);
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (e) {
+        return null;
+    }
+}
+
+// Fetch recommendations
+async function fetchRecommendations(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/recommendations/customer/${customerId}`);
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.items || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Fetch roadmap
+async function fetchRoadmap(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps/customer/${customerId}`);
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.items || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Fetch risks
+async function fetchRisks(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/risks/customer/${customerId}`);
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.items || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Fetch flow visualization
+async function fetchFlowVisualization(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/flow-visualization`);
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (e) {
+        return null;
+    }
+}
+
+// Fetch targets
+async function fetchTargets(customerId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/assessments/customer/${customerId}/targets`);
+        if (!response.ok) return null;
+        return await response.json();
+    } catch (e) {
+        return null;
+    }
+}
+
+// Get selected report components
+function getSelectedReportComponents() {
+    const checkboxes = document.querySelectorAll('input[name="reportComponent"]:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
+// Select report preset
+function selectReportPreset(preset) {
+    const allCheckboxes = document.querySelectorAll('input[name="reportComponent"]');
+
+    // Clear all first
+    allCheckboxes.forEach(cb => cb.checked = false);
+
+    const presets = {
+        executive: ['executiveSummary', 'assessmentScores', 'recommendations'],
+        full: ['executiveSummary', 'accountOverview', 'assessmentDetails', 'assessmentScores',
+               'scoreTargets', 'spmAssessment', 'tbmAssessment', 'finopsAssessment',
+               'recommendations', 'flowDiagram', 'roadmap', 'gapAnalysis', 'riskSummary'],
+        assessment: ['assessmentDetails', 'assessmentScores', 'spmAssessment', 'tbmAssessment', 'finopsAssessment'],
+        planning: ['recommendations', 'flowDiagram', 'roadmap'],
+        clear: []
+    };
+
+    const selected = presets[preset] || [];
+
+    allCheckboxes.forEach(cb => {
+        if (selected.includes(cb.value)) {
+            cb.checked = true;
+        }
+    });
+}
+
+// Main generate report function
+async function generateReport() {
+    const customerId = getCustomerId();
+    if (!customerId) {
+        alert('No customer ID found');
+        return;
+    }
+
+    const previewContainer = document.getElementById('reportPreviewContainer');
+    const printBtn = document.getElementById('reportPrintBtn');
+
+    // Show loading state
+    previewContainer.innerHTML = `
+        <div class="report-preview__placeholder">
+            <div class="loading-spinner" style="margin-bottom: 12px;"></div>
+            <p>Loading report data...</p>
+        </div>
+    `;
+
+    try {
+        // Load all data
+        await loadReportData(customerId);
+
+        // Get selected components
+        const components = getSelectedReportComponents();
+
+        if (components.length === 0) {
+            previewContainer.innerHTML = `
+                <div class="report-preview__placeholder">
+                    <svg width="48" height="48" viewBox="0 0 32 32" style="opacity: 0.3; margin-bottom: 12px;">
+                        <path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 26a12 12 0 1112-12 12 12 0 01-12 12z"/>
+                        <path d="M15 8h2v11h-2zm1 14a1.5 1.5 0 101.5 1.5A1.5 1.5 0 0016 22z"/>
+                    </svg>
+                    <p>Please select at least one component to include in the report</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Build report HTML
+        const reportHtml = buildReportHtml(components);
+        previewContainer.innerHTML = reportHtml;
+
+        // Initialize any charts in the report
+        initializeReportCharts(components);
+
+        // Enable print button
+        reportGenerated = true;
+        printBtn.disabled = false;
+
+    } catch (error) {
+        console.error('Error generating report:', error);
+        previewContainer.innerHTML = `
+            <div class="report-preview__placeholder">
+                <svg width="48" height="48" viewBox="0 0 32 32" style="opacity: 0.3; margin-bottom: 12px; color: #da1e28;">
+                    <path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 26a12 12 0 1112-12 12 12 0 01-12 12z"/>
+                    <path d="M15 8h2v11h-2zm1 14a1.5 1.5 0 101.5 1.5A1.5 1.5 0 0016 22z"/>
+                </svg>
+                <p>Error generating report. Please try again.</p>
+            </div>
+        `;
+    }
+}
+
+// Build complete report HTML
+function buildReportHtml(components) {
+    let html = '<div class="generated-report">';
+
+    // Always include header
+    html += buildReportHeader();
+
+    // Build each selected section
+    if (components.includes('executiveSummary')) {
+        html += buildExecutiveSummarySection();
+    }
+
+    if (components.includes('accountOverview')) {
+        html += buildAccountOverviewSection();
+    }
+
+    if (components.includes('assessmentDetails')) {
+        html += buildAssessmentDetailsSection();
+    }
+
+    if (components.includes('assessmentScores')) {
+        html += buildAssessmentScoresSection();
+    }
+
+    if (components.includes('scoreTargets')) {
+        html += buildScoreTargetsSection();
+    }
+
+    if (components.includes('spmAssessment')) {
+        html += buildFrameworkSection('spm');
+    }
+
+    if (components.includes('tbmAssessment')) {
+        html += buildFrameworkSection('tbm');
+    }
+
+    if (components.includes('finopsAssessment')) {
+        html += buildFrameworkSection('finops');
+    }
+
+    if (components.includes('recommendations')) {
+        html += buildRecommendationsSection();
+    }
+
+    if (components.includes('flowDiagram')) {
+        html += buildFlowDiagramSection();
+    }
+
+    if (components.includes('roadmap')) {
+        html += buildRoadmapSection();
+    }
+
+    if (components.includes('gapAnalysis')) {
+        html += buildGapAnalysisSection();
+    }
+
+    if (components.includes('riskSummary')) {
+        html += buildRiskSummarySection();
+    }
+
+    html += '</div>';
+    return html;
+}
+
+// Build report header
+function buildReportHeader() {
+    const customer = reportData.customer;
+    const date = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    return `
+        <div class="generated-report__header">
+            <div class="generated-report__logo">CS Tracker</div>
+            <h1 class="generated-report__title">${escapeHtml(customer?.name || 'Customer')} Assessment Report</h1>
+            <p class="generated-report__subtitle">Comprehensive Maturity Analysis & Recommendations</p>
+            <p class="generated-report__date">Generated on ${date}</p>
+        </div>
+    `;
+}
+
+// Build Executive Summary section
+function buildExecutiveSummarySection() {
+    const comprehensive = reportData.comprehensiveReport;
+    const recommendations = reportData.recommendations;
+    const risks = reportData.risks;
+    const customer = reportData.customer;
+
+    // Calculate metrics
+    const overallScore = comprehensive?.overall_score?.toFixed(1) || '-';
+    const assessmentCount = comprehensive?.assessment_summaries?.length || 0;
+    const pendingRecs = recommendations.filter(r => r.status === 'pending').length;
+    const openRisks = risks.filter(r => r.status !== 'resolved').length;
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Executive Summary</h2>
+            <div class="report-summary-grid">
+                <div class="report-summary-card">
+                    <div class="report-summary-card__value">${overallScore}</div>
+                    <div class="report-summary-card__label">Overall Maturity Score</div>
+                </div>
+                <div class="report-summary-card">
+                    <div class="report-summary-card__value">${assessmentCount}</div>
+                    <div class="report-summary-card__label">Assessment Types</div>
+                </div>
+                <div class="report-summary-card">
+                    <div class="report-summary-card__value">${pendingRecs}</div>
+                    <div class="report-summary-card__label">Pending Recommendations</div>
+                </div>
+                <div class="report-summary-card">
+                    <div class="report-summary-card__value">${openRisks}</div>
+                    <div class="report-summary-card__label">Open Risks</div>
+                </div>
+            </div>
+            <p style="color: #525252; font-size: 14px; line-height: 1.6;">
+                This report provides a comprehensive analysis of ${escapeHtml(customer?.name || 'the customer')}'s
+                maturity across strategic portfolio management frameworks. The assessment covers key dimensions
+                including process maturity, tool adoption, governance, and value realization capabilities.
+            </p>
+        </div>
+    `;
+}
+
+// Build Account Overview section
+function buildAccountOverviewSection() {
+    const customer = reportData.customer;
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Account Overview</h2>
+            <table class="report-table">
+                <tbody>
+                    <tr>
+                        <td style="width: 200px; font-weight: 500;">Customer Name</td>
+                        <td>${escapeHtml(customer?.name || '-')}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 500;">Industry</td>
+                        <td>${escapeHtml(customer?.industry || '-')}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 500;">ARR</td>
+                        <td>${formatCurrency(customer?.arr)}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 500;">Adoption Stage</td>
+                        <td>${formatAdoptionStage(customer?.adoption_stage)}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 500;">Health Status</td>
+                        <td>${getHealthLabel(customer?.health_status)}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 500;">Renewal Date</td>
+                        <td>${formatDate(customer?.renewal_date)}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 500;">Products Owned</td>
+                        <td>${customer?.products_owned?.join(', ') || '-'}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Build Assessment Details section
+function buildAssessmentDetailsSection() {
+    const comprehensive = reportData.comprehensiveReport;
+    const summaries = comprehensive?.assessment_summaries || [];
+
+    if (summaries.length === 0) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Assessment Details</h2>
+                <p style="color: #525252;">No assessments completed yet.</p>
+            </div>
+        `;
+    }
+
+    let rows = summaries.map(summary => `
+        <tr>
+            <td style="font-weight: 500;">${escapeHtml(summary.type_name || summary.type_code?.toUpperCase() || '-')}</td>
+            <td>${summary.overall_score?.toFixed(1) || '-'}</td>
+            <td>${formatDate(summary.completed_date)}</td>
+            <td>${summary.dimension_count || '-'} dimensions</td>
+        </tr>
+    `).join('');
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Assessment Details</h2>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Assessment Type</th>
+                        <th>Score</th>
+                        <th>Completed</th>
+                        <th>Coverage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Build Assessment Scores section with radar chart placeholder
+function buildAssessmentScoresSection() {
+    const comprehensive = reportData.comprehensiveReport;
+    const overallScore = comprehensive?.overall_score || 0;
+    const scoreClass = overallScore >= 3.5 ? 'green' : overallScore >= 2.5 ? 'yellow' : 'red';
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Assessment Scores</h2>
+            <div class="report-score-display">
+                <div class="report-score-circle report-score-circle--${scoreClass}">
+                    ${overallScore.toFixed(1)}
+                </div>
+                <div class="report-score-details">
+                    <h3 style="margin: 0 0 8px 0; font-size: 16px;">Overall Maturity Score</h3>
+                    <p style="margin: 0; color: #525252; font-size: 14px;">
+                        ${getScoreInterpretation(overallScore)}
+                    </p>
+                </div>
+            </div>
+            <div class="report-chart-container">
+                <div class="report-radar-chart">
+                    <canvas id="reportRadarChart" width="400" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Get score interpretation text
+function getScoreInterpretation(score) {
+    if (score >= 4.5) return 'Optimized - Mature processes with continuous improvement';
+    if (score >= 3.5) return 'Managed - Standardized processes with good adoption';
+    if (score >= 2.5) return 'Defined - Documented processes, room for improvement';
+    if (score >= 1.5) return 'Developing - Early stage with basic processes';
+    return 'Initial - Ad-hoc processes, significant improvement needed';
+}
+
+// Build Score Targets Comparison section
+function buildScoreTargetsSection() {
+    const comprehensive = reportData.comprehensiveReport;
+    const targets = reportData.targets;
+
+    if (!comprehensive?.assessment_summaries || comprehensive.assessment_summaries.length === 0) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Score Targets Comparison</h2>
+                <p style="color: #525252;">No assessment data available for comparison.</p>
+            </div>
+        `;
+    }
+
+    // Build gap items for each assessment type
+    let gapItems = '';
+    comprehensive.assessment_summaries.forEach(summary => {
+        const currentScore = summary.overall_score || 0;
+        const targetScore = 3.5; // Default target
+        const gap = targetScore - currentScore;
+
+        gapItems += `
+            <div class="report-gap-item">
+                <div class="report-gap-item__label">${escapeHtml(summary.type_name || summary.type_code?.toUpperCase())}</div>
+                <div class="report-gap-item__scores">
+                    <span class="report-gap-item__current">${currentScore.toFixed(1)}</span>
+                    <span class="report-gap-item__arrow">→</span>
+                    <span class="report-gap-item__target">${targetScore.toFixed(1)}</span>
+                    <span style="color: ${gap > 0 ? '#da1e28' : '#24a148'}; margin-left: 8px;">
+                        (${gap > 0 ? '+' : ''}${gap.toFixed(1)} gap)
+                    </span>
+                </div>
+            </div>
+        `;
+    });
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Score Targets Comparison</h2>
+            ${gapItems}
+        </div>
+    `;
+}
+
+// Build Framework Section (SPM, TBM, or FinOps)
+function buildFrameworkSection(typeCode) {
+    const comprehensive = reportData.comprehensiveReport;
+    const summary = comprehensive?.assessment_summaries?.find(
+        s => s.type_code?.toLowerCase() === typeCode.toLowerCase()
+    );
+
+    const typeNames = {
+        spm: 'Strategic Portfolio Management (SPM)',
+        tbm: 'Technology Business Management (TBM)',
+        finops: 'FinOps'
+    };
+
+    if (!summary) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">${typeNames[typeCode] || typeCode.toUpperCase()} Assessment</h2>
+                <p style="color: #525252;">No ${typeCode.toUpperCase()} assessment completed yet.</p>
+            </div>
+        `;
+    }
+
+    const dimensionScores = summary.dimension_scores || [];
+
+    let dimensionHtml = '';
+    dimensionScores.forEach(dim => {
+        const score = dim.score || 0;
+        const percentage = (score / 5) * 100;
+        const color = score >= 3.5 ? '#24a148' : score >= 2.5 ? '#f1c21b' : '#da1e28';
+
+        dimensionHtml += `
+            <div class="report-dimension-score">
+                <div class="report-dimension-score__name">${escapeHtml(dim.name || dim.dimension_name)}</div>
+                <div class="report-dimension-score__bar">
+                    <div class="report-dimension-score__fill" style="width: ${percentage}%; background: ${color};"></div>
+                </div>
+                <div class="report-dimension-score__value">${score.toFixed(1)}</div>
+            </div>
+        `;
+    });
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">${typeNames[typeCode] || typeCode.toUpperCase()} Assessment</h2>
+            <div class="report-score-display" style="margin-bottom: 20px;">
+                <div class="report-score-circle report-score-circle--${summary.overall_score >= 3.5 ? 'green' : summary.overall_score >= 2.5 ? 'yellow' : 'red'}">
+                    ${(summary.overall_score || 0).toFixed(1)}
+                </div>
+                <div class="report-score-details">
+                    <h3 style="margin: 0 0 8px 0; font-size: 16px;">Overall ${typeCode.toUpperCase()} Score</h3>
+                    <p style="margin: 0; color: #525252; font-size: 14px;">
+                        ${getScoreInterpretation(summary.overall_score || 0)}
+                    </p>
+                </div>
+            </div>
+            <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Dimension Scores</h3>
+            <div class="report-dimension-scores">
+                ${dimensionHtml || '<p style="color: #525252;">No dimension scores available.</p>'}
+            </div>
+        </div>
+    `;
+}
+
+// Build Recommendations section
+function buildRecommendationsSection() {
+    const recommendations = reportData.recommendations;
+    const pending = recommendations.filter(r => r.status === 'pending');
+
+    if (pending.length === 0) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Recommendations</h2>
+                <p style="color: #525252;">No pending recommendations.</p>
+            </div>
+        `;
+    }
+
+    // Sort by priority
+    const sorted = [...pending].sort((a, b) => (a.priority || 99) - (b.priority || 99));
+
+    let recItems = sorted.slice(0, 10).map(rec => `
+        <li class="report-recommendation-item">
+            <div class="report-recommendation-item__header">
+                <h4 class="report-recommendation-item__title">${escapeHtml(rec.title)}</h4>
+                <span class="report-recommendation-item__priority">P${rec.priority || '-'}</span>
+            </div>
+            <div class="report-recommendation-item__meta">
+                ${rec.dimension_name ? `<span>Dimension: ${escapeHtml(rec.dimension_name)}</span>` : ''}
+                ${rec.expected_impact ? `<span>Impact: +${rec.expected_impact} points</span>` : ''}
+            </div>
+            ${rec.description ? `<p class="report-recommendation-item__description">${escapeHtml(rec.description)}</p>` : ''}
+        </li>
+    `).join('');
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Recommendations (${pending.length} pending)</h2>
+            <ul class="report-recommendation-list">
+                ${recItems}
+            </ul>
+            ${pending.length > 10 ? `<p style="color: #525252; margin-top: 12px; font-size: 13px;">Showing top 10 of ${pending.length} recommendations.</p>` : ''}
+        </div>
+    `;
+}
+
+// Build Flow Diagram section
+function buildFlowDiagramSection() {
+    const flow = reportData.flowVisualization;
+
+    if (!flow || !flow.flows || flow.flows.length === 0) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Implementation Flow</h2>
+                <p style="color: #525252;">No flow visualization data available. Complete an assessment to see the implementation flow from dimensions to use cases to solutions.</p>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Implementation Flow</h2>
+            <div class="report-summary-grid">
+                <div class="report-summary-card">
+                    <div class="report-summary-card__value">${flow.summary?.weak_dimensions || 0}</div>
+                    <div class="report-summary-card__label">Weak Dimensions</div>
+                </div>
+                <div class="report-summary-card">
+                    <div class="report-summary-card__value">${flow.summary?.recommended_use_cases || 0}</div>
+                    <div class="report-summary-card__label">Recommended Use Cases</div>
+                </div>
+                <div class="report-summary-card">
+                    <div class="report-summary-card__value">${flow.summary?.tp_features || 0}</div>
+                    <div class="report-summary-card__label">TP Features</div>
+                </div>
+            </div>
+            <p style="color: #525252; font-size: 13px;">
+                The flow diagram shows the mapping from assessment gaps to recommended use cases and implementation solutions.
+                View the interactive Flow tab for the full Sankey visualization.
+            </p>
+        </div>
+    `;
+}
+
+// Build Roadmap section
+function buildRoadmapSection() {
+    const roadmap = reportData.roadmap;
+
+    if (!roadmap || roadmap.length === 0) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Roadmap</h2>
+                <p style="color: #525252;">No roadmap items have been created yet.</p>
+            </div>
+        `;
+    }
+
+    // Group by quarter/year
+    const grouped = {};
+    roadmap.forEach(item => {
+        const key = `${item.quarter || 'TBD'} ${item.year || ''}`.trim();
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(item);
+    });
+
+    let roadmapHtml = '';
+    Object.keys(grouped).sort().forEach(period => {
+        const items = grouped[period];
+        roadmapHtml += `
+            <h3 style="font-size: 14px; font-weight: 600; margin: 16px 0 8px 0; color: #0f62fe;">${period}</h3>
+        `;
+        items.forEach(item => {
+            const statusColors = {
+                not_started: '#6f6f6f',
+                in_progress: '#0f62fe',
+                completed: '#24a148',
+                blocked: '#da1e28'
+            };
+            roadmapHtml += `
+                <div class="report-gap-item">
+                    <div style="width: 10px; height: 10px; border-radius: 50%; background: ${statusColors[item.status] || '#6f6f6f'}; flex-shrink: 0;"></div>
+                    <div class="report-gap-item__label" style="flex: 1;">${escapeHtml(item.title)}</div>
+                    <div style="font-size: 12px; color: #525252;">${item.status?.replace('_', ' ') || 'Not Started'}</div>
+                </div>
+            `;
+        });
+    });
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Roadmap (${roadmap.length} items)</h2>
+            ${roadmapHtml}
+        </div>
+    `;
+}
+
+// Build Gap Analysis section
+function buildGapAnalysisSection() {
+    const comprehensive = reportData.comprehensiveReport;
+
+    if (!comprehensive?.assessment_summaries) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Gap Analysis</h2>
+                <p style="color: #525252;">No assessment data available for gap analysis.</p>
+            </div>
+        `;
+    }
+
+    // Find all weak dimensions across assessments
+    let weakDimensions = [];
+    comprehensive.assessment_summaries.forEach(summary => {
+        (summary.dimension_scores || []).forEach(dim => {
+            if (dim.score < 3.0) {
+                weakDimensions.push({
+                    ...dim,
+                    typeCode: summary.type_code,
+                    typeName: summary.type_name
+                });
+            }
+        });
+    });
+
+    // Sort by score ascending (weakest first)
+    weakDimensions.sort((a, b) => (a.score || 0) - (b.score || 0));
+
+    if (weakDimensions.length === 0) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Gap Analysis</h2>
+                <p style="color: #24a148; font-weight: 500;">No significant gaps identified. All dimensions score above 3.0.</p>
+            </div>
+        `;
+    }
+
+    let gapHtml = weakDimensions.slice(0, 10).map(dim => {
+        const gap = 3.5 - (dim.score || 0);
+        return `
+            <div class="report-gap-item">
+                <div class="report-gap-item__label">
+                    ${escapeHtml(dim.name || dim.dimension_name)}
+                    <span style="font-size: 11px; color: #6f6f6f; margin-left: 8px;">(${dim.typeName || dim.typeCode?.toUpperCase()})</span>
+                </div>
+                <div class="report-gap-item__scores">
+                    <span class="report-gap-item__current">${(dim.score || 0).toFixed(1)}</span>
+                    <span class="report-gap-item__arrow">→</span>
+                    <span class="report-gap-item__target">3.5</span>
+                    <span style="color: #da1e28; margin-left: 8px; font-size: 12px;">
+                        (${gap.toFixed(1)} gap)
+                    </span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Gap Analysis</h2>
+            <p style="color: #525252; margin-bottom: 16px; font-size: 14px;">
+                The following dimensions have scores below 3.0 and represent improvement opportunities:
+            </p>
+            ${gapHtml}
+            ${weakDimensions.length > 10 ? `<p style="color: #525252; margin-top: 12px; font-size: 13px;">Showing top 10 of ${weakDimensions.length} gaps.</p>` : ''}
+        </div>
+    `;
+}
+
+// Build Risk Summary section
+function buildRiskSummarySection() {
+    const risks = reportData.risks;
+    const openRisks = risks.filter(r => r.status !== 'resolved');
+
+    if (openRisks.length === 0) {
+        return `
+            <div class="generated-report__section">
+                <h2 class="generated-report__section-title">Risk Summary</h2>
+                <p style="color: #24a148; font-weight: 500;">No open risks identified.</p>
+            </div>
+        `;
+    }
+
+    // Sort by severity
+    const severityOrder = { high: 0, medium: 1, low: 2 };
+    openRisks.sort((a, b) => (severityOrder[a.severity] || 99) - (severityOrder[b.severity] || 99));
+
+    let riskHtml = openRisks.map(risk => `
+        <li class="report-risk-item">
+            <div class="report-risk-item__severity report-risk-item__severity--${risk.severity || 'medium'}"></div>
+            <div class="report-risk-item__content">
+                <h4 class="report-risk-item__title">${escapeHtml(risk.title)}</h4>
+                ${risk.description ? `<p class="report-risk-item__description">${escapeHtml(risk.description)}</p>` : ''}
+            </div>
+        </li>
+    `).join('');
+
+    return `
+        <div class="generated-report__section">
+            <h2 class="generated-report__section-title">Risk Summary (${openRisks.length} open)</h2>
+            <ul class="report-risk-list">
+                ${riskHtml}
+            </ul>
+        </div>
+    `;
+}
+
+// Initialize charts in the generated report
+function initializeReportCharts(components) {
+    if (components.includes('assessmentScores')) {
+        const canvas = document.getElementById('reportRadarChart');
+        if (canvas && reportData.comprehensiveReport) {
+            renderReportRadarChart(canvas);
+        }
+    }
+}
+
+// Render radar chart for report
+function renderReportRadarChart(canvas) {
+    const comprehensive = reportData.comprehensiveReport;
+    const summaries = comprehensive?.assessment_summaries || [];
+
+    if (summaries.length === 0) return;
+
+    // Collect all unique dimensions across all assessments
+    const allDimensions = new Set();
+    summaries.forEach(summary => {
+        (summary.dimension_scores || []).forEach(dim => {
+            allDimensions.add(dim.name || dim.dimension_name);
+        });
+    });
+
+    const labels = Array.from(allDimensions).slice(0, 8); // Max 8 for readability
+
+    // Build datasets for each assessment type
+    const typeColors = {
+        spm: { bg: 'rgba(15, 98, 254, 0.2)', border: '#0f62fe' },
+        tbm: { bg: 'rgba(36, 161, 72, 0.2)', border: '#24a148' },
+        finops: { bg: 'rgba(138, 63, 252, 0.2)', border: '#8a3ffc' }
+    };
+
+    const datasets = summaries.map(summary => {
+        const typeCode = summary.type_code?.toLowerCase() || 'spm';
+        const colors = typeColors[typeCode] || typeColors.spm;
+
+        const data = labels.map(label => {
+            const dim = (summary.dimension_scores || []).find(
+                d => (d.name || d.dimension_name) === label
+            );
+            return dim?.score || 0;
+        });
+
+        return {
+            label: summary.type_name || summary.type_code?.toUpperCase() || 'Assessment',
+            data: data,
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+            borderWidth: 2,
+            pointBackgroundColor: colors.border,
+            pointRadius: 4
+        };
+    });
+
+    new Chart(canvas, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'bottom'
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    min: 0,
+                    max: 5,
+                    ticks: {
+                        stepSize: 1
+                    },
+                    grid: {
+                        color: '#e0e0e0'
+                    },
+                    angleLines: {
+                        color: '#e0e0e0'
+                    },
+                    pointLabels: {
+                        font: {
+                            size: 11
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Print report function
+function printReport() {
+    if (!reportGenerated) {
+        alert('Please generate a report preview first.');
+        return;
+    }
+
+    const previewContainer = document.getElementById('reportPreviewContainer');
+    const reportContent = previewContainer.innerHTML;
+
+    // Convert any canvas elements to images for print fidelity
+    const canvases = previewContainer.querySelectorAll('canvas');
+    let printContent = reportContent;
+
+    canvases.forEach(canvas => {
+        try {
+            const imageData = canvas.toDataURL('image/png');
+            const img = `<img src="${imageData}" style="max-width: 100%; height: auto;" />`;
+            printContent = printContent.replace(canvas.outerHTML, img);
+        } catch (e) {
+            console.warn('Could not convert canvas to image:', e);
+        }
+    });
+
+    // Open print window
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>${reportData.customer?.name || 'Customer'} Assessment Report</title>
+            <style>
+                * { box-sizing: border-box; }
+                body {
+                    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    color: #161616;
+                    line-height: 1.5;
+                }
+                ${getReportPrintStyles()}
+            </style>
+        </head>
+        <body>
+            ${printContent}
+        </body>
+        </html>
+    `);
+
+    printWindow.document.close();
+
+    // Wait for images to load, then print
+    setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+    }, 500);
+}
+
+// Get print styles for the report
+function getReportPrintStyles() {
+    return `
+        .generated-report { padding: 0; }
+        .generated-report__header { text-align: center; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid #161616; }
+        .generated-report__logo { font-size: 24px; font-weight: 700; color: #0f62fe; margin-bottom: 8px; }
+        .generated-report__title { font-size: 28px; font-weight: 600; margin: 0 0 8px 0; }
+        .generated-report__subtitle { font-size: 16px; color: #525252; margin: 0 0 8px 0; }
+        .generated-report__date { font-size: 13px; color: #6f6f6f; }
+        .generated-report__section { margin-bottom: 32px; page-break-inside: avoid; }
+        .generated-report__section-title { font-size: 18px; font-weight: 600; margin: 0 0 16px 0; padding-bottom: 8px; border-bottom: 1px solid #e0e0e0; }
+        .report-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .report-summary-card { background: #f4f4f4; padding: 16px; border-radius: 8px; text-align: center; }
+        .report-summary-card__value { font-size: 28px; font-weight: 600; margin-bottom: 4px; }
+        .report-summary-card__label { font-size: 12px; color: #525252; text-transform: uppercase; }
+        .report-score-display { display: flex; align-items: center; gap: 24px; margin-bottom: 24px; }
+        .report-score-circle { width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; color: white; }
+        .report-score-circle--green { background: #24a148; }
+        .report-score-circle--yellow { background: #f1c21b; color: #161616; }
+        .report-score-circle--red { background: #da1e28; }
+        .report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .report-table th, .report-table td { padding: 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+        .report-table th { background: #f4f4f4; font-weight: 600; }
+        .report-dimension-scores { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .report-dimension-score { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f4f4f4; border-radius: 6px; }
+        .report-dimension-score__name { flex: 1; font-size: 13px; }
+        .report-dimension-score__bar { width: 60px; height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; }
+        .report-dimension-score__fill { height: 100%; border-radius: 3px; }
+        .report-dimension-score__value { font-size: 14px; font-weight: 600; }
+        .report-recommendation-list { list-style: none; padding: 0; margin: 0; }
+        .report-recommendation-item { padding: 16px; background: #f4f4f4; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #0f62fe; }
+        .report-recommendation-item__header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+        .report-recommendation-item__title { font-size: 15px; font-weight: 600; margin: 0; }
+        .report-recommendation-item__priority { font-size: 12px; font-weight: 500; padding: 4px 8px; border-radius: 4px; background: #0f62fe; color: white; }
+        .report-recommendation-item__meta { display: flex; gap: 16px; font-size: 12px; color: #525252; margin-bottom: 8px; }
+        .report-recommendation-item__description { font-size: 14px; color: #525252; margin: 0; }
+        .report-gap-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: #f4f4f4; border-radius: 6px; margin-bottom: 8px; }
+        .report-gap-item__label { flex: 1; font-size: 13px; }
+        .report-gap-item__scores { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .report-gap-item__current { font-weight: 600; color: #da1e28; }
+        .report-gap-item__arrow { color: #6f6f6f; }
+        .report-gap-item__target { font-weight: 600; color: #24a148; }
+        .report-risk-list { list-style: none; padding: 0; margin: 0; }
+        .report-risk-item { padding: 12px 16px; background: #f4f4f4; border-radius: 6px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+        .report-risk-item__severity { width: 10px; height: 10px; border-radius: 50%; }
+        .report-risk-item__severity--high { background: #da1e28; }
+        .report-risk-item__severity--medium { background: #f1c21b; }
+        .report-risk-item__severity--low { background: #24a148; }
+        .report-risk-item__content { flex: 1; }
+        .report-risk-item__title { font-size: 14px; font-weight: 500; margin: 0 0 4px 0; }
+        .report-risk-item__description { font-size: 12px; color: #525252; margin: 0; }
+        .report-chart-container { text-align: center; margin: 20px 0; }
+        .report-radar-chart { max-width: 400px; margin: 0 auto; }
+        @media print {
+            body { padding: 0; }
+            .generated-report__section { page-break-inside: avoid; }
+            .generated-report__header { page-break-after: avoid; }
+        }
+    `;
+}
+
+// Make report functions available globally
+window.generateReport = generateReport;
+window.printReport = printReport;
+window.selectReportPreset = selectReportPreset;

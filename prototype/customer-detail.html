@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Customer Detail - CS Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=31">
+  <link rel="stylesheet" href="css/styles.css?v=32">
   <link rel="stylesheet" href="css/chat.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0/dist/chartjs-chart-sankey.min.js"></script>
@@ -303,6 +303,87 @@
     .assessment-tab-panel.active {
       display: block;
     }
+
+    /* Roadmap drag and resize styles */
+    .roadmap-item {
+      transition: box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+    .roadmap-item:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .roadmap-item:hover .roadmap-resize-handle {
+      background: rgba(255,255,255,0.3);
+    }
+    .roadmap-resize-handle:hover {
+      background: rgba(255,255,255,0.5) !important;
+    }
+    .roadmap-resize-left:hover {
+      border-left: 3px solid rgba(255,255,255,0.8);
+    }
+    .roadmap-resize-right:hover {
+      border-right: 3px solid rgba(255,255,255,0.8);
+    }
+    .roadmap-item.dragging {
+      opacity: 0.8;
+      cursor: grabbing !important;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    /* Roadmap item text wrapping */
+    .roadmap-item {
+      min-width: 0; /* Allow flex item to shrink below content size */
+      overflow: hidden;
+    }
+    .roadmap-item-content {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .roadmap-item-title {
+      min-width: 0;
+    }
+    .roadmap-item-title span {
+      min-width: 0;
+      flex: 1;
+    }
+    /* Highlighted items during dependency hover */
+    .roadmap-item.dep-highlight {
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.8), 0 4px 12px rgba(0,0,0,0.3) !important;
+      transform: scale(1.02);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    /* Drop target styles for anchor dragging */
+    .roadmap-drop-target {
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .roadmap-drop-target.highlighted {
+      background: #8a3ffc !important;
+      transform: scale(1.5) !important;
+      box-shadow: 0 0 10px rgba(138, 63, 252, 0.8) !important;
+    }
+
+    /* Indicate draggable endpoints on hover */
+    .roadmap-item svg circle[data-edit-end] {
+      cursor: grab;
+    }
+    .roadmap-item svg circle[data-edit-end]:active {
+      cursor: grabbing;
+    }
+
+    /* Visual feedback during anchor drag */
+    body.anchor-dragging {
+      cursor: grabbing !important;
+      user-select: none;
+    }
+    body.anchor-dragging .roadmap-item {
+      pointer-events: none;
+    }
+    body.anchor-dragging .roadmap-drop-target {
+      pointer-events: auto !important;
+    }
   </style>
 </head>
 <body>
@@ -437,7 +518,8 @@
             <li><a href="#" class="tabs__tab">TargetProcess</a></li>
             <li><a href="#" class="tabs__tab">Roadmap</a></li>
             <li><a href="#" class="tabs__tab">Recommendations</a></li>
-            <li><a href="#" class="tabs__tab">Flow</a></li>
+            <li><a href="#" class="tabs__tab">Journey</a></li>
+            <li><a href="#" class="tabs__tab">Reports</a></li>
             <li><a href="#" class="tabs__tab">Documents</a></li>
           </ul>
         </nav>
@@ -1333,16 +1415,81 @@
 
           <!-- Roadmap Content -->
           <div id="roadmapContent" style="display: none;">
+            <!-- Zoom Controls -->
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0 16px 0; border-bottom: 1px solid var(--cds-border-subtle-01); margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: var(--cds-text-secondary);">Timeline:</span>
+                <button class="btn btn--ghost btn--sm" onclick="navigateRoadmapTime(-1)" title="Previous quarters" id="roadmapPrevBtn">
+                  <svg width="16" height="16" viewBox="0 0 32 32"><path d="M10 16L20 6l1.4 1.4-8.6 8.6 8.6 8.6L20 26z"/></svg>
+                </button>
+                <span id="roadmapTimeRange" style="font-size: 13px; font-weight: 500; min-width: 140px; text-align: center;">Q1 2026 - Q4 2027</span>
+                <button class="btn btn--ghost btn--sm" onclick="navigateRoadmapTime(1)" title="Next quarters" id="roadmapNextBtn">
+                  <svg width="16" height="16" viewBox="0 0 32 32"><path d="M22 16L12 26l-1.4-1.4 8.6-8.6-8.6-8.6L12 6z"/></svg>
+                </button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: var(--cds-text-secondary);">Zoom:</span>
+                <button class="btn btn--ghost btn--sm" onclick="zoomRoadmap(1)" title="Zoom in (fewer quarters)">
+                  <svg width="16" height="16" viewBox="0 0 32 32"><path d="M19 13h-4V9h-2v4H9v2h4v4h2v-4h4v-2z"/><path d="M22.45 21A10.87 10.87 0 0025 14 11 11 0 1014 25a10.87 10.87 0 007-2.55L28.59 30 30 28.59zM14 23a9 9 0 119-9 9 9 0 01-9 9z"/></svg>
+                </button>
+                <span id="roadmapZoomLevel" style="font-size: 13px; font-weight: 500; min-width: 80px; text-align: center;">8 quarters</span>
+                <button class="btn btn--ghost btn--sm" onclick="zoomRoadmap(-1)" title="Zoom out (more quarters)">
+                  <svg width="16" height="16" viewBox="0 0 32 32"><path d="M9 13h10v2H9z"/><path d="M22.45 21A10.87 10.87 0 0025 14 11 11 0 1014 25a10.87 10.87 0 007-2.55L28.59 30 30 28.59zM14 23a9 9 0 119-9 9 9 0 01-9 9z"/></svg>
+                </button>
+                <button class="btn btn--ghost btn--sm" onclick="setCurrentZoomAsDefault()" title="Set current zoom as default view" style="margin-left: 8px; padding: 4px 8px;">
+                  <svg width="14" height="14" viewBox="0 0 32 32" style="margin-right: 4px;"><path d="M28.7 9.3l-5-5a1 1 0 00-.7-.3H8a2 2 0 00-2 2v20a2 2 0 002 2h16a2 2 0 002-2V10a1 1 0 00-.3-.7zM22 8.6l3.4 3.4H22zM8 26V6h12v6a2 2 0 002 2h4v12z"/><path d="M11 19h10v2H11zM11 15h10v2H11z"/></svg>
+                  <span style="font-size: 11px;">Set Default</span>
+                </button>
+                <button id="roadmapUndoBtn" class="btn btn--ghost btn--sm" onclick="undoLastRoadmapAction()" title="Nothing to undo" style="margin-left: 8px; padding: 4px 8px; opacity: 0.5;" disabled>
+                  <svg width="14" height="14" viewBox="0 0 32 32" style="margin-right: 4px;"><path d="M20 10H7.8l3.6-3.6L10 5l-6 6 6 6 1.4-1.4L7.8 12H20c3.3 0 6 2.7 6 6s-2.7 6-6 6h-8v2h8c4.4 0 8-3.6 8-8s-3.6-8-8-8z"/></svg>
+                  <span style="font-size: 11px;">Undo</span>
+                </button>
+              </div>
+            </div>
             <!-- Roadmap Timeline -->
-            <div style="overflow-x: auto; padding: 16px 0;">
-              <div style="min-width: 900px;">
+            <div style="overflow-x: auto; overflow-y: visible; padding: 0 50px 0 0;">
+              <div style="min-width: 900px; position: relative;">
                 <!-- Quarter Headers -->
                 <div id="quarterHeaders" style="display: grid; grid-template-columns: 150px repeat(8, 1fr); gap: 4px; margin-bottom: 16px;">
                   <div style="font-weight: 600; font-size: 12px; color: var(--cds-text-secondary);">Category</div>
                 </div>
 
                 <!-- Roadmap Items Container -->
-                <div id="roadmapItemsContainer"></div>
+                <div id="roadmapItemsContainer" style="position: relative; overflow: visible;"></div>
+
+                <!-- Dependency Action Popover -->
+                <div id="dependencyPopover" class="dependency-popover" style="display: none;">
+                  <div class="dependency-popover__header">
+                    <span class="dependency-popover__title">Dependency</span>
+                    <button class="dependency-popover__close" onclick="closeDependencyPopover()" title="Close (Esc)">&times;</button>
+                  </div>
+                  <div class="dependency-popover__body">
+                    <div class="dependency-popover__items">
+                      <div class="dependency-popover__from">
+                        <span class="dependency-popover__label">Item</span>
+                        <span class="dependency-popover__item-name" id="dependencyFromName">-</span>
+                      </div>
+                      <div class="dependency-popover__arrow">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                      </div>
+                      <div class="dependency-popover__to">
+                        <span class="dependency-popover__label">Depends On</span>
+                        <span class="dependency-popover__item-name" id="dependencyToName">-</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="dependency-popover__footer">
+                    <button class="btn btn--danger btn--sm" onclick="deleteSelectedDependency()" id="deleteDependencyBtn">
+                      <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 4px;">
+                        <path d="M12 12h2v12h-2zm6 0h2v12h-2z"/>
+                        <path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/>
+                      </svg>
+                      Delete Dependency
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1518,9 +1665,13 @@
 
           <!-- Recommendation Type Tabs -->
           <div class="rec-type-tabs" style="display: flex; gap: 0; border-bottom: 1px solid var(--cds-border-subtle-01); padding: 0 16px;">
-            <button class="rec-type-tab active" data-rec-type="custom" onclick="switchRecTypeTab('custom')" style="padding: 12px 20px; border: none; background: none; cursor: pointer; font-weight: 500; border-bottom: 2px solid var(--cds-interactive);">
-              Custom Recommendations
-              <span class="rec-count-badge" id="customRecCount" style="background: var(--cds-interactive); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">0</span>
+            <button class="rec-type-tab active" data-rec-type="all" onclick="switchRecTypeTab('all')" style="padding: 12px 20px; border: none; background: none; cursor: pointer; font-weight: 500; border-bottom: 2px solid var(--cds-interactive);">
+              All
+              <span class="rec-count-badge" id="allRecCount" style="background: var(--cds-interactive); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">0</span>
+            </button>
+            <button class="rec-type-tab" data-rec-type="custom" onclick="switchRecTypeTab('custom')" style="padding: 12px 20px; border: none; background: none; cursor: pointer; color: var(--cds-text-secondary); border-bottom: 2px solid transparent;">
+              Custom
+              <span class="rec-count-badge" id="customRecCount" style="background: var(--cds-layer-02); padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">0</span>
             </button>
             <button class="rec-type-tab" data-rec-type="generated" onclick="switchRecTypeTab('generated')" style="padding: 12px 20px; border: none; background: none; cursor: pointer; color: var(--cds-text-secondary); border-bottom: 2px solid transparent;">
               AI Generated
@@ -1530,27 +1681,55 @@
 
           <!-- Filter by Assessment Type -->
           <div style="padding: 16px; border-bottom: 1px solid var(--cds-border-subtle-01);">
-            <div class="flex gap-3 items-center">
-              <label style="font-size: 13px; font-weight: 500;">Filter by Framework:</label>
-              <select id="recAssessmentTypeFilter" class="form-select" style="width: auto; min-width: 150px;" onchange="filterRecommendationsByType()">
-                <option value="">All Frameworks</option>
+            <div class="flex gap-3 items-center flex-wrap">
+              <label style="font-size: 13px; font-weight: 500;">Framework:</label>
+              <select id="recAssessmentTypeFilter" class="form-select" style="width: auto; min-width: 130px;" onchange="filterRecommendations()">
+                <option value="">All</option>
                 <option value="1">SPM</option>
                 <option value="2">TBM</option>
                 <option value="3">FinOps</option>
               </select>
-              <label style="font-size: 13px; font-weight: 500; margin-left: 16px;">Status:</label>
-              <select id="recStatusFilter" class="form-select" style="width: auto; min-width: 120px;" onchange="filterRecommendationsByType()">
+              <label style="font-size: 13px; font-weight: 500; margin-left: 12px;">Status:</label>
+              <select id="recStatusFilter" class="form-select" style="width: auto; min-width: 120px;" onchange="filterRecommendations()">
                 <option value="">All</option>
                 <option value="open">Open</option>
                 <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
                 <option value="dismissed">Dismissed</option>
               </select>
+              <label style="font-size: 13px; font-weight: 500; margin-left: 12px;">Tool:</label>
+              <select id="recToolFilter" class="form-select" style="width: auto; min-width: 140px;" onchange="filterRecommendations()">
+                <option value="">All Tools</option>
+                <option value="Targetprocess">Targetprocess</option>
+                <option value="Costing">Costing</option>
+                <option value="Planning">Planning</option>
+                <option value="Cloudability">Cloudability</option>
+              </select>
+              <button class="btn btn--ghost btn--sm" onclick="clearRecFilters()" style="margin-left: 8px;" title="Clear filters">
+                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+                Clear
+              </button>
             </div>
           </div>
 
-          <!-- Custom Recommendations Panel -->
-          <div id="customRecommendationsPanel" style="padding: 16px;">
+          <!-- All Recommendations Panel (shown by default) -->
+          <div id="allRecommendationsPanel" style="padding: 16px;">
+            <div id="noAllRecsState" style="text-align: center; padding: 32px;">
+              <svg width="48" height="48" viewBox="0 0 32 32" style="color: var(--cds-text-secondary); margin-bottom: 12px;"><path d="M16 2l4 8 8 1.5-6 5.5 1.5 8.5-7.5-4-7.5 4 1.5-8.5-6-5.5L12 10l4-8z"/></svg>
+              <h3 style="margin-bottom: 8px; font-size: 15px;">No Recommendations</h3>
+              <p style="color: var(--cds-text-secondary); margin-bottom: 16px; font-size: 13px;">Add custom recommendations or generate AI recommendations from assessments.</p>
+              <div style="display: flex; gap: 12px; justify-content: center;">
+                <button class="btn btn--primary btn--sm" onclick="openCustomRecommendationModal()">Add Custom</button>
+                <button class="btn btn--secondary btn--sm" onclick="switchRecTypeTab('generated'); generateRecommendations();">Generate AI Recommendations</button>
+              </div>
+            </div>
+            <div id="allRecsList">
+              <!-- All recommendations populated by JS -->
+            </div>
+          </div>
+
+          <!-- Custom Recommendations Panel (hidden by default) -->
+          <div id="customRecommendationsPanel" style="display: none; padding: 16px;">
             <div id="noCustomRecsState" style="text-align: center; padding: 32px;">
               <svg width="48" height="48" viewBox="0 0 32 32" style="color: var(--cds-text-secondary); margin-bottom: 12px;"><path d="M16 2l4 8 8 1.5-6 5.5 1.5 8.5-7.5-4-7.5 4 1.5-8.5-6-5.5L12 10l4-8z"/></svg>
               <h3 style="margin-bottom: 8px; font-size: 15px;">No Custom Recommendations</h3>
@@ -1678,23 +1857,43 @@
           </div>
         </div>
 
-        <!-- Implementation Flow Section (shown when Implementation Flow tab is active) -->
+        <!-- Journey Section (shown when Journey tab is active) -->
         <div class="card mt-5" id="implementationFlowSection" style="display: none;">
-          <div class="card__header">
-            <h2 class="section-title" style="margin-bottom: 0;">
-              <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 2H4a2 2 0 00-2 2v24a2 2 0 002 2h24a2 2 0 002-2V4a2 2 0 00-2-2zM4 28V4h11v24zm13 0V4h11v24z"/><path d="M8 8h4v2H8zm0 4h4v2H8zm0 4h4v2H8zm12-8h4v2h-4zm0 4h4v2h-4zm0 4h4v2h-4z"/></svg>
-              Implementation Flow
-            </h2>
-            <div class="flex gap-3" style="align-items: center;">
-              <div class="flow-assessment-selector" style="display: flex; align-items: center; gap: 8px;">
-                <label style="font-size: 12px; font-weight: 500; color: var(--cds-text-secondary); white-space: nowrap;">SPM Assessment:</label>
-                <select id="flowAssessmentSelect" class="form-select" style="min-width: 220px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--cds-border-strong); font-size: 13px;" onchange="onFlowAssessmentChange()">
-                  <option value="">Loading...</option>
-                </select>
+          <div class="card__header" style="flex-direction: column; align-items: stretch; gap: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h2 class="section-title" style="margin-bottom: 0;">
+                <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28 2H4a2 2 0 00-2 2v24a2 2 0 002 2h24a2 2 0 002-2V4a2 2 0 00-2-2zM4 28V4h11v24zm13 0V4h11v24z"/><path d="M8 8h4v2H8zm0 4h4v2H8zm0 4h4v2H8zm12-8h4v2h-4zm0 4h4v2h-4zm0 4h4v2h-4z"/></svg>
+                Journey Visualization
+              </h2>
+              <div class="flex gap-3" style="align-items: center;">
+                <div class="flow-assessment-selector" style="display: flex; align-items: center; gap: 8px;">
+                  <label style="font-size: 12px; font-weight: 500; color: var(--cds-text-secondary); white-space: nowrap;">Assessment:</label>
+                  <select id="flowAssessmentSelect" class="form-select" style="min-width: 220px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--cds-border-strong); font-size: 13px;" onchange="onFlowAssessmentChange()">
+                    <option value="">Loading...</option>
+                  </select>
+                </div>
+                <button class="btn btn--secondary" onclick="refreshFlowVisualization()">
+                  <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
+                  Refresh
+                </button>
               </div>
-              <button class="btn btn--secondary" onclick="refreshFlowVisualization()">
-                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0023 8.32V28h2v-8h-8z"/></svg>
-                Refresh
+            </div>
+            <!-- Framework Type Tabs -->
+            <div class="assessment-type-tabs" id="flowAssessmentTypeTabs">
+              <button class="assessment-type-tab active" data-type="spm" onclick="switchFlowAssessmentType('spm')">
+                <span class="assessment-type-tab__indicator" style="background-color: var(--spm-color);"></span>
+                <span>SPM</span>
+                <span class="assessment-type-tab__score" id="flowTabSpmScore">-</span>
+              </button>
+              <button class="assessment-type-tab" data-type="tbm" onclick="switchFlowAssessmentType('tbm')">
+                <span class="assessment-type-tab__indicator" style="background-color: var(--tbm-color);"></span>
+                <span>TBM</span>
+                <span class="assessment-type-tab__score" id="flowTabTbmScore">-</span>
+              </button>
+              <button class="assessment-type-tab" data-type="finops" onclick="switchFlowAssessmentType('finops')">
+                <span class="assessment-type-tab__indicator" style="background-color: var(--finops-color);"></span>
+                <span>FinOps</span>
+                <span class="assessment-type-tab__score" id="flowTabFinopsScore">-</span>
               </button>
             </div>
           </div>
@@ -1702,8 +1901,8 @@
           <!-- No Flow Data State -->
           <div id="noFlowState" style="text-align: center; padding: 48px 24px;">
             <svg width="64" height="64" viewBox="0 0 32 32" style="color: var(--cds-text-secondary); margin-bottom: 16px;"><path d="M28 2H4a2 2 0 00-2 2v24a2 2 0 002 2h24a2 2 0 002-2V4a2 2 0 00-2-2zM4 28V4h11v24zm13 0V4h11v24z"/></svg>
-            <h3 style="margin-bottom: 8px; font-size: 16px;">No Implementation Data</h3>
-            <p style="color: var(--cds-text-secondary); margin-bottom: 16px;">Complete an SPM Assessment with scores below threshold to see the implementation flow from dimensions to use cases to TP features.</p>
+            <h3 style="margin-bottom: 8px; font-size: 16px;">No Journey Data</h3>
+            <p style="color: var(--cds-text-secondary); margin-bottom: 16px;">Complete an assessment (SPM, TBM, or FinOps) with scores below threshold to see the journey from dimensions to use cases to product solutions.</p>
           </div>
 
           <!-- Flow Visualization Content -->
@@ -1727,7 +1926,7 @@
             <!-- Flow Visualization Card -->
             <div class="card" style="margin-bottom: 24px;">
               <div class="card__header">
-                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 0;">Assessment Gap -> Use Case -> TP Feature Flow</h3>
+                <h3 id="flowChartTitle" style="font-size: 14px; font-weight: 600; margin-bottom: 0;">Assessment Gap -> Use Case -> TP Feature Flow</h3>
                 <button class="btn btn--ghost btn--sm" onclick="openFlowChartModal()">
                   <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M28 4H10a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H10V6h18zM2 24V10H0v14a2 2 0 002 2h18v-2z"/></svg>
                   Expand
@@ -1876,7 +2075,7 @@
               <div id="flowExportContainer" style="background: white; padding: 20px; border-radius: 8px;">
                 <!-- Title for export -->
                 <div id="flowExportTitle" style="text-align: center; margin-bottom: 16px;">
-                  <h3 style="font-size: 18px; font-weight: 600; color: #161616; margin: 0;" id="flowExportTitleText">Implementation Flow</h3>
+                  <h3 style="font-size: 18px; font-weight: 600; color: #161616; margin: 0;" id="flowExportTitleText">Journey Visualization</h3>
                   <p style="font-size: 12px; color: #525252; margin: 4px 0 0 0;" id="flowExportSubtitle">Assessment Gaps → Recommended Use Cases → TP Features</p>
                 </div>
 
@@ -1930,6 +2129,140 @@
           </div>
         </div>
 
+        <!-- Reports Section (shown when Reports tab is active) -->
+        <div class="card mt-5" id="reportsSection" style="display: none;">
+          <div class="card__header">
+            <h2 class="section-title" style="margin-bottom: 0;">
+              <svg width="20" height="20" viewBox="0 0 32 32"><path d="M10 18h8v2h-8zm0-5h12v2H10zm0 10h5v2h-5z"/><path d="M25 5h-3V4a2 2 0 00-2-2h-8a2 2 0 00-2 2v1H7a2 2 0 00-2 2v21a2 2 0 002 2h18a2 2 0 002-2V7a2 2 0 00-2-2zM12 4h8v4h-8zM25 28H7V7h3v3h12V7h3z"/></svg>
+              Report Builder
+            </h2>
+            <div class="flex gap-2">
+              <button class="btn btn--primary" onclick="generateReport()">
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 6px;"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zM6 12l1.41-1.41L15 18.17V2h2v16.17l7.59-7.58L26 12 16 22 6 12z"/></svg>
+                Generate Preview
+              </button>
+              <button class="btn btn--secondary" onclick="printReport()" id="reportPrintBtn" disabled>
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 6px;"><path d="M28 9h-4V5H8v4H4a2 2 0 00-2 2v10a2 2 0 002 2h4v4h16v-4h4a2 2 0 002-2V11a2 2 0 00-2-2zM10 7h12v2H10zm12 18H10v-8h12zm6-6h-4v-2H8v2H4V11h24z"/></svg>
+                Print / PDF
+              </button>
+            </div>
+          </div>
+
+          <!-- Component Selector -->
+          <div class="report-builder">
+            <!-- Quick Presets -->
+            <div class="report-presets">
+              <span class="report-presets__label">Quick Presets:</span>
+              <button class="btn btn--ghost btn--sm" onclick="selectReportPreset('executive')">Executive</button>
+              <button class="btn btn--ghost btn--sm" onclick="selectReportPreset('full')">Full Report</button>
+              <button class="btn btn--ghost btn--sm" onclick="selectReportPreset('assessment')">Assessment Only</button>
+              <button class="btn btn--ghost btn--sm" onclick="selectReportPreset('planning')">Planning</button>
+              <button class="btn btn--ghost btn--sm" onclick="selectReportPreset('clear')">Clear All</button>
+            </div>
+
+            <!-- Component Groups -->
+            <div class="report-component-groups">
+              <!-- Executive & Overview -->
+              <div class="report-component-group">
+                <h4 class="report-component-group__title">Overview</h4>
+                <div class="report-component-group__options">
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="executiveSummary" checked>
+                    <span class="checkbox-chip__label">Executive Summary</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="accountOverview">
+                    <span class="checkbox-chip__label">Account Overview</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Assessment Information -->
+              <div class="report-component-group">
+                <h4 class="report-component-group__title">Assessment Information</h4>
+                <div class="report-component-group__options">
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="assessmentDetails" checked>
+                    <span class="checkbox-chip__label">Assessment Details</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="assessmentScores" checked>
+                    <span class="checkbox-chip__label">Assessment Scores</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="scoreTargets">
+                    <span class="checkbox-chip__label">Score Targets Comparison</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Framework Assessments -->
+              <div class="report-component-group">
+                <h4 class="report-component-group__title">Framework Assessments</h4>
+                <div class="report-component-group__options">
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="spmAssessment" checked>
+                    <span class="checkbox-chip__label">SPM Assessment</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="tbmAssessment">
+                    <span class="checkbox-chip__label">TBM Assessment</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="finopsAssessment">
+                    <span class="checkbox-chip__label">FinOps Assessment</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Planning & Execution -->
+              <div class="report-component-group">
+                <h4 class="report-component-group__title">Planning & Execution</h4>
+                <div class="report-component-group__options">
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="recommendations" checked>
+                    <span class="checkbox-chip__label">Recommendations</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="flowDiagram">
+                    <span class="checkbox-chip__label">Flow Diagram</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="roadmap">
+                    <span class="checkbox-chip__label">Roadmap</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Additional Sections -->
+              <div class="report-component-group">
+                <h4 class="report-component-group__title">Additional Sections</h4>
+                <div class="report-component-group__options">
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="gapAnalysis">
+                    <span class="checkbox-chip__label">Gap Analysis</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="reportComponent" value="riskSummary">
+                    <span class="checkbox-chip__label">Risk Summary</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Report Preview -->
+            <div class="report-preview" id="reportPreviewContainer">
+              <div class="report-preview__placeholder">
+                <svg width="48" height="48" viewBox="0 0 32 32" style="opacity: 0.3; margin-bottom: 12px;">
+                  <path d="M10 18h8v2h-8zm0-5h12v2H10zm0 10h5v2h-5z"/>
+                  <path d="M25 5h-3V4a2 2 0 00-2-2h-8a2 2 0 00-2 2v1H7a2 2 0 00-2 2v21a2 2 0 002 2h18a2 2 0 002-2V7a2 2 0 00-2-2zM12 4h8v4h-8zM25 28H7V7h3v3h12V7h3z"/>
+                </svg>
+                <p>Select components and click "Generate Preview" to see your report</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Accept Recommendation Modal -->
         <div class="modal" id="acceptRecommendationModal">
           <div class="modal__overlay" onclick="closeAcceptRecommendationModal()"></div>
@@ -1938,7 +2271,7 @@
               <h2 class="modal__title">Add to Roadmap</h2>
               <button class="modal__close" onclick="closeAcceptRecommendationModal()">&times;</button>
             </div>
-            <form id="acceptRecommendationForm" onsubmit="handleAcceptRecommendation(event)">
+            <form id="acceptRecommendationForm" onsubmit="handleAddToRoadmap(event)">
               <input type="hidden" id="acceptRecId" value="">
               <div class="modal__body">
                 <p class="text-secondary mb-4" id="acceptRecTitle">Loading...</p>
@@ -1980,6 +2313,28 @@
                     <select id="acceptRecYear" class="select-input" required>
                       <!-- Options populated by JS -->
                     </select>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Tools</label>
+                  <div class="tools-multiselect" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="acceptRecTools" value="Targetprocess">
+                      <span class="checkbox-chip__label">Targetprocess</span>
+                    </label>
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="acceptRecTools" value="Costing">
+                      <span class="checkbox-chip__label">Costing</span>
+                    </label>
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="acceptRecTools" value="Planning">
+                      <span class="checkbox-chip__label">Planning</span>
+                    </label>
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="acceptRecTools" value="Cloudability">
+                      <span class="checkbox-chip__label">Cloudability</span>
+                    </label>
                   </div>
                 </div>
 
@@ -2052,6 +2407,100 @@
               <div class="modal__footer">
                 <button type="button" class="btn btn--ghost" onclick="closeDismissRecommendationModal()">Cancel</button>
                 <button type="submit" class="btn btn--danger" id="dismissRecSubmitBtn">Dismiss</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Edit AI-Generated Recommendation Modal -->
+        <div class="modal" id="editRecGeneratedModal">
+          <div class="modal__overlay" onclick="closeEditRecommendationGeneratedModal()"></div>
+          <div class="modal__container" style="max-width: 600px;">
+            <div class="modal__header">
+              <h2 class="modal__title">Edit Recommendation</h2>
+              <button class="modal__close" onclick="closeEditRecommendationGeneratedModal()">&times;</button>
+            </div>
+            <form id="editRecGeneratedForm" onsubmit="handleEditRecommendationGeneratedSubmit(event)">
+              <input type="hidden" id="editRecGeneratedId" value="">
+              <div class="modal__body">
+                <div class="form-group">
+                  <label class="form-label" for="editRecGeneratedTitle">Title <span class="text-danger">*</span></label>
+                  <input type="text" id="editRecGeneratedTitle" class="text-input" required
+                         placeholder="Enter recommendation title">
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="editRecGeneratedDescription">Description</label>
+                  <textarea id="editRecGeneratedDescription" class="text-input" rows="6"
+                            placeholder="Enter recommendation details. Supports markdown: **bold**, *italic*, [link](url), - list items"></textarea>
+                  <small style="color: var(--cds-text-secondary); font-size: 11px;">Supports markdown formatting: **bold**, *italic*, [link](url), - lists</small>
+                </div>
+
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                  <div>
+                    <label class="form-label" for="editRecGeneratedPriority">Priority</label>
+                    <select id="editRecGeneratedPriority" class="select-input">
+                      <option value="high">High</option>
+                      <option value="medium" selected>Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" for="editRecGeneratedCategory">Category</label>
+                    <input type="text" id="editRecGeneratedCategory" class="text-input"
+                           placeholder="e.g., Process, Technology, People">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Tools</label>
+                  <div class="tools-multiselect" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="editRecGeneratedTools" value="Targetprocess">
+                      <span class="checkbox-chip__label">Targetprocess</span>
+                    </label>
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="editRecGeneratedTools" value="Costing">
+                      <span class="checkbox-chip__label">Costing</span>
+                    </label>
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="editRecGeneratedTools" value="Planning">
+                      <span class="checkbox-chip__label">Planning</span>
+                    </label>
+                    <label class="checkbox-chip">
+                      <input type="checkbox" name="editRecGeneratedTools" value="Cloudability">
+                      <span class="checkbox-chip__label">Cloudability</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                  <div>
+                    <label class="form-label" for="editRecGeneratedDimension">Dimension</label>
+                    <select id="editRecGeneratedDimension" class="select-input">
+                      <option value="">Select dimension...</option>
+                      <option value="Adoption">Adoption</option>
+                      <option value="Efficiency">Efficiency</option>
+                      <option value="Process">Process</option>
+                      <option value="People">People</option>
+                      <option value="Technology">Technology</option>
+                      <option value="Governance">Governance</option>
+                      <option value="Data Quality">Data Quality</option>
+                      <option value="Integration">Integration</option>
+                      <option value="Reporting">Reporting</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" for="editRecGeneratedScore">Priority Score</label>
+                    <input type="number" id="editRecGeneratedScore" class="text-input"
+                           min="0" max="100" step="1" value="50" placeholder="0-100">
+                    <small style="color: var(--cds-text-secondary); font-size: 11px;">AI-calculated score (0-100)</small>
+                  </div>
+                </div>
+              </div>
+              <div class="modal__footer">
+                <button type="button" class="btn btn--ghost" onclick="closeEditRecommendationGeneratedModal()">Cancel</button>
+                <button type="submit" class="btn btn--primary">Save Changes</button>
               </div>
             </form>
           </div>
@@ -2185,6 +2634,14 @@
                 <div class="form-group">
                   <label class="form-label" for="roadmapItemNotes">Notes</label>
                   <textarea id="roadmapItemNotes" class="text-input" rows="2" placeholder="Additional notes or updates"></textarea>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Dependencies</label>
+                  <p style="font-size: 12px; color: var(--cds-text-secondary); margin-bottom: 8px;">Select items that must be completed before this item can start</p>
+                  <div id="roadmapItemDependencies" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--cds-border-subtle-01); border-radius: 4px; padding: 8px;">
+                    <div style="color: var(--cds-text-secondary); font-size: 13px;">No other roadmap items available</div>
+                  </div>
                 </div>
               </div>
               <div class="modal__footer">
@@ -3078,6 +3535,6 @@
   <script src="js/api.js?v=16"></script>
   <script src="js/chat.js?v=1"></script>
   <script src="js/table-sort.js?v=1"></script>
-  <script src="js/customer-detail.js?v=51"></script>
+  <script src="js/customer-detail.js?v=52"></script>
 </body>
 </html>
