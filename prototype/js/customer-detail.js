@@ -5977,7 +5977,31 @@ function updateAssessmentTabContent(typeCode) {
             typeData.dimensions.forEach(d => {
                 dimensionScores[d.name] = d.score;
             });
-            renderRadarChart(dimensionScores);
+
+            // Check if there's an active target for this framework type
+            const typeTargets = targetsByType[typeCode] || [];
+            const activeTargetForType = typeTargets.find(t => t.is_active);
+
+            // Update target overlay toggle visibility
+            const toggleContainer = document.getElementById('targetOverlayToggle');
+            const targetNameEl = document.getElementById('activeTargetName');
+            const toggleCheckbox = document.getElementById('showTargetOverlay');
+
+            if (activeTargetForType) {
+                if (toggleContainer) toggleContainer.style.display = 'block';
+                if (targetNameEl) targetNameEl.textContent = activeTargetForType.name;
+
+                // Render radar chart with target overlay if checkbox is checked
+                if (toggleCheckbox?.checked) {
+                    renderRadarChartWithTarget(dimensionScores, activeTargetForType);
+                } else {
+                    renderRadarChart(dimensionScores);
+                }
+            } else {
+                if (toggleContainer) toggleContainer.style.display = 'none';
+                renderRadarChart(dimensionScores);
+            }
+
             renderDimensionScoresCards(typeData.dimensions);
 
             // Update currentAssessment to reflect the selected framework's data
@@ -6053,6 +6077,23 @@ async function loadTargetsByType(customerId, typeCode) {
 
         // Update active target for chart overlay
         activeTarget = customerTargets.find(t => t.is_active);
+
+        // Update target overlay toggle visibility and name
+        const toggleContainer = document.getElementById('targetOverlayToggle');
+        const targetNameEl = document.getElementById('activeTargetName');
+        const toggleCheckbox = document.getElementById('showTargetOverlay');
+
+        if (activeTarget) {
+            if (toggleContainer) toggleContainer.style.display = 'block';
+            if (targetNameEl) targetNameEl.textContent = activeTarget.name;
+
+            // Update radar chart with target overlay if checkbox is checked
+            if (toggleCheckbox?.checked && currentAssessment?.dimension_scores) {
+                renderRadarChartWithTarget(currentAssessment.dimension_scores, activeTarget);
+            }
+        } else {
+            if (toggleContainer) toggleContainer.style.display = 'none';
+        }
 
     } catch (error) {
         console.error('Failed to load targets by type:', error);
@@ -7653,7 +7694,12 @@ function setupTabSwitching() {
             } else if (tabName === 'Recommendations') {
                 if (recommendationsSection) recommendationsSection.style.display = 'block';
                 loadCustomRecommendations(customerId);
-                loadRecommendations(customerId);
+                loadRecommendations(customerId).then(() => {
+                    // Initialize view based on saved preference
+                    if (typeof initRecView === 'function') {
+                        initRecView();
+                    }
+                });
             } else if (tabName === 'Journey') {
                 if (implementationFlowSection) implementationFlowSection.style.display = 'block';
                 // Update title for current framework and load tab scores
@@ -10892,6 +10938,20 @@ function closeGapAnalysisModal() {
 // RADAR CHART WITH TARGET OVERLAY
 // ============================================================
 
+// Toggle target overlay on radar chart
+function toggleTargetOverlay() {
+    const checkbox = document.getElementById('showTargetOverlay');
+    const showTarget = checkbox?.checked;
+
+    if (!currentAssessment?.dimension_scores) return;
+
+    if (showTarget && activeTarget) {
+        renderRadarChartWithTarget(currentAssessment.dimension_scores, activeTarget);
+    } else {
+        renderRadarChart(currentAssessment.dimension_scores);
+    }
+}
+
 function renderRadarChartWithTarget(dimensionScores, target) {
     const ctx = document.getElementById('spmRadarChart');
     if (!ctx) return;
@@ -11400,6 +11460,7 @@ window.setActiveTarget = setActiveTarget;
 window.overlayTargetOnChart = overlayTargetOnChart;
 window.viewGapAnalysis = viewGapAnalysis;
 window.closeGapAnalysisModal = closeGapAnalysisModal;
+window.toggleTargetOverlay = toggleTargetOverlay;
 window.openEditScoresModal = openEditScoresModal;
 window.closeEditScoresModal = closeEditScoresModal;
 window.trackScoreChange = trackScoreChange;
@@ -11648,6 +11709,11 @@ function switchRecTypeTab(tabType) {
 
 // Render all recommendations (combined custom + AI generated)
 function renderAllRecommendations() {
+    // Also render table view if in table mode
+    if (typeof currentRecView !== 'undefined' && currentRecView === 'table' && typeof renderRecommendationsTable === 'function') {
+        renderRecommendationsTable();
+    }
+
     const container = document.getElementById('allRecsList');
     const emptyState = document.getElementById('noAllRecsState');
     const countBadge = document.getElementById('allRecCount');
@@ -11996,6 +12062,1771 @@ window.filterRecommendations = filterRecommendations;
 window.clearRecFilters = clearRecFilters;
 window.applyToolFilter = applyToolFilter;
 window.loadCustomRecommendations = loadCustomRecommendations;
+
+
+// ============================================================
+// RECOMMENDATIONS TABLE VIEW
+// ============================================================
+
+// State variables for table view
+let currentRecView = localStorage.getItem('recViewPreference') || 'cards';
+let selectedRecIds = new Set();
+
+/**
+ * Switch between cards and table view
+ */
+function switchRecView(view) {
+    currentRecView = view;
+    localStorage.setItem('recViewPreference', view);
+
+    // Update toggle button states
+    const cardsBtn = document.getElementById('recViewCards');
+    const tableBtn = document.getElementById('recViewTable');
+    if (cardsBtn) cardsBtn.classList.toggle('active', view === 'cards');
+    if (tableBtn) tableBtn.classList.toggle('active', view === 'table');
+
+    // Show/hide appropriate containers
+    const cardsList = document.getElementById('allRecsList');
+    const tableView = document.getElementById('allRecsTableView');
+    const emptyState = document.getElementById('noAllRecsState');
+
+    if (view === 'cards') {
+        if (cardsList) cardsList.style.display = 'block';
+        if (tableView) tableView.style.display = 'none';
+        // Re-render cards
+        renderAllRecommendations();
+    } else {
+        if (cardsList) cardsList.style.display = 'none';
+        if (tableView) tableView.style.display = 'block';
+        // Render table
+        renderRecommendationsTable();
+    }
+
+    // Clear selection when switching views
+    selectedRecIds.clear();
+    updateBulkActionBar();
+}
+
+/**
+ * Initialize view on page load
+ */
+function initRecView() {
+    const savedView = localStorage.getItem('recViewPreference') || 'cards';
+    switchRecView(savedView);
+}
+
+/**
+ * Get all filtered recommendations (combined custom + generated)
+ */
+function getAllFilteredRecommendations() {
+    const customRecs = (customerRecommendations || []).map(rec => ({
+        ...rec,
+        _type: 'custom',
+        _sortDate: rec.created_at || rec.updated_at
+    }));
+
+    const aiRecs = (recommendationsCache || []).map(rec => ({
+        ...rec,
+        _type: 'generated',
+        _sortDate: rec.created_at || rec.accepted_at
+    }));
+
+    const allRecs = [...customRecs, ...aiRecs];
+
+    // Sort by date (newest first)
+    allRecs.sort((a, b) => {
+        const dateA = new Date(a._sortDate || 0);
+        const dateB = new Date(b._sortDate || 0);
+        return dateB - dateA;
+    });
+
+    return allRecs;
+}
+
+/**
+ * Find a recommendation by ID across both sources
+ */
+function findRecommendationById(recId, recType) {
+    if (recType === 'custom') {
+        return customerRecommendations.find(r => r.id === parseInt(recId));
+    } else {
+        return recommendationsCache.find(r => r.id === parseInt(recId));
+    }
+}
+
+/**
+ * Render recommendations table
+ */
+function renderRecommendationsTable() {
+    const tbody = document.getElementById('recTableBody');
+    const emptyState = document.getElementById('noAllRecsState');
+    const tableView = document.getElementById('allRecsTableView');
+    const tableWrapper = document.querySelector('.rec-table-wrapper');
+
+    if (!tbody) return;
+
+    // Get all recommendations (unfiltered from data source)
+    let allRecs = getAllFilteredRecommendations();
+    const totalCount = allRecs.length;
+
+    if (totalCount === 0) {
+        tbody.innerHTML = '';
+        if (emptyState) emptyState.style.display = 'block';
+        if (tableView) tableView.style.display = 'none';
+        removeFilterCount();
+        return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+    if (tableView) tableView.style.display = 'block';
+
+    // Apply table filters (Excel-style row filtering)
+    if (typeof filterRecommendationsTable === 'function') {
+        allRecs = filterRecommendationsTable(allRecs);
+    }
+
+    // Apply sorting
+    if (typeof sortRecommendations === 'function') {
+        allRecs = sortRecommendations(allRecs);
+    }
+
+    const filteredCount = allRecs.length;
+
+    // Render rows
+    if (allRecs.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="rec-table-empty">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="currentColor">
+                        <path d="M30 28.59L22.45 21a11 11 0 10-1.45 1.45L28.59 30zM5 14a9 9 0 119 9 9 9 0 01-9-9z"/>
+                    </svg>
+                    <div>No recommendations match the current filters</div>
+                    <button class="btn btn--ghost btn--sm" onclick="clearAllTableFilters()" style="margin-top: 12px;">Clear Filters</button>
+                </td>
+            </tr>
+        `;
+    } else {
+        tbody.innerHTML = allRecs.map(rec => renderRecommendationRow(rec)).join('');
+    }
+
+    // Show filtered count if filters are active
+    if (typeof hasActiveTableFilters === 'function' && hasActiveTableFilters() && filteredCount !== totalCount) {
+        showFilterCount(filteredCount, totalCount);
+    } else {
+        removeFilterCount();
+    }
+
+    // Update select all checkbox state
+    updateSelectAllCheckbox();
+
+    // Update sort icons
+    if (typeof updateSortIcons === 'function') {
+        updateSortIcons();
+    }
+}
+
+/**
+ * Show filter count below table
+ */
+function showFilterCount(filtered, total) {
+    let countEl = document.getElementById('recFilterCount');
+    const tableWrapper = document.querySelector('.rec-table-wrapper');
+
+    if (!tableWrapper) return;
+
+    if (!countEl) {
+        countEl = document.createElement('div');
+        countEl.id = 'recFilterCount';
+        countEl.className = 'rec-filter-count';
+        tableWrapper.parentNode.insertBefore(countEl, tableWrapper.nextSibling);
+    }
+
+    countEl.innerHTML = `Showing <strong>${filtered}</strong> of <strong>${total}</strong> recommendations`;
+}
+
+/**
+ * Remove filter count display
+ */
+function removeFilterCount() {
+    const countEl = document.getElementById('recFilterCount');
+    if (countEl) countEl.remove();
+}
+
+/**
+ * Render a single recommendation table row
+ */
+function renderRecommendationRow(rec) {
+    const isCustom = rec._type === 'custom';
+    const isGenerated = rec._type === 'generated';
+    const recIdKey = `${rec._type}-${rec.id}`;
+    const isSelected = selectedRecIds.has(recIdKey);
+
+    // Determine priority
+    const priority = rec.priority || (rec.priority_score > 70 ? 'high' : rec.priority_score > 40 ? 'medium' : 'low');
+
+    // Determine status
+    const status = rec.status || (rec.is_accepted ? 'in_progress' : rec.is_dismissed ? 'dismissed' : 'open');
+    const statusLabels = {
+        open: 'Open',
+        in_progress: 'In Progress',
+        completed: 'Completed',
+        dismissed: 'Dismissed'
+    };
+
+    // Category
+    const category = rec.category || rec.dimension_name || '';
+
+    // Score
+    const score = rec.priority_score ? Math.round(rec.priority_score) : '-';
+
+    // Tools
+    const tools = rec.tools || [];
+    const toolsHtml = tools.length > 0
+        ? tools.map(t => `<span class="rec-tool-tag">${escapeHtml(t)}</span>`).join('')
+        : `<button class="rec-tools-edit-btn" onclick="openToolsEditPopup('${rec._type}', ${rec.id}, event)">
+             <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+             Add tools
+           </button>`;
+
+    // Source badge
+    const sourceBadge = isCustom
+        ? '<span class="rec-source-badge rec-source-badge--custom">CUSTOM</span>'
+        : '<span class="rec-source-badge rec-source-badge--ai">AI</span>';
+
+    // Can be added to roadmap?
+    const canAddToRoadmap = (isCustom && status === 'open') || (isGenerated && !rec.is_accepted && !rec.is_dismissed);
+
+    return `
+        <tr class="${isSelected ? 'selected' : ''}" data-rec-id="${rec.id}" data-rec-type="${rec._type}">
+            <td>
+                <label class="rec-table-checkbox">
+                    <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleRecSelection('${rec._type}', ${rec.id}, this.checked)">
+                    <span class="rec-table-checkbox__mark"></span>
+                </label>
+            </td>
+            <td>
+                <div class="rec-table-cell-editable" onclick="startInlineEditTitle('${rec._type}', ${rec.id}, this)">
+                    <div class="rec-title-cell">
+                        ${sourceBadge}
+                        <span class="rec-title-cell__text">${escapeHtml(rec.title)}</span>
+                        <svg class="rec-title-cell__edit-icon" width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <select class="rec-inline-select" value="${priority}" onchange="updateRecField('${rec._type}', ${rec.id}, 'priority', this.value)">
+                    <option value="high" ${priority === 'high' ? 'selected' : ''}>High</option>
+                    <option value="medium" ${priority === 'medium' ? 'selected' : ''}>Medium</option>
+                    <option value="low" ${priority === 'low' ? 'selected' : ''}>Low</option>
+                </select>
+            </td>
+            <td>
+                <select class="rec-inline-select" value="${status}" onchange="updateRecField('${rec._type}', ${rec.id}, 'status', this.value)">
+                    <option value="open" ${status === 'open' ? 'selected' : ''}>Open</option>
+                    <option value="in_progress" ${status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                    <option value="completed" ${status === 'completed' ? 'selected' : ''}>Completed</option>
+                    <option value="dismissed" ${status === 'dismissed' ? 'selected' : ''}>Dismissed</option>
+                </select>
+            </td>
+            <td>
+                <div class="rec-tools-cell" onclick="openToolsEditPopup('${rec._type}', ${rec.id}, event)">
+                    ${toolsHtml}
+                </div>
+            </td>
+            <td>
+                ${category ? `<span class="rec-table-category">${escapeHtml(category)}</span>` : '-'}
+            </td>
+            <td>
+                <span class="rec-table-score">${score}</span>
+            </td>
+            <td>
+                <div class="rec-table-actions">
+                    ${canAddToRoadmap ? `
+                        <button class="btn btn--primary btn--sm" onclick="openAddToRoadmapModal(${rec.id}, '${rec._type}')" title="Add to Roadmap">
+                            <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+                        </button>
+                    ` : `
+                        <span class="rec-table-status rec-table-status--${status === 'in_progress' ? 'in_progress' : 'completed'}" style="font-size: 10px;">
+                            ${status === 'in_progress' ? 'On Roadmap' : statusLabels[status]}
+                        </span>
+                    `}
+                    <button class="btn btn--ghost btn--sm" onclick="${isCustom ? `editCustomRecommendation(${rec.id})` : `openEditRecommendationGeneratedModal(${rec.id})`}" title="Edit">
+                        <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// ============================================================
+// SELECTION MANAGEMENT
+// ============================================================
+
+/**
+ * Toggle selection for a single recommendation
+ */
+function toggleRecSelection(recType, recId, checked) {
+    const key = `${recType}-${recId}`;
+
+    if (checked) {
+        selectedRecIds.add(key);
+    } else {
+        selectedRecIds.delete(key);
+    }
+
+    // Update row visual state
+    const row = document.querySelector(`tr[data-rec-id="${recId}"][data-rec-type="${recType}"]`);
+    if (row) {
+        row.classList.toggle('selected', checked);
+    }
+
+    updateBulkActionBar();
+    updateSelectAllCheckbox();
+}
+
+/**
+ * Toggle all recommendations selection
+ */
+function toggleAllRecSelections(checked) {
+    const allRecs = getAllFilteredRecommendations();
+
+    selectedRecIds.clear();
+
+    if (checked) {
+        allRecs.forEach(rec => {
+            const key = `${rec._type}-${rec.id}`;
+            selectedRecIds.add(key);
+        });
+    }
+
+    // Update all row visuals
+    const rows = document.querySelectorAll('#recTableBody tr');
+    rows.forEach(row => {
+        row.classList.toggle('selected', checked);
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = checked;
+    });
+
+    updateBulkActionBar();
+}
+
+/**
+ * Update select all checkbox state
+ */
+function updateSelectAllCheckbox() {
+    const selectAllCheckbox = document.getElementById('recSelectAll');
+    if (!selectAllCheckbox) return;
+
+    const allRecs = getAllFilteredRecommendations();
+    const allSelected = allRecs.length > 0 && allRecs.every(rec => selectedRecIds.has(`${rec._type}-${rec.id}`));
+    const someSelected = selectedRecIds.size > 0;
+
+    selectAllCheckbox.checked = allSelected;
+    selectAllCheckbox.indeterminate = someSelected && !allSelected;
+}
+
+/**
+ * Update bulk action bar visibility and count
+ */
+function updateBulkActionBar() {
+    const bar = document.getElementById('recBulkActionBar');
+    const countEl = document.getElementById('recSelectedCount');
+
+    if (!bar) return;
+
+    if (selectedRecIds.size > 0) {
+        bar.style.display = 'flex';
+        if (countEl) countEl.textContent = selectedRecIds.size;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+// ============================================================
+// INLINE EDITING
+// ============================================================
+
+/**
+ * Start inline editing for title
+ */
+function startInlineEditTitle(recType, recId, cellEl) {
+    const rec = findRecommendationById(recId, recType);
+    if (!rec) return;
+
+    // Check if already editing
+    if (cellEl.querySelector('input')) return;
+
+    const currentTitle = rec.title || '';
+
+    // Create input element
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'rec-inline-input';
+    input.value = currentTitle;
+    input.style.width = '100%';
+
+    // Save original content
+    const originalContent = cellEl.innerHTML;
+
+    // Replace content with input
+    cellEl.innerHTML = '';
+    cellEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    // Handle blur (save)
+    const saveEdit = async () => {
+        const newTitle = input.value.trim();
+        if (newTitle && newTitle !== currentTitle) {
+            await updateRecField(recType, recId, 'title', newTitle);
+        }
+        // Refresh the table row
+        renderRecommendationsTable();
+    };
+
+    // Handle keydown
+    input.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            await saveEdit();
+        } else if (e.key === 'Escape') {
+            cellEl.innerHTML = originalContent;
+        }
+    });
+
+    input.addEventListener('blur', saveEdit);
+}
+
+/**
+ * Update a recommendation field via API
+ */
+async function updateRecField(recType, recId, field, value) {
+    const customerId = getCustomerId();
+
+    try {
+        // Determine correct endpoint based on type
+        const endpoint = recType === 'custom'
+            ? `${API_BASE_URL}/assessments/recommendations/${recId}`
+            : `${API_BASE_URL}/recommendations/${recId}`;
+
+        const body = {};
+        body[field] = value;
+
+        // Add completed_date if status is completed
+        if (field === 'status' && value === 'completed') {
+            body.completed_date = new Date().toISOString().split('T')[0];
+        }
+
+        const response = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to update recommendation');
+        }
+
+        // Refresh data
+        await refreshRecommendationsData();
+
+        showToast(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`, 'success');
+
+    } catch (error) {
+        console.error('Failed to update recommendation:', error);
+        showToast('Failed to update recommendation', 'error');
+    }
+}
+
+/**
+ * Open tools edit popup for a recommendation
+ */
+function openToolsEditPopup(recType, recId, event) {
+    event.stopPropagation();
+
+    const rec = findRecommendationById(recId, recType);
+    if (!rec) return;
+
+    // Create popup element
+    const existingPopup = document.getElementById('recToolsPopup');
+    if (existingPopup) existingPopup.remove();
+
+    const currentTools = rec.tools || [];
+    const allTools = ['Targetprocess', 'Costing', 'Planning', 'Cloudability'];
+
+    const popup = document.createElement('div');
+    popup.id = 'recToolsPopup';
+    popup.style.cssText = `
+        position: fixed;
+        z-index: 9999;
+        background: var(--cds-layer-01);
+        border: 1px solid var(--cds-border-subtle-01);
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        padding: 12px;
+        min-width: 200px;
+    `;
+
+    popup.innerHTML = `
+        <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--cds-text-secondary);">Select Tools</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            ${allTools.map(tool => `
+                <label class="checkbox-chip" style="width: 100%;">
+                    <input type="checkbox" name="popupTools" value="${tool}" ${currentTools.includes(tool) ? 'checked' : ''}>
+                    <span class="checkbox-chip__label" style="width: 100%; justify-content: flex-start;">${tool}</span>
+                </label>
+            `).join('')}
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="btn btn--ghost btn--sm" onclick="closeToolsPopup()" style="flex: 1;">Cancel</button>
+            <button class="btn btn--primary btn--sm" onclick="saveToolsFromPopup('${recType}', ${recId})" style="flex: 1;">Save</button>
+        </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    // Position popup near the click
+    const rect = event.target.getBoundingClientRect();
+    popup.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    popup.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - popup.offsetHeight - 10)}px`;
+
+    // Close on outside click
+    const closeOnOutside = (e) => {
+        if (!popup.contains(e.target)) {
+            closeToolsPopup();
+            document.removeEventListener('click', closeOnOutside);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+}
+
+/**
+ * Close tools popup
+ */
+function closeToolsPopup() {
+    const popup = document.getElementById('recToolsPopup');
+    if (popup) popup.remove();
+}
+
+/**
+ * Save tools from popup
+ */
+async function saveToolsFromPopup(recType, recId) {
+    const popup = document.getElementById('recToolsPopup');
+    if (!popup) return;
+
+    const selectedTools = Array.from(popup.querySelectorAll('input[name="popupTools"]:checked')).map(cb => cb.value);
+
+    closeToolsPopup();
+
+    await updateRecField(recType, recId, 'tools', selectedTools);
+}
+
+// ============================================================
+// BULK OPERATIONS
+// ============================================================
+
+/**
+ * Open bulk edit status modal
+ */
+function openBulkEditStatusModal() {
+    const modal = document.getElementById('bulkEditStatusModal');
+    const countEl = document.getElementById('bulkStatusCount');
+
+    if (countEl) countEl.textContent = selectedRecIds.size;
+
+    modal.classList.add('open');
+}
+
+function closeBulkEditStatusModal() {
+    document.getElementById('bulkEditStatusModal').classList.remove('open');
+}
+
+/**
+ * Apply bulk status change
+ */
+async function applyBulkStatusChange() {
+    const status = document.getElementById('bulkStatusSelect').value;
+    closeBulkEditStatusModal();
+
+    await performBulkUpdate('status', status);
+}
+
+/**
+ * Open bulk edit priority modal
+ */
+function openBulkEditPriorityModal() {
+    const modal = document.getElementById('bulkEditPriorityModal');
+    const countEl = document.getElementById('bulkPriorityCount');
+
+    if (countEl) countEl.textContent = selectedRecIds.size;
+
+    modal.classList.add('open');
+}
+
+function closeBulkEditPriorityModal() {
+    document.getElementById('bulkEditPriorityModal').classList.remove('open');
+}
+
+/**
+ * Apply bulk priority change
+ */
+async function applyBulkPriorityChange() {
+    const priority = document.getElementById('bulkPrioritySelect').value;
+    closeBulkEditPriorityModal();
+
+    await performBulkUpdate('priority', priority);
+}
+
+/**
+ * Open bulk edit tools modal
+ */
+function openBulkEditToolsModal() {
+    const modal = document.getElementById('bulkEditToolsModal');
+    const countEl = document.getElementById('bulkToolsCount');
+
+    if (countEl) countEl.textContent = selectedRecIds.size;
+
+    // Reset checkboxes
+    document.querySelectorAll('input[name="bulkTools"]').forEach(cb => cb.checked = false);
+
+    modal.classList.add('open');
+}
+
+function closeBulkEditToolsModal() {
+    document.getElementById('bulkEditToolsModal').classList.remove('open');
+}
+
+/**
+ * Apply bulk tools change
+ */
+async function applyBulkToolsChange() {
+    const selectedTools = Array.from(document.querySelectorAll('input[name="bulkTools"]:checked')).map(cb => cb.value);
+    closeBulkEditToolsModal();
+
+    await performBulkUpdate('tools', selectedTools);
+}
+
+/**
+ * Perform bulk update for selected recommendations
+ */
+async function performBulkUpdate(field, value) {
+    const customerId = getCustomerId();
+    let successCount = 0;
+    let failCount = 0;
+
+    showToast(`Updating ${selectedRecIds.size} recommendations...`, 'info');
+
+    const updates = Array.from(selectedRecIds).map(async (key) => {
+        const [recType, recIdStr] = key.split('-');
+        const recId = parseInt(recIdStr);
+
+        try {
+            const endpoint = recType === 'custom'
+                ? `${API_BASE_URL}/assessments/recommendations/${recId}`
+                : `${API_BASE_URL}/recommendations/${recId}`;
+
+            const body = {};
+            body[field] = value;
+
+            if (field === 'status' && value === 'completed') {
+                body.completed_date = new Date().toISOString().split('T')[0];
+            }
+
+            const response = await fetch(endpoint, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if (response.ok) {
+                successCount++;
+            } else {
+                failCount++;
+            }
+        } catch (error) {
+            failCount++;
+        }
+    });
+
+    await Promise.all(updates);
+
+    // Refresh data
+    await refreshRecommendationsData();
+
+    // Clear selection
+    selectedRecIds.clear();
+    updateBulkActionBar();
+
+    if (failCount === 0) {
+        showToast(`Updated ${successCount} recommendations`, 'success');
+    } else {
+        showToast(`Updated ${successCount}, failed ${failCount}`, 'warning');
+    }
+}
+
+/**
+ * Open bulk send to roadmap modal
+ */
+function openBulkSendToRoadmapModal() {
+    const modal = document.getElementById('bulkSendToRoadmapModal');
+    const countEl = document.getElementById('bulkRoadmapCount');
+    const listEl = document.getElementById('bulkRoadmapItemsList');
+
+    // Get selected items that can be added to roadmap
+    const selectedItems = [];
+    selectedRecIds.forEach(key => {
+        const [recType, recIdStr] = key.split('-');
+        const recId = parseInt(recIdStr);
+        const rec = findRecommendationById(recId, recType);
+
+        if (rec) {
+            const status = rec.status || (rec.is_accepted ? 'in_progress' : rec.is_dismissed ? 'dismissed' : 'open');
+            const canAdd = (recType === 'custom' && status === 'open') || (recType === 'generated' && !rec.is_accepted && !rec.is_dismissed);
+
+            if (canAdd) {
+                selectedItems.push({ ...rec, _type: recType });
+            }
+        }
+    });
+
+    if (selectedItems.length === 0) {
+        showToast('No eligible items to add to roadmap. Items must be open and not already on the roadmap.', 'warning');
+        return;
+    }
+
+    if (countEl) countEl.textContent = selectedItems.length;
+
+    // Render items list
+    if (listEl) {
+        listEl.innerHTML = selectedItems.map(item => `
+            <div class="bulk-items-list__item">
+                <span class="bulk-items-list__item-badge ${item._type === 'custom' ? 'rec-source-badge--custom' : 'rec-source-badge--ai'}"
+                      style="background: ${item._type === 'custom' ? 'rgba(138, 63, 252, 0.15)' : 'rgba(15, 98, 254, 0.15)'}; color: ${item._type === 'custom' ? '#8a3ffc' : '#0f62fe'};">
+                    ${item._type === 'custom' ? 'CUSTOM' : 'AI'}
+                </span>
+                <span class="bulk-items-list__item-title">${escapeHtml(item.title)}</span>
+            </div>
+        `).join('');
+    }
+
+    // Populate year options
+    const yearSelect = document.getElementById('bulkRoadmapYear');
+    const currentYear = new Date().getFullYear();
+    yearSelect.innerHTML = '';
+    for (let y = currentYear; y <= currentYear + 3; y++) {
+        const option = document.createElement('option');
+        option.value = y;
+        option.textContent = y;
+        yearSelect.appendChild(option);
+    }
+
+    // Default to next quarter
+    const currentQuarter = Math.ceil((new Date().getMonth() + 1) / 3);
+    const nextQuarter = currentQuarter >= 4 ? 1 : currentQuarter + 1;
+    document.getElementById('bulkRoadmapQuarter').value = `Q${nextQuarter}`;
+    if (nextQuarter === 1) {
+        yearSelect.value = currentYear + 1;
+    }
+
+    // Reset tools
+    document.querySelectorAll('input[name="bulkRoadmapTools"]').forEach(cb => cb.checked = false);
+
+    // Store eligible items for submission
+    modal.dataset.eligibleItems = JSON.stringify(selectedItems.map(i => ({ id: i.id, type: i._type })));
+
+    modal.classList.add('open');
+}
+
+function closeBulkSendToRoadmapModal() {
+    document.getElementById('bulkSendToRoadmapModal').classList.remove('open');
+}
+
+/**
+ * Handle bulk send to roadmap
+ */
+async function handleBulkSendToRoadmap() {
+    const modal = document.getElementById('bulkSendToRoadmapModal');
+    const btn = document.getElementById('bulkRoadmapSubmitBtn');
+    const quarter = document.getElementById('bulkRoadmapQuarter').value;
+    const year = parseInt(document.getElementById('bulkRoadmapYear').value);
+    const selectedTools = Array.from(document.querySelectorAll('input[name="bulkRoadmapTools"]:checked')).map(cb => cb.value);
+
+    const eligibleItems = JSON.parse(modal.dataset.eligibleItems || '[]');
+
+    if (eligibleItems.length === 0) {
+        showToast('No items to add', 'error');
+        return;
+    }
+
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner"></span> Adding...';
+
+    let successCount = 0;
+    let failCount = 0;
+
+    const customerId = getCustomerId();
+
+    // Ensure roadmap exists
+    if (!currentRoadmap) {
+        try {
+            const roadmapResponse = await fetch(`${API_BASE_URL}/roadmaps`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customer_id: customerId,
+                    name: `${new Date().getFullYear()} Roadmap`,
+                    start_date: new Date().toISOString().split('T')[0],
+                    end_date: new Date(new Date().getFullYear() + 1, 11, 31).toISOString().split('T')[0]
+                })
+            });
+            if (roadmapResponse.ok) {
+                currentRoadmap = await roadmapResponse.json();
+            }
+        } catch (e) {
+            console.error('Failed to create roadmap:', e);
+        }
+    }
+
+    const operations = eligibleItems.map(async (item) => {
+        try {
+            if (item.type === 'custom') {
+                // Create roadmap item for custom recommendation
+                const rec = customerRecommendations.find(r => r.id === item.id);
+                if (!rec) throw new Error('Recommendation not found');
+
+                const quarterNum = parseInt(quarter.replace('Q', ''));
+                const startMonth = (quarterNum - 1) * 3;
+                const startDate = new Date(year, startMonth, 1);
+                const endDate = new Date(year, startMonth + 3, 0);
+
+                const itemResponse = await fetch(`${API_BASE_URL}/roadmaps/${currentRoadmap.id}/items`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: rec.title,
+                        description: rec.description || '',
+                        category: 'enhancement',
+                        target_quarter: quarter,
+                        target_year: year,
+                        planned_start_date: startDate.toISOString().split('T')[0],
+                        planned_end_date: endDate.toISOString().split('T')[0],
+                        tools: selectedTools.length > 0 ? selectedTools : null
+                    })
+                });
+
+                if (itemResponse.ok) {
+                    // Update status to in_progress
+                    await fetch(`${API_BASE_URL}/assessments/recommendations/${item.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'in_progress', tools: selectedTools.length > 0 ? selectedTools : null })
+                    });
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            } else {
+                // Accept generated recommendation
+                const response = await fetch(`${API_BASE_URL}/recommendations/${item.id}/accept`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        target_quarter: quarter,
+                        target_year: year,
+                        tools: selectedTools.length > 0 ? selectedTools : null
+                    })
+                });
+
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to add item to roadmap:', error);
+            failCount++;
+        }
+    });
+
+    await Promise.all(operations);
+
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    closeBulkSendToRoadmapModal();
+
+    // Clear selection
+    selectedRecIds.clear();
+    updateBulkActionBar();
+
+    // Refresh data
+    await refreshRecommendationsData();
+    await loadRoadmap(customerId);
+
+    if (failCount === 0) {
+        showToast(`Added ${successCount} items to roadmap`, 'success');
+    } else {
+        showToast(`Added ${successCount}, failed ${failCount}`, 'warning');
+    }
+}
+
+/**
+ * Bulk dismiss selected recommendations
+ */
+async function bulkDismissRecommendations() {
+    if (!confirm(`Are you sure you want to dismiss ${selectedRecIds.size} recommendations?`)) {
+        return;
+    }
+
+    await performBulkUpdate('status', 'dismissed');
+}
+
+/**
+ * Refresh recommendations data and re-render table
+ */
+async function refreshRecommendationsData() {
+    const customerId = getCustomerId();
+    if (!customerId) return;
+
+    await Promise.all([
+        loadRecommendations(customerId),
+        loadCustomRecommendations(customerId)
+    ]);
+
+    // Re-render based on current view
+    if (currentRecView === 'table') {
+        renderRecommendationsTable();
+    } else {
+        renderAllRecommendations();
+    }
+}
+
+// Expose table view functions
+window.switchRecView = switchRecView;
+window.toggleRecSelection = toggleRecSelection;
+window.toggleAllRecSelections = toggleAllRecSelections;
+window.startInlineEditTitle = startInlineEditTitle;
+window.updateRecField = updateRecField;
+window.openToolsEditPopup = openToolsEditPopup;
+window.closeToolsPopup = closeToolsPopup;
+window.saveToolsFromPopup = saveToolsFromPopup;
+window.openBulkEditStatusModal = openBulkEditStatusModal;
+window.closeBulkEditStatusModal = closeBulkEditStatusModal;
+window.applyBulkStatusChange = applyBulkStatusChange;
+window.openBulkEditPriorityModal = openBulkEditPriorityModal;
+window.closeBulkEditPriorityModal = closeBulkEditPriorityModal;
+window.applyBulkPriorityChange = applyBulkPriorityChange;
+window.openBulkEditToolsModal = openBulkEditToolsModal;
+window.closeBulkEditToolsModal = closeBulkEditToolsModal;
+window.applyBulkToolsChange = applyBulkToolsChange;
+window.openBulkSendToRoadmapModal = openBulkSendToRoadmapModal;
+window.closeBulkSendToRoadmapModal = closeBulkSendToRoadmapModal;
+window.handleBulkSendToRoadmap = handleBulkSendToRoadmap;
+window.bulkDismissRecommendations = bulkDismissRecommendations;
+
+
+// ============================================================
+// TABLE SORTING AND FILTERING
+// ============================================================
+
+// Sorting state
+let recTableSortState = {
+    key: null,
+    direction: 'asc' // 'asc' or 'desc'
+};
+
+// Filter state (Excel-style row filters)
+let recTableFilterState = {
+    title: '',
+    priority: '',
+    status: '',
+    tools: '',
+    category: '',
+    scoreMin: null,
+    source: ''
+};
+
+/**
+ * Sort the recommendations table by a column
+ */
+function sortRecTable(key) {
+    // Toggle direction if same key, otherwise set to asc
+    if (recTableSortState.key === key) {
+        recTableSortState.direction = recTableSortState.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        recTableSortState.key = key;
+        recTableSortState.direction = 'asc';
+    }
+
+    // Update sort icons
+    updateSortIcons();
+
+    // Re-render table with sorted data
+    renderRecommendationsTable();
+}
+
+/**
+ * Update sort icons in table headers
+ */
+function updateSortIcons() {
+    // Reset all icons
+    document.querySelectorAll('.rec-sort-icon').forEach(icon => {
+        icon.classList.remove('asc', 'desc');
+    });
+
+    // Set active icon
+    if (recTableSortState.key) {
+        const activeIcon = document.querySelector(`.rec-sort-icon[data-sort-key="${recTableSortState.key}"]`);
+        if (activeIcon) {
+            activeIcon.classList.add(recTableSortState.direction);
+        }
+    }
+}
+
+/**
+ * Sort recommendations array by the current sort state
+ */
+function sortRecommendations(recs) {
+    if (!recTableSortState.key) return recs;
+
+    const key = recTableSortState.key;
+    const direction = recTableSortState.direction === 'asc' ? 1 : -1;
+
+    // Priority order for sorting
+    const priorityOrder = { high: 3, medium: 2, low: 1 };
+    const statusOrder = { open: 1, in_progress: 2, completed: 3, dismissed: 4 };
+
+    return [...recs].sort((a, b) => {
+        let aVal, bVal;
+
+        switch (key) {
+            case 'title':
+                aVal = (a.title || '').toLowerCase();
+                bVal = (b.title || '').toLowerCase();
+                return direction * aVal.localeCompare(bVal);
+
+            case 'priority':
+                const aPriority = a.priority || (a.priority_score > 70 ? 'high' : a.priority_score > 40 ? 'medium' : 'low');
+                const bPriority = b.priority || (b.priority_score > 70 ? 'high' : b.priority_score > 40 ? 'medium' : 'low');
+                aVal = priorityOrder[aPriority] || 0;
+                bVal = priorityOrder[bPriority] || 0;
+                return direction * (aVal - bVal);
+
+            case 'status':
+                const aStatus = a.status || (a.is_accepted ? 'in_progress' : a.is_dismissed ? 'dismissed' : 'open');
+                const bStatus = b.status || (b.is_accepted ? 'in_progress' : b.is_dismissed ? 'dismissed' : 'open');
+                aVal = statusOrder[aStatus] || 0;
+                bVal = statusOrder[bStatus] || 0;
+                return direction * (aVal - bVal);
+
+            case 'category':
+                aVal = (a.category || a.dimension_name || '').toLowerCase();
+                bVal = (b.category || b.dimension_name || '').toLowerCase();
+                return direction * aVal.localeCompare(bVal);
+
+            case 'score':
+                aVal = a.priority_score || 0;
+                bVal = b.priority_score || 0;
+                return direction * (aVal - bVal);
+
+            default:
+                return 0;
+        }
+    });
+}
+
+/**
+ * Apply table filters (Excel-style)
+ */
+function applyTableFilters() {
+    // Read filter values from inputs
+    recTableFilterState.title = (document.getElementById('recFilterTitle')?.value || '').toLowerCase().trim();
+    recTableFilterState.priority = document.getElementById('recFilterPriority')?.value || '';
+    recTableFilterState.status = document.getElementById('recFilterStatus')?.value || '';
+    recTableFilterState.tools = document.getElementById('recFilterTools')?.value || '';
+    recTableFilterState.category = (document.getElementById('recFilterCategory')?.value || '').toLowerCase().trim();
+    recTableFilterState.scoreMin = parseFloat(document.getElementById('recFilterScoreMin')?.value) || null;
+    recTableFilterState.source = document.getElementById('recFilterSource')?.value || '';
+
+    // Update filter select visual state
+    updateFilterSelectStyles();
+
+    // Update active filters display
+    updateActiveFiltersDisplay();
+
+    // Re-render table
+    renderRecommendationsTable();
+}
+
+/**
+ * Update visual style of filter selects to show when they have a value
+ */
+function updateFilterSelectStyles() {
+    document.querySelectorAll('.rec-filter-select').forEach(select => {
+        if (select.value && select.value !== '') {
+            select.classList.add('has-filter');
+        } else {
+            select.classList.remove('has-filter');
+        }
+    });
+}
+
+/**
+ * Filter recommendations by the current filter state
+ */
+function filterRecommendationsTable(recs) {
+    return recs.filter(rec => {
+        // Title filter (text search)
+        if (recTableFilterState.title) {
+            const title = (rec.title || '').toLowerCase();
+            if (!title.includes(recTableFilterState.title)) return false;
+        }
+
+        // Priority filter
+        if (recTableFilterState.priority) {
+            const priority = rec.priority || (rec.priority_score > 70 ? 'high' : rec.priority_score > 40 ? 'medium' : 'low');
+            if (priority !== recTableFilterState.priority) return false;
+        }
+
+        // Status filter
+        if (recTableFilterState.status) {
+            const status = rec.status || (rec.is_accepted ? 'in_progress' : rec.is_dismissed ? 'dismissed' : 'open');
+            if (status !== recTableFilterState.status) return false;
+        }
+
+        // Tools filter
+        if (recTableFilterState.tools) {
+            const tools = rec.tools || [];
+            if (!tools.includes(recTableFilterState.tools)) return false;
+        }
+
+        // Category filter (text search)
+        if (recTableFilterState.category) {
+            const category = (rec.category || rec.dimension_name || '').toLowerCase();
+            if (!category.includes(recTableFilterState.category)) return false;
+        }
+
+        // Score min filter
+        if (recTableFilterState.scoreMin !== null) {
+            const score = rec.priority_score || 0;
+            if (score < recTableFilterState.scoreMin) return false;
+        }
+
+        // Source filter (custom vs AI)
+        if (recTableFilterState.source) {
+            if (rec._type !== recTableFilterState.source) return false;
+        }
+
+        return true;
+    });
+}
+
+/**
+ * Clear all table filters
+ */
+function clearAllTableFilters() {
+    // Reset filter state
+    recTableFilterState = {
+        title: '',
+        priority: '',
+        status: '',
+        tools: '',
+        category: '',
+        scoreMin: null,
+        source: ''
+    };
+
+    // Reset filter inputs
+    const titleInput = document.getElementById('recFilterTitle');
+    const prioritySelect = document.getElementById('recFilterPriority');
+    const statusSelect = document.getElementById('recFilterStatus');
+    const toolsSelect = document.getElementById('recFilterTools');
+    const categoryInput = document.getElementById('recFilterCategory');
+    const scoreMinInput = document.getElementById('recFilterScoreMin');
+    const sourceSelect = document.getElementById('recFilterSource');
+
+    if (titleInput) titleInput.value = '';
+    if (prioritySelect) prioritySelect.value = '';
+    if (statusSelect) statusSelect.value = '';
+    if (toolsSelect) toolsSelect.value = '';
+    if (categoryInput) categoryInput.value = '';
+    if (scoreMinInput) scoreMinInput.value = '';
+    if (sourceSelect) sourceSelect.value = '';
+
+    // Update visual state
+    updateFilterSelectStyles();
+    updateActiveFiltersDisplay();
+
+    // Re-render table
+    renderRecommendationsTable();
+}
+
+/**
+ * Clear a specific filter
+ */
+function clearTableFilter(filterKey) {
+    recTableFilterState[filterKey] = filterKey === 'scoreMin' ? null : '';
+
+    // Reset the corresponding input
+    const inputMap = {
+        title: 'recFilterTitle',
+        priority: 'recFilterPriority',
+        status: 'recFilterStatus',
+        tools: 'recFilterTools',
+        category: 'recFilterCategory',
+        scoreMin: 'recFilterScoreMin',
+        source: 'recFilterSource'
+    };
+
+    const inputId = inputMap[filterKey];
+    const input = document.getElementById(inputId);
+    if (input) input.value = '';
+
+    updateFilterSelectStyles();
+    updateActiveFiltersDisplay();
+    renderRecommendationsTable();
+}
+
+/**
+ * Update the active filters display
+ */
+function updateActiveFiltersDisplay() {
+    const container = document.getElementById('recActiveFilters');
+    const chipsContainer = document.getElementById('recActiveFilterChips');
+
+    if (!container || !chipsContainer) return;
+
+    const activeFilters = [];
+
+    // Check each filter
+    if (recTableFilterState.title) {
+        activeFilters.push({ key: 'title', label: `Title: "${recTableFilterState.title}"` });
+    }
+    if (recTableFilterState.priority) {
+        activeFilters.push({ key: 'priority', label: `Priority: ${recTableFilterState.priority}` });
+    }
+    if (recTableFilterState.status) {
+        const statusLabels = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', dismissed: 'Dismissed' };
+        activeFilters.push({ key: 'status', label: `Status: ${statusLabels[recTableFilterState.status] || recTableFilterState.status}` });
+    }
+    if (recTableFilterState.tools) {
+        activeFilters.push({ key: 'tools', label: `Tool: ${recTableFilterState.tools}` });
+    }
+    if (recTableFilterState.category) {
+        activeFilters.push({ key: 'category', label: `Category: "${recTableFilterState.category}"` });
+    }
+    if (recTableFilterState.scoreMin !== null) {
+        activeFilters.push({ key: 'scoreMin', label: `Score ≥ ${recTableFilterState.scoreMin}` });
+    }
+    if (recTableFilterState.source) {
+        const sourceLabels = { custom: 'Custom', generated: 'AI Generated' };
+        activeFilters.push({ key: 'source', label: `Source: ${sourceLabels[recTableFilterState.source] || recTableFilterState.source}` });
+    }
+
+    if (activeFilters.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'flex';
+
+    chipsContainer.innerHTML = activeFilters.map(filter => `
+        <span class="rec-filter-chip">
+            ${escapeHtml(filter.label)}
+            <button class="rec-filter-chip__remove" onclick="clearTableFilter('${filter.key}')" title="Remove filter">&times;</button>
+        </span>
+    `).join('');
+}
+
+/**
+ * Check if any table filters are active
+ */
+function hasActiveTableFilters() {
+    return recTableFilterState.title !== '' ||
+           recTableFilterState.priority !== '' ||
+           recTableFilterState.status !== '' ||
+           recTableFilterState.tools !== '' ||
+           recTableFilterState.category !== '' ||
+           recTableFilterState.scoreMin !== null ||
+           recTableFilterState.source !== '';
+}
+
+// Expose sort and filter functions
+window.sortRecTable = sortRecTable;
+window.applyTableFilters = applyTableFilters;
+window.clearAllTableFilters = clearAllTableFilters;
+window.clearTableFilter = clearTableFilter;
+
+
+// ============================================================
+// EXCEL IMPORT/EXPORT
+// ============================================================
+
+// Store parsed import data
+let recImportData = [];
+
+/**
+ * Export recommendations to Excel (CSV format that Excel can open)
+ */
+function exportRecsToExcel() {
+    // Get all recommendations (with current filters applied)
+    let allRecs = getAllFilteredRecommendations();
+
+    // Apply table filters if any
+    if (typeof filterRecommendationsTable === 'function') {
+        allRecs = filterRecommendationsTable(allRecs);
+    }
+
+    if (allRecs.length === 0) {
+        showToast('No recommendations to export', 'warning');
+        return;
+    }
+
+    // Define columns for export
+    const columns = [
+        { key: 'title', header: 'Title' },
+        { key: 'description', header: 'Description' },
+        { key: 'priority', header: 'Priority' },
+        { key: 'status', header: 'Status' },
+        { key: 'category', header: 'Category' },
+        { key: 'tools', header: 'Tools' },
+        { key: 'score', header: 'Score' },
+        { key: 'source', header: 'Source' },
+        { key: 'due_date', header: 'Due Date' },
+        { key: 'expected_impact', header: 'Expected Impact' }
+    ];
+
+    // Build CSV content
+    const rows = [];
+
+    // Header row
+    rows.push(columns.map(col => `"${col.header}"`).join(','));
+
+    // Data rows
+    allRecs.forEach(rec => {
+        const priority = rec.priority || (rec.priority_score > 70 ? 'high' : rec.priority_score > 40 ? 'medium' : 'low');
+        const status = rec.status || (rec.is_accepted ? 'in_progress' : rec.is_dismissed ? 'dismissed' : 'open');
+        const category = rec.category || rec.dimension_name || '';
+        const tools = (rec.tools || []).join('; ');
+        const score = rec.priority_score ? Math.round(rec.priority_score) : '';
+        const source = rec._type === 'custom' ? 'Custom' : 'AI Generated';
+
+        const row = [
+            escapeCSV(rec.title || ''),
+            escapeCSV(rec.description || ''),
+            escapeCSV(priority),
+            escapeCSV(status),
+            escapeCSV(category),
+            escapeCSV(tools),
+            score,
+            escapeCSV(source),
+            escapeCSV(rec.due_date || ''),
+            rec.expected_impact || ''
+        ];
+
+        rows.push(row.join(','));
+    });
+
+    const csvContent = rows.join('\n');
+
+    // Create and download file
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const customerName = document.querySelector('.customer-name')?.textContent || 'customer';
+    const date = new Date().toISOString().split('T')[0];
+    const filename = `recommendations_${customerName.replace(/\s+/g, '_')}_${date}.csv`;
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast(`Exported ${allRecs.length} recommendations`, 'success');
+}
+
+/**
+ * Escape a value for CSV
+ */
+function escapeCSV(value) {
+    if (value === null || value === undefined) return '""';
+    const str = String(value);
+    // Escape quotes and wrap in quotes if contains comma, quote, or newline
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+    }
+    return `"${str}"`;
+}
+
+/**
+ * Download a template Excel file for importing
+ */
+function downloadRecTemplate(event) {
+    event.preventDefault();
+
+    const columns = [
+        'Title',
+        'Description',
+        'Priority',
+        'Status',
+        'Category',
+        'Tools',
+        'Due Date',
+        'Expected Impact'
+    ];
+
+    // Sample data row
+    const sampleRow = [
+        'Implement capacity planning dashboard',
+        'Create a dashboard to visualize resource capacity and utilization across teams',
+        'high',
+        'open',
+        'Process Improvement',
+        'Targetprocess; Planning',
+        '2026-06-30',
+        '1.5'
+    ];
+
+    const rows = [
+        columns.map(c => `"${c}"`).join(','),
+        sampleRow.map(v => escapeCSV(v)).join(',')
+    ];
+
+    const csvContent = rows.join('\n');
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'recommendations_import_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showToast('Template downloaded', 'success');
+}
+
+/**
+ * Handle file selection for import
+ */
+function handleRecImportFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+        const content = e.target.result;
+        parseRecImportFile(file.name, content);
+    };
+
+    reader.onerror = function() {
+        showToast('Failed to read file', 'error');
+    };
+
+    reader.readAsText(file);
+
+    // Reset file input so same file can be selected again
+    event.target.value = '';
+}
+
+/**
+ * Parse imported file content
+ */
+function parseRecImportFile(fileName, content) {
+    const lines = content.split(/\r?\n/).filter(line => line.trim());
+
+    if (lines.length < 2) {
+        showToast('File is empty or has no data rows', 'error');
+        return;
+    }
+
+    // Parse header row
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+
+    // Validate required columns
+    const requiredColumns = ['title'];
+    const missingColumns = requiredColumns.filter(col => !headers.includes(col));
+
+    if (missingColumns.length > 0) {
+        showToast(`Missing required columns: ${missingColumns.join(', ')}`, 'error');
+        return;
+    }
+
+    // Parse data rows
+    recImportData = [];
+    const errors = [];
+
+    for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.length === 0 || (values.length === 1 && !values[0].trim())) continue;
+
+        const row = {};
+        headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+        });
+
+        // Validate row
+        if (!row.title || !row.title.trim()) {
+            errors.push(`Row ${i + 1}: Missing title`);
+            continue;
+        }
+
+        // Normalize values
+        const priority = (row.priority || 'medium').toLowerCase();
+        if (!['high', 'medium', 'low'].includes(priority)) {
+            errors.push(`Row ${i + 1}: Invalid priority "${row.priority}" (use high, medium, or low)`);
+        }
+
+        const status = (row.status || 'open').toLowerCase().replace(/\s+/g, '_');
+        if (!['open', 'in_progress', 'completed', 'dismissed'].includes(status)) {
+            errors.push(`Row ${i + 1}: Invalid status "${row.status}"`);
+        }
+
+        // Parse tools (semicolon separated)
+        const tools = row.tools ? row.tools.split(/[;,]/).map(t => t.trim()).filter(t => t) : [];
+        const validTools = ['Targetprocess', 'Costing', 'Planning', 'Cloudability'];
+        const invalidTools = tools.filter(t => !validTools.some(vt => vt.toLowerCase() === t.toLowerCase()));
+        if (invalidTools.length > 0) {
+            errors.push(`Row ${i + 1}: Invalid tools "${invalidTools.join(', ')}"`);
+        }
+
+        // Normalize tool names to proper case
+        const normalizedTools = tools.map(t => {
+            const match = validTools.find(vt => vt.toLowerCase() === t.toLowerCase());
+            return match || t;
+        }).filter(t => validTools.includes(t));
+
+        recImportData.push({
+            rowNum: i + 1,
+            title: row.title.trim(),
+            description: row.description || '',
+            priority: ['high', 'medium', 'low'].includes(priority) ? priority : 'medium',
+            status: ['open', 'in_progress', 'completed', 'dismissed'].includes(status) ? status : 'open',
+            category: row.category || '',
+            tools: normalizedTools,
+            due_date: row['due date'] || row.due_date || '',
+            expected_impact: parseFloat(row['expected impact'] || row.expected_impact) || null
+        });
+    }
+
+    // Show import modal
+    openRecImportModal(fileName, errors);
+}
+
+/**
+ * Parse a CSV line handling quoted values
+ */
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+
+    result.push(current.trim());
+    return result;
+}
+
+/**
+ * Open import preview modal
+ */
+function openRecImportModal(fileName, errors) {
+    const modal = document.getElementById('recImportModal');
+
+    // Update status
+    document.getElementById('recImportFileName').textContent = fileName;
+    document.getElementById('recImportRowCount').textContent = `${recImportData.length} rows found`;
+
+    // Render preview table
+    const headerRow = document.getElementById('recImportPreviewHeader');
+    const previewBody = document.getElementById('recImportPreviewBody');
+
+    const previewColumns = ['Title', 'Priority', 'Status', 'Category', 'Tools'];
+    headerRow.innerHTML = previewColumns.map(col => `<th>${col}</th>`).join('');
+
+    const previewRows = recImportData.slice(0, 10);
+    previewBody.innerHTML = previewRows.map(row => `
+        <tr>
+            <td title="${escapeHtml(row.title)}">${escapeHtml(row.title)}</td>
+            <td><span class="rec-table-priority rec-table-priority--${row.priority}">${row.priority}</span></td>
+            <td>${row.status.replace('_', ' ')}</td>
+            <td>${escapeHtml(row.category)}</td>
+            <td>${row.tools.join(', ')}</td>
+        </tr>
+    `).join('');
+
+    if (recImportData.length > 10) {
+        previewBody.innerHTML += `<tr><td colspan="5" style="text-align: center; color: var(--cds-text-secondary);">... and ${recImportData.length - 10} more rows</td></tr>`;
+    }
+
+    // Show errors if any
+    const errorsContainer = document.getElementById('recImportErrors');
+    const errorsList = document.getElementById('recImportErrorsList');
+
+    if (errors.length > 0) {
+        errorsContainer.style.display = 'block';
+        errorsList.innerHTML = errors.slice(0, 10).map(err => `<li>${escapeHtml(err)}</li>`).join('');
+        if (errors.length > 10) {
+            errorsList.innerHTML += `<li>... and ${errors.length - 10} more issues</li>`;
+        }
+    } else {
+        errorsContainer.style.display = 'none';
+    }
+
+    // Update submit button
+    const submitBtn = document.getElementById('recImportSubmitBtn');
+    const submitCount = document.getElementById('recImportSubmitCount');
+    submitCount.textContent = recImportData.length;
+    submitBtn.disabled = recImportData.length === 0;
+
+    modal.classList.add('open');
+}
+
+/**
+ * Close import modal
+ */
+function closeRecImportModal() {
+    document.getElementById('recImportModal').classList.remove('open');
+    recImportData = [];
+}
+
+/**
+ * Execute the import
+ */
+async function executeRecImport() {
+    if (recImportData.length === 0) {
+        showToast('No data to import', 'error');
+        return;
+    }
+
+    const customerId = getCustomerId();
+    if (!customerId) {
+        showToast('Customer not found', 'error');
+        return;
+    }
+
+    const importMode = document.querySelector('input[name="recImportMode"]:checked')?.value || 'create';
+    const submitBtn = document.getElementById('recImportSubmitBtn');
+
+    submitBtn.disabled = true;
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="loading-spinner"></span> Importing...';
+
+    let successCount = 0;
+    let failCount = 0;
+    let updateCount = 0;
+
+    // Get existing recommendations for upsert mode
+    let existingRecs = [];
+    if (importMode === 'upsert') {
+        existingRecs = [...(customerRecommendations || [])];
+    }
+
+    for (const row of recImportData) {
+        try {
+            let existingRec = null;
+
+            // In upsert mode, check for existing recommendation by title
+            if (importMode === 'upsert') {
+                existingRec = existingRecs.find(r =>
+                    r.title.toLowerCase().trim() === row.title.toLowerCase().trim()
+                );
+            }
+
+            const payload = {
+                customer_id: parseInt(customerId),
+                title: row.title,
+                description: row.description,
+                priority: row.priority,
+                status: row.status,
+                category: row.category || null,
+                tools: row.tools.length > 0 ? row.tools : null,
+                due_date: row.due_date || null,
+                expected_impact: row.expected_impact
+            };
+
+            let response;
+
+            if (existingRec) {
+                // Update existing
+                response = await fetch(`${API_BASE_URL}/assessments/recommendations/${existingRec.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) updateCount++;
+            } else {
+                // Create new
+                response = await fetch(`${API_BASE_URL}/assessments/recommendations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) successCount++;
+            }
+
+            if (!response.ok) {
+                failCount++;
+            }
+        } catch (error) {
+            console.error('Import error:', error);
+            failCount++;
+        }
+    }
+
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalText;
+
+    closeRecImportModal();
+
+    // Refresh data
+    await refreshRecommendationsData();
+
+    // Show result
+    let message = '';
+    if (importMode === 'upsert') {
+        message = `Created ${successCount}, updated ${updateCount}`;
+    } else {
+        message = `Imported ${successCount} recommendations`;
+    }
+    if (failCount > 0) {
+        message += `, ${failCount} failed`;
+    }
+
+    showToast(message, failCount > 0 ? 'warning' : 'success');
+}
+
+// Expose import/export functions
+window.exportRecsToExcel = exportRecsToExcel;
+window.downloadRecTemplate = downloadRecTemplate;
+window.handleRecImportFile = handleRecImportFile;
+window.openRecImportModal = openRecImportModal;
+window.closeRecImportModal = closeRecImportModal;
+window.executeRecImport = executeRecImport;
 
 
 // ============================================================

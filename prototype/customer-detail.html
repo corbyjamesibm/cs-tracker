@@ -931,6 +931,16 @@
                 </div>
                 <!-- Comparison Legend -->
                 <div id="comparisonLegend" class="comparison-legend" style="display: none;"></div>
+                <!-- Target Overlay Toggle -->
+                <div id="targetOverlayToggle" style="display: none; margin: 8px 0; font-size: 12px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--cds-text-secondary);">
+                    <input type="checkbox" id="showTargetOverlay" checked onchange="toggleTargetOverlay()" style="cursor: pointer;">
+                    <span style="display: flex; align-items: center; gap: 6px;">
+                      <span style="width: 16px; height: 2px; background: rgba(255, 131, 0, 1); border-top: 2px dashed rgba(255, 131, 0, 1);"></span>
+                      Show Target: <span id="activeTargetName">-</span>
+                    </span>
+                  </label>
+                </div>
                 <div class="assessment-overall-score" id="overallScoreDisplay">
                   <span class="score-value" id="overallScoreValue">-</span>
                   <span class="score-label">/ 5.0 Overall Maturity</span>
@@ -1709,6 +1719,18 @@
                 <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
                 Clear
               </button>
+
+              <!-- View Toggle -->
+              <div class="rec-view-toggle" style="margin-left: auto;">
+                <button class="view-toggle-btn active" id="recViewCards" onclick="switchRecView('cards')" title="Card View">
+                  <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M26 6v4H6V6h20m0-2H6a2 2 0 00-2 2v4a2 2 0 002 2h20a2 2 0 002-2V6a2 2 0 00-2-2zM26 16v4H6v-4h20m0-2H6a2 2 0 00-2 2v4a2 2 0 002 2h20a2 2 0 002-2v-4a2 2 0 00-2-2zM26 26v-4H6v4h20m0-6H6a2 2 0 00-2 2v4a2 2 0 002 2h20a2 2 0 002-2v-4a2 2 0 00-2-2z"/></svg>
+                  Cards
+                </button>
+                <button class="view-toggle-btn" id="recViewTable" onclick="switchRecView('table')" title="Table View">
+                  <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M12 4H6a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2V6a2 2 0 00-2-2zm0 8H6V6h6zm14-8h-6a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2V6a2 2 0 00-2-2zm0 8h-6V6h6zM12 18H6a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2v-6a2 2 0 00-2-2zm0 8H6v-6h6zm14-8h-6a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2v-6a2 2 0 00-2-2zm0 8h-6v-6h6z"/></svg>
+                  Table
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1724,7 +1746,171 @@
               </div>
             </div>
             <div id="allRecsList">
-              <!-- All recommendations populated by JS -->
+              <!-- All recommendations populated by JS (Card View) -->
+            </div>
+
+            <!-- Table View Container (hidden by default) -->
+            <div id="allRecsTableView" style="display: none;">
+              <!-- Import/Export Toolbar -->
+              <div class="rec-import-export-toolbar">
+                <div class="rec-import-export-toolbar__left">
+                  <span class="rec-import-export-toolbar__label">Data:</span>
+                  <button class="btn btn--ghost btn--sm" onclick="exportRecsToExcel()">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zM26 14l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10 10-10z"/></svg>
+                    Export Excel
+                  </button>
+                  <button class="btn btn--ghost btn--sm" onclick="document.getElementById('recImportFile').click()">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zM6 12l1.41 1.41L15 5.83V24h2V5.83l7.59 7.58L26 12 16 2 6 12z"/></svg>
+                    Import Excel
+                  </button>
+                  <input type="file" id="recImportFile" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleRecImportFile(event)">
+                </div>
+                <div class="rec-import-export-toolbar__right">
+                  <a href="#" onclick="downloadRecTemplate(event)" class="rec-template-link">
+                    <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zM26 14l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10 10-10z"/></svg>
+                    Download Template
+                  </a>
+                </div>
+              </div>
+
+              <!-- Bulk Action Bar -->
+              <div id="recBulkActionBar" class="bulk-action-bar" style="display: none;">
+                <div class="bulk-action-bar__info">
+                  <span id="recSelectedCount">0</span> selected
+                </div>
+                <div class="bulk-action-bar__actions">
+                  <button class="btn btn--ghost btn--sm" onclick="openBulkEditStatusModal()">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M16 4c6.6 0 12 5.4 12 12s-5.4 12-12 12S4 22.6 4 16 9.4 4 16 4m0-2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2z"/><path d="M14 10h4v8h-4z"/><path d="M14 22h4v2h-4z"/></svg>
+                    Edit Status
+                  </button>
+                  <button class="btn btn--ghost btn--sm" onclick="openBulkEditPriorityModal()">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M4 4v24h2V4H4zm8 10v14h2V14h-2zm8 4v10h2V18h-2zm8-4v14h2V14h-2z"/></svg>
+                    Edit Priority
+                  </button>
+                  <button class="btn btn--ghost btn--sm" onclick="openBulkEditToolsModal()">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M27 16.76v-1.53l1.92-1.68a2 2 0 00.46-2.32l-1.99-3.4a2 2 0 00-2.17-1l-2.54.51a11 11 0 00-1.32-.77l-.52-2.54a2 2 0 00-1.95-1.59h-3.95a2 2 0 00-1.95 1.59l-.52 2.54a11 11 0 00-1.32.77l-2.54-.51a2 2 0 00-2.17 1l-1.99 3.4a2 2 0 00.46 2.32L5 15.23v1.53l-1.92 1.68a2 2 0 00-.46 2.32l1.99 3.4a2 2 0 002.17 1l2.54-.51a11 11 0 001.32.77l.52 2.54a2 2 0 001.95 1.59h3.95a2 2 0 001.95-1.59l.52-2.54a11 11 0 001.32-.77l2.54.51a2 2 0 002.17-1l1.99-3.4a2 2 0 00-.46-2.32zM16 22a6 6 0 110-12 6 6 0 010 12z"/></svg>
+                    Edit Tools
+                  </button>
+                  <button class="btn btn--primary btn--sm" onclick="openBulkSendToRoadmapModal()">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+                    Add to Roadmap
+                  </button>
+                  <button class="btn btn--ghost btn--sm" onclick="bulkDismissRecommendations()" style="color: var(--cds-support-error);">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+
+              <!-- Data Table -->
+              <div class="rec-table-wrapper">
+                <table class="rec-data-table" id="recDataTable">
+                  <thead>
+                    <!-- Sortable Header Row -->
+                    <tr class="rec-table-header-row">
+                      <th style="width: 40px;">
+                        <label class="rec-table-checkbox">
+                          <input type="checkbox" id="recSelectAll" onchange="toggleAllRecSelections(this.checked)">
+                          <span class="rec-table-checkbox__mark"></span>
+                        </label>
+                      </th>
+                      <th class="rec-th-sortable" data-sort-key="title" style="min-width: 200px;" onclick="sortRecTable('title')">
+                        <span class="rec-th-content">
+                          Title
+                          <span class="rec-sort-icon" data-sort-key="title"></span>
+                        </span>
+                      </th>
+                      <th class="rec-th-sortable" data-sort-key="priority" style="width: 100px;" onclick="sortRecTable('priority')">
+                        <span class="rec-th-content">
+                          Priority
+                          <span class="rec-sort-icon" data-sort-key="priority"></span>
+                        </span>
+                      </th>
+                      <th class="rec-th-sortable" data-sort-key="status" style="width: 120px;" onclick="sortRecTable('status')">
+                        <span class="rec-th-content">
+                          Status
+                          <span class="rec-sort-icon" data-sort-key="status"></span>
+                        </span>
+                      </th>
+                      <th style="width: 180px;">Tools</th>
+                      <th class="rec-th-sortable" data-sort-key="category" style="width: 120px;" onclick="sortRecTable('category')">
+                        <span class="rec-th-content">
+                          Category
+                          <span class="rec-sort-icon" data-sort-key="category"></span>
+                        </span>
+                      </th>
+                      <th class="rec-th-sortable" data-sort-key="score" style="width: 80px;" onclick="sortRecTable('score')">
+                        <span class="rec-th-content">
+                          Score
+                          <span class="rec-sort-icon" data-sort-key="score"></span>
+                        </span>
+                      </th>
+                      <th style="width: 100px;">Actions</th>
+                    </tr>
+                    <!-- Filter Row (Excel-style) -->
+                    <tr class="rec-table-filter-row">
+                      <th>
+                        <button class="rec-filter-clear-btn" onclick="clearAllTableFilters()" title="Clear all filters">
+                          <svg width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+                        </button>
+                      </th>
+                      <th>
+                        <input type="text" class="rec-filter-input" id="recFilterTitle" placeholder="Filter title..." oninput="applyTableFilters()">
+                      </th>
+                      <th>
+                        <select class="rec-filter-select" id="recFilterPriority" onchange="applyTableFilters()">
+                          <option value="">All</option>
+                          <option value="high">High</option>
+                          <option value="medium">Medium</option>
+                          <option value="low">Low</option>
+                        </select>
+                      </th>
+                      <th>
+                        <select class="rec-filter-select" id="recFilterStatus" onchange="applyTableFilters()">
+                          <option value="">All</option>
+                          <option value="open">Open</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="completed">Completed</option>
+                          <option value="dismissed">Dismissed</option>
+                        </select>
+                      </th>
+                      <th>
+                        <select class="rec-filter-select" id="recFilterTools" onchange="applyTableFilters()">
+                          <option value="">All Tools</option>
+                          <option value="Targetprocess">Targetprocess</option>
+                          <option value="Costing">Costing</option>
+                          <option value="Planning">Planning</option>
+                          <option value="Cloudability">Cloudability</option>
+                        </select>
+                      </th>
+                      <th>
+                        <input type="text" class="rec-filter-input" id="recFilterCategory" placeholder="Filter..." oninput="applyTableFilters()">
+                      </th>
+                      <th>
+                        <input type="number" class="rec-filter-input" id="recFilterScoreMin" placeholder="Min" style="width: 50%;" oninput="applyTableFilters()">
+                      </th>
+                      <th>
+                        <select class="rec-filter-select" id="recFilterSource" onchange="applyTableFilters()">
+                          <option value="">All</option>
+                          <option value="custom">Custom</option>
+                          <option value="generated">AI</option>
+                        </select>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="recTableBody">
+                    <!-- Table rows populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+              <!-- Active Filters Display -->
+              <div id="recActiveFilters" class="rec-active-filters" style="display: none;">
+                <span class="rec-active-filters__label">Active filters:</span>
+                <div id="recActiveFilterChips" class="rec-active-filters__chips">
+                  <!-- Filter chips populated by JS -->
+                </div>
+                <button class="btn btn--ghost btn--sm" onclick="clearAllTableFilters()">Clear All</button>
+              </div>
             </div>
           </div>
 
@@ -2409,6 +2595,239 @@
                 <button type="submit" class="btn btn--danger" id="dismissRecSubmitBtn">Dismiss</button>
               </div>
             </form>
+          </div>
+        </div>
+
+        <!-- Bulk Edit Status Modal -->
+        <div class="modal" id="bulkEditStatusModal">
+          <div class="modal__overlay" onclick="closeBulkEditStatusModal()"></div>
+          <div class="modal__container" style="max-width: 420px;">
+            <div class="modal__header">
+              <h2 class="modal__title">Edit Status</h2>
+              <button class="modal__close" onclick="closeBulkEditStatusModal()">&times;</button>
+            </div>
+            <div class="modal__body">
+              <p class="text-secondary mb-3">Change status for <strong id="bulkStatusCount">0</strong> selected recommendations</p>
+              <div class="form-group">
+                <label class="form-label" for="bulkStatusSelect">New Status</label>
+                <select id="bulkStatusSelect" class="form-select">
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button type="button" class="btn btn--ghost" onclick="closeBulkEditStatusModal()">Cancel</button>
+              <button type="button" class="btn btn--primary" onclick="applyBulkStatusChange()">Apply Changes</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bulk Edit Priority Modal -->
+        <div class="modal" id="bulkEditPriorityModal">
+          <div class="modal__overlay" onclick="closeBulkEditPriorityModal()"></div>
+          <div class="modal__container" style="max-width: 420px;">
+            <div class="modal__header">
+              <h2 class="modal__title">Edit Priority</h2>
+              <button class="modal__close" onclick="closeBulkEditPriorityModal()">&times;</button>
+            </div>
+            <div class="modal__body">
+              <p class="text-secondary mb-3">Change priority for <strong id="bulkPriorityCount">0</strong> selected recommendations</p>
+              <div class="form-group">
+                <label class="form-label" for="bulkPrioritySelect">New Priority</label>
+                <select id="bulkPrioritySelect" class="form-select">
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button type="button" class="btn btn--ghost" onclick="closeBulkEditPriorityModal()">Cancel</button>
+              <button type="button" class="btn btn--primary" onclick="applyBulkPriorityChange()">Apply Changes</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bulk Edit Tools Modal -->
+        <div class="modal" id="bulkEditToolsModal">
+          <div class="modal__overlay" onclick="closeBulkEditToolsModal()"></div>
+          <div class="modal__container" style="max-width: 480px;">
+            <div class="modal__header">
+              <h2 class="modal__title">Edit Tools</h2>
+              <button class="modal__close" onclick="closeBulkEditToolsModal()">&times;</button>
+            </div>
+            <div class="modal__body">
+              <p class="text-secondary mb-3">Set tools for <strong id="bulkToolsCount">0</strong> selected recommendations</p>
+              <div class="form-group">
+                <label class="form-label">Select Tools</label>
+                <p class="text-secondary text-sm mb-2">Selected tools will replace any existing tools on these recommendations</p>
+                <div class="tools-multiselect" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkTools" value="Targetprocess">
+                    <span class="checkbox-chip__label">Targetprocess</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkTools" value="Costing">
+                    <span class="checkbox-chip__label">Costing</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkTools" value="Planning">
+                    <span class="checkbox-chip__label">Planning</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkTools" value="Cloudability">
+                    <span class="checkbox-chip__label">Cloudability</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button type="button" class="btn btn--ghost" onclick="closeBulkEditToolsModal()">Cancel</button>
+              <button type="button" class="btn btn--primary" onclick="applyBulkToolsChange()">Apply Changes</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bulk Send to Roadmap Modal -->
+        <div class="modal" id="bulkSendToRoadmapModal">
+          <div class="modal__overlay" onclick="closeBulkSendToRoadmapModal()"></div>
+          <div class="modal__container" style="max-width: 600px;">
+            <div class="modal__header">
+              <h2 class="modal__title">Add to Roadmap</h2>
+              <button class="modal__close" onclick="closeBulkSendToRoadmapModal()">&times;</button>
+            </div>
+            <div class="modal__body">
+              <p class="text-secondary mb-3">Add <strong id="bulkRoadmapCount">0</strong> recommendations to the roadmap</p>
+
+              <div class="form-group">
+                <label class="form-label">Selected Items</label>
+                <div id="bulkRoadmapItemsList" class="bulk-items-list" style="max-height: 180px; overflow-y: auto; border: 1px solid var(--cds-border-subtle-01); border-radius: 6px; padding: 8px;">
+                  <!-- Items populated by JS -->
+                </div>
+              </div>
+
+              <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                  <label class="form-label" for="bulkRoadmapQuarter">Target Quarter</label>
+                  <select id="bulkRoadmapQuarter" class="form-select">
+                    <option value="Q1">Q1</option>
+                    <option value="Q2">Q2</option>
+                    <option value="Q3">Q3</option>
+                    <option value="Q4">Q4</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="bulkRoadmapYear">Year</label>
+                  <select id="bulkRoadmapYear" class="form-select">
+                    <!-- Options populated by JS -->
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Tools</label>
+                <div class="tools-multiselect" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkRoadmapTools" value="Targetprocess">
+                    <span class="checkbox-chip__label">Targetprocess</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkRoadmapTools" value="Costing">
+                    <span class="checkbox-chip__label">Costing</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkRoadmapTools" value="Planning">
+                    <span class="checkbox-chip__label">Planning</span>
+                  </label>
+                  <label class="checkbox-chip">
+                    <input type="checkbox" name="bulkRoadmapTools" value="Cloudability">
+                    <span class="checkbox-chip__label">Cloudability</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button type="button" class="btn btn--ghost" onclick="closeBulkSendToRoadmapModal()">Cancel</button>
+              <button type="button" class="btn btn--primary" id="bulkRoadmapSubmitBtn" onclick="handleBulkSendToRoadmap()">Add to Roadmap</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Import Recommendations Modal -->
+        <div class="modal" id="recImportModal">
+          <div class="modal__overlay" onclick="closeRecImportModal()"></div>
+          <div class="modal__container" style="max-width: 800px;">
+            <div class="modal__header">
+              <h2 class="modal__title">Import Recommendations</h2>
+              <button class="modal__close" onclick="closeRecImportModal()">&times;</button>
+            </div>
+            <div class="modal__body">
+              <div id="recImportStatus" class="rec-import-status">
+                <div class="rec-import-status__icon">
+                  <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor"><path d="M11 7a1 1 0 00-1 1v7.59l-2.29-2.3a1 1 0 00-1.42 1.42l4 4a1 1 0 001.42 0l4-4a1 1 0 00-1.42-1.42L12 15.59V8a1 1 0 00-1-1z"/><path d="M23 22H9a1 1 0 000 2h14a1 1 0 000-2z"/></svg>
+                </div>
+                <div class="rec-import-status__text">
+                  <strong id="recImportFileName">No file selected</strong>
+                  <span id="recImportRowCount"></span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Preview (first 10 rows)</label>
+                <div class="rec-import-preview-wrapper">
+                  <table class="rec-import-preview-table" id="recImportPreviewTable">
+                    <thead>
+                      <tr id="recImportPreviewHeader">
+                        <!-- Headers populated by JS -->
+                      </tr>
+                    </thead>
+                    <tbody id="recImportPreviewBody">
+                      <!-- Preview rows populated by JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="rec-import-options">
+                <div class="form-group">
+                  <label class="form-label">Import Mode</label>
+                  <div class="rec-import-mode-options">
+                    <label class="radio-option">
+                      <input type="radio" name="recImportMode" value="create" checked>
+                      <span class="radio-option__label">
+                        <strong>Create new recommendations</strong>
+                        <span class="text-secondary">All rows will be added as new recommendations</span>
+                      </span>
+                    </label>
+                    <label class="radio-option">
+                      <input type="radio" name="recImportMode" value="upsert">
+                      <span class="radio-option__label">
+                        <strong>Update existing or create new</strong>
+                        <span class="text-secondary">Match by title - update if exists, create if new</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div id="recImportErrors" class="rec-import-errors" style="display: none;">
+                <div class="rec-import-errors__header">
+                  <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-1.1 6h2.2v11h-2.2V8zM16 25c-.8 0-1.5-.7-1.5-1.5S15.2 22 16 22s1.5.7 1.5 1.5S16.8 25 16 25z"/></svg>
+                  <span>Validation Issues</span>
+                </div>
+                <ul id="recImportErrorsList">
+                  <!-- Error messages populated by JS -->
+                </ul>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button type="button" class="btn btn--ghost" onclick="closeRecImportModal()">Cancel</button>
+              <button type="button" class="btn btn--primary" id="recImportSubmitBtn" onclick="executeRecImport()" disabled>
+                Import <span id="recImportSubmitCount">0</span> Recommendations
+              </button>
+            </div>
           </div>
         </div>
 
