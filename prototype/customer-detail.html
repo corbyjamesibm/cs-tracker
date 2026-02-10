@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Customer Detail - CS Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=32">
+  <link rel="stylesheet" href="css/styles.css?v=35">
   <link rel="stylesheet" href="css/chat.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0/dist/chartjs-chart-sankey.min.js"></script>
@@ -175,66 +175,7 @@
         display: none;
       }
     }
-    /* Recommendation Cards */
-    .recommendation-card {
-      background: var(--cds-layer-02);
-      border: 1px solid var(--cds-border-subtle-01);
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-      transition: box-shadow 0.2s ease;
-    }
-    .recommendation-card:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    .recommendation-card.accepted {
-      opacity: 0.6;
-      background: var(--cds-layer-01);
-    }
-    .recommendation-card__header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 8px;
-    }
-    .recommendation-card__priority {
-      background: var(--cds-interactive);
-      color: white;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .recommendation-card__title {
-      font-weight: 600;
-      font-size: 15px;
-      margin-bottom: 4px;
-    }
-    .recommendation-card__meta {
-      display: flex;
-      gap: 12px;
-      font-size: 13px;
-      color: var(--cds-text-secondary);
-      margin-bottom: 12px;
-    }
-    .recommendation-card__description {
-      font-size: 14px;
-      color: var(--cds-text-secondary);
-      margin-bottom: 12px;
-    }
-    .recommendation-card__footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .recommendation-card__improvement {
-      font-size: 12px;
-      color: var(--cds-support-success);
-    }
-    .recommendation-card__actions {
-      display: flex;
-      gap: 8px;
-    }
+    /* Recommendation Cards - styles moved to styles.css */
     .weak-dimension-chip {
       display: inline-flex;
       align-items: center;
@@ -418,6 +359,12 @@
           <a href="reports.html" class="side-nav__link">
             <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
             <span>Reports</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="assessment-builder.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M26 2H6a2 2 0 00-2 2v24a2 2 0 002 2h14l8-8V4a2 2 0 00-2-2zm0 2v14h-6a2 2 0 00-2 2v6H6V4zM20 24v3.17L25.17 22H22a2 2 0 00-2 2z"/></svg>
+            <span>Assessment Builder</span>
           </a>
         </li>
         <li class="side-nav__item">
@@ -1799,6 +1746,10 @@
                     <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
                     Dismiss
                   </button>
+                  <button class="btn btn--ghost btn--sm" onclick="bulkDeleteRecommendations()" style="color: var(--cds-support-error);">
+                    <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M12 12h2v12h-2zM18 12h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/></svg>
+                    Delete
+                  </button>
                 </div>
               </div>
 
@@ -1839,6 +1790,7 @@
                           <span class="rec-sort-icon" data-sort-key="category"></span>
                         </span>
                       </th>
+                      <th style="width: 80px;">Framework</th>
                       <th class="rec-th-sortable" data-sort-key="score" style="width: 80px;" onclick="sortRecTable('score')">
                         <span class="rec-th-content">
                           Score
@@ -1885,6 +1837,14 @@
                       </th>
                       <th>
                         <input type="text" class="rec-filter-input" id="recFilterCategory" placeholder="Filter..." oninput="applyTableFilters()">
+                      </th>
+                      <th>
+                        <select class="rec-filter-select" id="recFilterFramework" onchange="applyTableFilters()">
+                          <option value="">All</option>
+                          <option value="spm">SPM</option>
+                          <option value="tbm">TBM</option>
+                          <option value="finops">FinOps</option>
+                        </select>
                       </th>
                       <th>
                         <input type="number" class="rec-filter-input" id="recFilterScoreMin" placeholder="Min" style="width: 50%;" oninput="applyTableFilters()">
@@ -3889,6 +3849,19 @@
             </svg>
             Excel
           </button>
+          <button class="btn btn--secondary btn--sm" onclick="exportAssessmentFillablePdf()" title="Export Fillable PDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 4px;">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM6 20V4h7v5h5v11H6zm2-6h8v2H8v-2zm0-3h8v2H8v-2zm0 6h5v2H8v-2z"/>
+            </svg>
+            Fillable PDF
+          </button>
+          <button class="btn btn--secondary btn--sm" onclick="document.getElementById('pdfImportInput').click()" title="Import Filled PDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 4px;">
+              <path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/>
+            </svg>
+            Import PDF
+          </button>
+          <input type="file" id="pdfImportInput" accept=".pdf" style="display:none" onchange="handlePdfImport(event)">
           <button class="btn btn--secondary btn--sm" onclick="printAssessmentReport()" title="Print / Save as PDF">
             <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor" style="margin-right: 4px;">
               <path d="M28 9h-4V5H8v4H4a2 2 0 00-2 2v10a2 2 0 002 2h4v4h16v-4h4a2 2 0 002-2V11a2 2 0 00-2-2zM10 7h12v2H10zm12 18H10v-6h12zm4-8h-2v-2h2z"/>
@@ -3954,6 +3927,6 @@
   <script src="js/api.js?v=16"></script>
   <script src="js/chat.js?v=1"></script>
   <script src="js/table-sort.js?v=1"></script>
-  <script src="js/customer-detail.js?v=52"></script>
+  <script src="js/customer-detail.js?v=65"></script>
 </body>
 </html>

@@ -1279,7 +1279,8 @@ function getPreciseDatePositioning(startDate, endDate, startQuarter, endQuarter,
         // Single quarter: width is end% - start%
         const width = endOffset - startOffset;
         if (width < 90 && width > 0) {
-            styles += ` width: ${(width * 0.95).toFixed(1)}%;`;
+            const clampedWidth = Math.max(width * 0.95, 30); // Min 30% of quarter cell
+            styles += ` width: ${clampedWidth.toFixed(1)}%;`;
         }
     }
 
@@ -1313,7 +1314,10 @@ function calculateDateForSubQuarter(quarterStr, subQuarter) {
 function calculateDateFromPixelPosition(pixelX, containerRect, quarters) {
     const categoryColWidth = 150;
     const quarterWidth = getQuarterColumnWidth();
-    const relativeX = pixelX - containerRect.left - categoryColWidth;
+    // Account for horizontal scroll offset of the scrollable parent
+    const scrollContainer = document.getElementById('roadmapItemsContainer')?.closest('[style*="overflow-x"]');
+    const scrollLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+    const relativeX = pixelX - containerRect.left - categoryColWidth + scrollLeft;
 
     // Find which quarter and position within it
     const quarterIndex = Math.floor(relativeX / quarterWidth);
@@ -1522,6 +1526,21 @@ function renderRoadmapItems(items, quarters) {
 
     // Draw dependency lines after a short delay to ensure DOM is rendered
     setTimeout(() => drawDependencyLines(items), 100);
+
+    // Attach scroll listener to redraw dependency lines when scrolling horizontally
+    const scrollParent = container.closest('[style*="overflow-x"]');
+    if (scrollParent) {
+        // Remove previous handler if any
+        if (scrollParent._depLineHandler) {
+            scrollParent.removeEventListener('scroll', scrollParent._depLineHandler);
+        }
+        let scrollTimer = null;
+        scrollParent._depLineHandler = () => {
+            if (scrollTimer) clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => drawDependencyLines(items), 50);
+        };
+        scrollParent.addEventListener('scroll', scrollParent._depLineHandler);
+    }
 }
 
 // State for anchor drag editing
@@ -2110,12 +2129,15 @@ async function saveAnchorConfiguration(dependentItemId, prereqItemId, editingEnd
         anchors[depKey] = { from_anchor: 'right', to_anchor: 'left' };
     }
 
-    const oldAnchor = editingEnd === 'from' ? anchors[depKey].from_anchor : anchors[depKey].to_anchor;
+    // Note: stored from_anchor/to_anchor refer to prereq→dependent direction,
+    // but display swaps them (fromAnchor=to_anchor, toAnchor=from_anchor).
+    // So 'from' in editingEnd (display) maps to to_anchor in storage, and vice versa.
+    const oldAnchor = editingEnd === 'from' ? anchors[depKey].to_anchor : anchors[depKey].from_anchor;
 
     if (editingEnd === 'from') {
-        anchors[depKey].from_anchor = newAnchor;
-    } else {
         anchors[depKey].to_anchor = newAnchor;
+    } else {
+        anchors[depKey].from_anchor = newAnchor;
     }
 
     // Save to API
@@ -6876,7 +6898,7 @@ function renderAssessmentHistory(assessments) {
     const thead = document.getElementById('assessmentHistoryTableHead');
 
     if (!assessments || assessments.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-secondary">No assessment history</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-secondary">No assessment history</td></tr>';
         return;
     }
 
@@ -8481,6 +8503,7 @@ window.closeBrowserWarningModal = closeBrowserWarningModal;
 
 // Store recommendations data
 let recommendationsCache = [];
+let expandedRecIds = new Set();
 
 /**
  * Load recommendations for the customer
@@ -8547,56 +8570,196 @@ async function loadRecommendations(customerId) {
 }
 
 /**
- * Render a single recommendation card
+ * Render a single recommendation card (expandable)
  */
 function renderRecommendationCard(rec) {
     const priorityScore = Math.round(rec.priority_score);
     const isAccepted = rec.is_accepted;
+    const isExpanded = expandedRecIds.has(rec.id);
 
     // Build tools display
     const toolsHtml = rec.tools && rec.tools.length > 0
         ? rec.tools.map(t => `<span class="tag tag--outline">${escapeHtml(t)}</span>`).join('')
         : '';
 
+    const descText = rec.description || '';
+    const descClass = descText ? '' : ' recommendation-card__description--empty';
+    const descDisplay = descText ? escapeHtml(descText) : 'Click to add description...';
+
     return `
-        <div class="recommendation-card ${isAccepted ? 'accepted' : ''}" data-rec-id="${rec.id}">
-            <div class="recommendation-card__header">
-                <div>
-                    <div class="recommendation-card__title">${escapeHtml(rec.title)}</div>
-                    <div class="recommendation-card__meta">
-                        ${rec.category ? `<span class="tag tag--purple">${escapeHtml(rec.category)}</span>` : ''}
-                        ${rec.solution_area ? `<span class="tag tag--blue">${escapeHtml(rec.solution_area)}</span>` : ''}
-                        ${rec.tp_feature_name ? `<span>TP: ${escapeHtml(rec.tp_feature_name)}</span>` : ''}
-                        ${toolsHtml}
+        <div class="recommendation-card ${isAccepted ? 'accepted' : ''} ${isExpanded ? 'recommendation-card--expanded' : ''}" data-rec-id="${rec.id}">
+            <div class="recommendation-card__header" onclick="toggleRecCard(${rec.id})">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span class="recommendation-card__title">${escapeHtml(rec.title)}</span>
+                        <div class="recommendation-card__meta">
+                            ${rec.category ? `<span class="tag tag--purple">${escapeHtml(rec.category)}</span>` : ''}
+                            ${rec.solution_area ? `<span class="tag tag--blue">${escapeHtml(rec.solution_area)}</span>` : ''}
+                            ${toolsHtml}
+                        </div>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <button class="btn btn--ghost btn--small" onclick="openEditRecommendationGeneratedModal(${rec.id})" title="Edit recommendation">
-                        <svg width="16" height="16" viewBox="0 0 32 32"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
-                    </button>
+                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
                     <span class="recommendation-card__priority">Score: ${priorityScore}</span>
+                    <button class="recommendation-card__toggle" onclick="event.stopPropagation(); toggleRecCard(${rec.id})" title="Expand/collapse">
+                        <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M16 22L6 12l1.4-1.4L16 19.2l8.6-8.6L26 12z"/></svg>
+                    </button>
                 </div>
             </div>
-            <div class="recommendation-card__description">${escapeHtml(rec.description || '')}</div>
-            <div class="recommendation-card__footer">
-                <span class="recommendation-card__improvement">
-                    Potential improvement: +${rec.improvement_potential.toFixed(1)} in ${escapeHtml(rec.dimension_name)}
-                </span>
-                <div class="recommendation-card__actions">
-                    ${isAccepted ? `
-                        <span class="tag tag--green">Added to Roadmap</span>
-                    ` : `
-                        <button class="btn btn--ghost btn--small" onclick="dismissRecommendation(${rec.id})" title="Dismiss">
-                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+            <div class="recommendation-card__body">
+                <div class="recommendation-card__description${descClass}" id="recDesc-${rec.id}" onclick="event.stopPropagation(); startRecDescEdit(${rec.id})">${descDisplay}</div>
+                <div class="recommendation-card__detail-row">
+                    ${rec.dimension_name ? `<span><span class="recommendation-card__detail-label">Dimension:</span> ${escapeHtml(rec.dimension_name)}</span>` : ''}
+                    ${rec.improvement_potential ? `<span><span class="recommendation-card__detail-label">Improvement:</span> +${rec.improvement_potential.toFixed(1)}</span>` : ''}
+                    ${rec.tp_feature_name ? `<span><span class="recommendation-card__detail-label">TP Feature:</span> ${escapeHtml(rec.tp_feature_name)}</span>` : ''}
+                </div>
+                <div class="recommendation-card__footer">
+                    <span class="recommendation-card__improvement">
+                        ${rec.improvement_potential ? `Potential improvement: +${rec.improvement_potential.toFixed(1)} in ${escapeHtml(rec.dimension_name)}` : ''}
+                    </span>
+                    <div class="recommendation-card__actions">
+                        <button class="btn btn--ghost btn--small" onclick="event.stopPropagation(); openEditRecommendationGeneratedModal(${rec.id})" title="Edit recommendation">
+                            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
                         </button>
-                        <button class="btn btn--primary btn--small" onclick="openAcceptRecommendationModal(${rec.id})">
-                            Add to Roadmap
-                        </button>
-                    `}
+                        ${isAccepted ? `
+                            <span class="tag tag--green">Added to Roadmap</span>
+                        ` : `
+                            <button class="btn btn--ghost btn--small" onclick="event.stopPropagation(); dismissRecommendation(${rec.id})" title="Dismiss">
+                                <svg width="16" height="16" viewBox="0 0 32 32"><path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"/></svg>
+                            </button>
+                            <button class="btn btn--primary btn--small" onclick="event.stopPropagation(); openAcceptRecommendationModal(${rec.id})">
+                                Add to Roadmap
+                            </button>
+                        `}
+                    </div>
                 </div>
             </div>
         </div>
     `;
+}
+
+/**
+ * Toggle expand/collapse for a recommendation card
+ */
+function toggleRecCard(recId) {
+    const card = document.querySelector(`#recommendationsList .recommendation-card[data-rec-id="${recId}"]`);
+    if (!card) return;
+
+    if (expandedRecIds.has(recId)) {
+        expandedRecIds.delete(recId);
+        card.classList.remove('recommendation-card--expanded');
+    } else {
+        expandedRecIds.add(recId);
+        card.classList.add('recommendation-card--expanded');
+    }
+}
+
+/**
+ * Start inline editing of recommendation description
+ */
+function startRecDescEdit(recId) {
+    const rec = recommendationsCache.find(r => r.id === recId);
+    if (!rec) return;
+
+    const descEl = document.getElementById(`recDesc-${recId}`);
+    if (!descEl || descEl.tagName === 'TEXTAREA') return;
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'recommendation-card__edit-textarea';
+    textarea.value = rec.description || '';
+    textarea.placeholder = 'Enter description...';
+
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            saveRecDesc(recId, textarea.value);
+        }
+        if (e.key === 'Escape') {
+            cancelRecDescEdit(recId);
+        }
+    });
+
+    textarea.addEventListener('blur', () => {
+        // Small delay to allow Escape to cancel first
+        setTimeout(() => {
+            if (document.getElementById(`recDescEdit-${recId}`)) {
+                saveRecDesc(recId, textarea.value);
+            }
+        }, 150);
+    });
+
+    textarea.id = `recDescEdit-${recId}`;
+    descEl.replaceWith(textarea);
+    textarea.focus();
+}
+
+/**
+ * Save inline description edit via PATCH API
+ */
+async function saveRecDesc(recId, newDesc) {
+    const textarea = document.getElementById(`recDescEdit-${recId}`);
+    const rec = recommendationsCache.find(r => r.id === recId);
+    if (!rec) return;
+
+    // No change? Just cancel
+    if (newDesc.trim() === (rec.description || '').trim()) {
+        cancelRecDescEdit(recId);
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/recommendations/${recId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: newDesc.trim() })
+        });
+
+        if (!response.ok) throw new Error('Failed to update description');
+
+        // Update cache
+        rec.description = newDesc.trim();
+        showToast('Description updated', 'success');
+    } catch (error) {
+        console.error('Failed to save description:', error);
+        showToast('Failed to save description', 'error');
+    }
+
+    // Re-render the card in place
+    const card = document.querySelector(`#recommendationsList .recommendation-card[data-rec-id="${recId}"]`);
+    if (card) {
+        // Ensure it stays expanded
+        expandedRecIds.add(recId);
+        card.outerHTML = renderRecommendationCard(rec);
+    }
+
+    // Also refresh the table view and All tab if visible
+    if (typeof renderRecommendationsTable === 'function') {
+        renderRecommendationsTable();
+    }
+    if (typeof renderAllRecommendations === 'function') {
+        renderAllRecommendations();
+    }
+}
+
+/**
+ * Cancel inline description edit
+ */
+function cancelRecDescEdit(recId) {
+    const textarea = document.getElementById(`recDescEdit-${recId}`);
+    if (!textarea) return;
+
+    const rec = recommendationsCache.find(r => r.id === recId);
+    const descText = rec?.description || '';
+    const descClass = descText ? '' : ' recommendation-card__description--empty';
+    const descDisplay = descText ? escapeHtml(descText) : 'Click to add description...';
+
+    const descDiv = document.createElement('div');
+    descDiv.className = `recommendation-card__description${descClass}`;
+    descDiv.id = `recDesc-${recId}`;
+    descDiv.onclick = (e) => { e.stopPropagation(); startRecDescEdit(recId); };
+    descDiv.innerHTML = descDisplay;
+
+    textarea.replaceWith(descDiv);
 }
 
 /**
@@ -10416,10 +10579,64 @@ function printAssessmentReport() {
     };
 }
 
+/**
+ * Export assessment as fillable PDF
+ */
+function exportAssessmentFillablePdf() {
+    if (!currentReportAssessmentId) return;
+    window.open(`${API_BASE_URL}/assessments/${currentReportAssessmentId}/export/fillable-pdf`, '_blank');
+}
+
+/**
+ * Handle PDF import from file input
+ */
+async function handlePdfImport(event) {
+    const file = event.target.files[0];
+    if (!file || !currentReportAssessmentId) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/assessments/${currentReportAssessmentId}/import/fillable-pdf`,
+            {
+                method: 'POST',
+                body: formData,
+                headers: window.Auth && window.Auth.getToken()
+                    ? { 'Authorization': `Bearer ${window.Auth.getToken()}` }
+                    : {}
+            }
+        );
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Import failed');
+        }
+
+        const result = await response.json();
+        showToast(
+            `PDF imported successfully. ${result.questions_updated} questions updated. Overall score: ${result.overall_score?.toFixed(1) || 'N/A'}`,
+            'success'
+        );
+
+        // Refresh the report view
+        openAssessmentReport(currentReportAssessmentId);
+    } catch (error) {
+        console.error('PDF import failed:', error);
+        showToast(`PDF import failed: ${error.message}`, 'error');
+    }
+
+    // Reset file input
+    event.target.value = '';
+}
+
 // Export report functions
 window.openAssessmentReport = openAssessmentReport;
 window.closeAssessmentReportModal = closeAssessmentReportModal;
 window.exportAssessmentExcel = exportAssessmentExcel;
+window.exportAssessmentFillablePdf = exportAssessmentFillablePdf;
+window.handlePdfImport = handlePdfImport;
 window.printAssessmentReport = printAssessmentReport;
 
 
@@ -12071,6 +12288,7 @@ window.loadCustomRecommendations = loadCustomRecommendations;
 // State variables for table view
 let currentRecView = localStorage.getItem('recViewPreference') || 'cards';
 let selectedRecIds = new Set();
+let expandedTableRecIds = new Set();
 
 /**
  * Switch between cards and table view
@@ -12144,6 +12362,24 @@ function getAllFilteredRecommendations() {
 }
 
 /**
+ * Get the framework/assessment type code for a recommendation
+ */
+function getRecFrameworkCode(rec) {
+    // Custom recs have assessment_type directly
+    if (rec.assessment_type && rec.assessment_type.code) {
+        return rec.assessment_type.code;
+    }
+    // Generated recs: look up via customer_assessment_id
+    if (rec.customer_assessment_id && customerAssessments) {
+        const assessment = customerAssessments.find(a => a.id === rec.customer_assessment_id);
+        if (assessment && assessment.assessment_type) {
+            return assessment.assessment_type.code;
+        }
+    }
+    return '';
+}
+
+/**
  * Find a recommendation by ID across both sources
  */
 function findRecommendationById(recId, recType) {
@@ -12196,7 +12432,7 @@ function renderRecommendationsTable() {
     if (allRecs.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="rec-table-empty">
+                <td colspan="9" class="rec-table-empty">
                     <svg width="32" height="32" viewBox="0 0 32 32" fill="currentColor">
                         <path d="M30 28.59L22.45 21a11 11 0 10-1.45 1.45L28.59 30zM5 14a9 9 0 119 9 9 9 0 01-9-9z"/>
                     </svg>
@@ -12279,6 +12515,13 @@ function renderRecommendationRow(rec) {
     // Score
     const score = rec.priority_score ? Math.round(rec.priority_score) : '-';
 
+    // Framework (assessment type)
+    const framework = getRecFrameworkCode(rec);
+    const frameworkLabels = { spm: 'SPM', tbm: 'TBM', finops: 'FinOps' };
+    const frameworkColors = { spm: '#0f62fe', tbm: '#198038', finops: '#8a3ffc' };
+    const frameworkLabel = frameworkLabels[framework] || '-';
+    const frameworkColor = frameworkColors[framework] || 'var(--cds-text-secondary)';
+
     // Tools
     const tools = rec.tools || [];
     const toolsHtml = tools.length > 0
@@ -12296,8 +12539,28 @@ function renderRecommendationRow(rec) {
     // Can be added to roadmap?
     const canAddToRoadmap = (isCustom && status === 'open') || (isGenerated && !rec.is_accepted && !rec.is_dismissed);
 
+    const isTableExpanded = expandedTableRecIds.has(recIdKey);
+
+    // Build detail row metadata
+    let detailMeta = '';
+    if (isGenerated) {
+        const metaParts = [];
+        if (rec.dimension_name) metaParts.push(`<span><span class="rec-row-detail__meta-label">Dimension:</span> ${escapeHtml(rec.dimension_name)}</span>`);
+        const impVal = rec.improvement_potential ? `+${rec.improvement_potential.toFixed(1)}` : '—';
+        metaParts.push(`<span><span class="rec-row-detail__meta-label">Improvement:</span> <span class="rec-row-detail__editable" onclick="startDetailFieldEdit('generated', ${rec.id}, 'improvement_potential', this)" title="Click to edit">${impVal} <svg class="rec-row-detail__edit-icon" width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg></span></span>`);
+        if (rec.tp_feature_name) metaParts.push(`<span><span class="rec-row-detail__meta-label">TP Feature:</span> ${escapeHtml(rec.tp_feature_name)}</span>`);
+        detailMeta = metaParts.join('');
+    } else if (isCustom) {
+        const metaParts = [];
+        if (rec.due_date) metaParts.push(`<span><span class="rec-row-detail__meta-label">Due:</span> ${formatDate(rec.due_date)}</span>`);
+        const impactVal = rec.expected_impact ? `+${rec.expected_impact.toFixed(1)} maturity` : '—';
+        metaParts.push(`<span><span class="rec-row-detail__meta-label">Expected Impact:</span> <span class="rec-row-detail__editable" onclick="startDetailFieldEdit('custom', ${rec.id}, 'expected_impact', this)" title="Click to edit">${impactVal} <svg class="rec-row-detail__edit-icon" width="12" height="12" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg></span></span>`);
+        if (rec.solution_area) metaParts.push(`<span><span class="rec-row-detail__meta-label">Solution Area:</span> ${escapeHtml(rec.solution_area)}</span>`);
+        detailMeta = metaParts.join('');
+    }
+
     return `
-        <tr class="${isSelected ? 'selected' : ''}" data-rec-id="${rec.id}" data-rec-type="${rec._type}">
+        <tr class="rec-row-expandable ${isSelected ? 'selected' : ''} ${isTableExpanded ? 'rec-row--expanded' : ''}" data-rec-id="${rec.id}" data-rec-type="${rec._type}">
             <td>
                 <label class="rec-table-checkbox">
                     <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleRecSelection('${rec._type}', ${rec.id}, this.checked)">
@@ -12305,11 +12568,17 @@ function renderRecommendationRow(rec) {
                 </label>
             </td>
             <td>
-                <div class="rec-table-cell-editable" onclick="startInlineEditTitle('${rec._type}', ${rec.id}, this)">
-                    <div class="rec-title-cell">
-                        ${sourceBadge}
-                        <span class="rec-title-cell__text">${escapeHtml(rec.title)}</span>
-                        <svg class="rec-title-cell__edit-icon" width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                <div style="display: flex; align-items: flex-start; gap: 6px;">
+                    <button class="rec-row-toggle" onclick="event.stopPropagation(); toggleTableRow('${rec._type}', ${rec.id})" title="Expand/collapse details">
+                        <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M12 8l10 8-10 8z"/></svg>
+                    </button>
+                    <div class="rec-table-cell-editable" onclick="startInlineEditTitle('${rec._type}', ${rec.id}, this)" style="flex: 1; min-width: 0;">
+                        <div class="rec-title-cell">
+                            ${sourceBadge}
+                            <span class="rec-title-cell__text">${escapeHtml(rec.title)}</span>
+                            <svg class="rec-title-cell__edit-icon" width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                        </div>
+                        ${rec.description ? `<div class="rec-title-cell__desc">${escapeHtml(rec.description).substring(0, 120)}${rec.description.length > 120 ? '...' : ''}</div>` : ''}
                     </div>
                 </div>
             </td>
@@ -12337,7 +12606,10 @@ function renderRecommendationRow(rec) {
                 ${category ? `<span class="rec-table-category">${escapeHtml(category)}</span>` : '-'}
             </td>
             <td>
-                <span class="rec-table-score">${score}</span>
+                ${framework ? `<span style="font-size: 11px; font-weight: 600; color: ${frameworkColor};">${frameworkLabel}</span>` : '-'}
+            </td>
+            <td>
+                <span class="rec-table-score rec-row-detail__editable" onclick="startDetailFieldEdit('${rec._type}', ${rec.id}, 'priority_score', this)" title="Click to edit score">${score}</span>
             </td>
             <td>
                 <div class="rec-table-actions">
@@ -12353,10 +12625,173 @@ function renderRecommendationRow(rec) {
                     <button class="btn btn--ghost btn--sm" onclick="${isCustom ? `editCustomRecommendation(${rec.id})` : `openEditRecommendationGeneratedModal(${rec.id})`}" title="Edit">
                         <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
                     </button>
+                    <button class="btn btn--ghost btn--sm rec-delete-btn" onclick="deleteRecommendation('${rec._type}', ${rec.id})" title="Delete">
+                        <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M12 12h2v12h-2zM18 12h2v12h-2z"/><path d="M4 6v2h2v20a2 2 0 002 2h16a2 2 0 002-2V8h2V6zm4 22V8h16v20zm4-26h8v2h-8z"/></svg>
+                    </button>
+                </div>
+            </td>
+        </tr>
+        <tr class="rec-row-detail ${isTableExpanded ? 'visible' : ''}" data-detail-for="${recIdKey}">
+            <td colspan="9">
+                <div class="rec-row-detail__content">
+                    <div class="rec-row-detail__desc rec-row-detail__desc--editable" onclick="startDetailDescEdit('${rec._type}', ${rec.id})" title="Click to edit description">
+                        ${rec.description ? escapeHtml(rec.description) : '<span style="color: var(--cds-text-secondary); font-style: italic;">Click to add description...</span>'}
+                        <svg class="rec-row-detail__edit-icon" width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>
+                    </div>
+                    ${detailMeta ? `<div class="rec-row-detail__meta">${detailMeta}</div>` : ''}
                 </div>
             </td>
         </tr>
     `;
+}
+
+/**
+ * Toggle expand/collapse for a table row detail
+ */
+function toggleTableRow(recType, recId) {
+    const key = `${recType}-${recId}`;
+    const dataRow = document.querySelector(`#recTableBody tr.rec-row-expandable[data-rec-id="${recId}"][data-rec-type="${recType}"]`);
+    const detailRow = document.querySelector(`#recTableBody tr.rec-row-detail[data-detail-for="${key}"]`);
+    if (!dataRow || !detailRow) return;
+
+    if (expandedTableRecIds.has(key)) {
+        expandedTableRecIds.delete(key);
+        dataRow.classList.remove('rec-row--expanded');
+        detailRow.classList.remove('visible');
+    } else {
+        expandedTableRecIds.add(key);
+        dataRow.classList.add('rec-row--expanded');
+        detailRow.classList.add('visible');
+    }
+}
+
+// ============================================================
+// DETAIL ROW INLINE EDITING
+// ============================================================
+
+/**
+ * Start inline editing for description in detail row
+ */
+function startDetailDescEdit(recType, recId) {
+    const key = `${recType}-${recId}`;
+    const detailRow = document.querySelector(`tr.rec-row-detail[data-detail-for="${key}"]`);
+    if (!detailRow) return;
+
+    const descDiv = detailRow.querySelector('.rec-row-detail__desc');
+    if (!descDiv || descDiv.querySelector('textarea')) return;
+
+    const rec = findRecommendationById(recId, recType);
+    if (!rec) return;
+
+    const currentDesc = rec.description || '';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'rec-row-detail__edit-textarea';
+    textarea.value = currentDesc;
+    textarea.placeholder = 'Enter description...';
+
+    descDiv.innerHTML = '';
+    descDiv.classList.remove('rec-row-detail__desc--editable');
+    descDiv.appendChild(textarea);
+    textarea.focus();
+
+    let saved = false;
+
+    const saveDesc = async () => {
+        if (saved) return;
+        saved = true;
+        const newDesc = textarea.value.trim();
+        if (newDesc !== currentDesc) {
+            await updateRecField(recType, recId, 'description', newDesc);
+        } else {
+            cancelDetailDescEdit(recType, recId, currentDesc);
+        }
+    };
+
+    textarea.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            await saveDesc();
+        } else if (e.key === 'Escape') {
+            saved = true;
+            cancelDetailDescEdit(recType, recId, currentDesc);
+        }
+    });
+
+    textarea.addEventListener('blur', () => {
+        setTimeout(saveDesc, 150);
+    });
+}
+
+/**
+ * Cancel description edit and restore original content
+ */
+function cancelDetailDescEdit(recType, recId, originalDesc) {
+    const key = `${recType}-${recId}`;
+    const detailRow = document.querySelector(`tr.rec-row-detail[data-detail-for="${key}"]`);
+    if (!detailRow) return;
+
+    const descDiv = detailRow.querySelector('.rec-row-detail__desc');
+    if (!descDiv) return;
+
+    descDiv.classList.add('rec-row-detail__desc--editable');
+    descDiv.setAttribute('onclick', `startDetailDescEdit('${recType}', ${recId})`);
+    descDiv.innerHTML = originalDesc
+        ? escapeHtml(originalDesc)
+        : '<span style="color: var(--cds-text-secondary); font-style: italic;">Click to add description...</span>';
+    descDiv.innerHTML += '<svg class="rec-row-detail__edit-icon" width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M2 26h28v2H2zM25.4 9c.8-.8.8-2 0-2.8l-3.6-3.6c-.8-.8-2-.8-2.8 0l-15 15V24h6.4l15-15zm-5-5L24 7.6l-3 3L17.4 7l3-3zM6 22v-3.6l10-10 3.6 3.6-10 10H6z"/></svg>';
+}
+
+/**
+ * Start inline editing for a numeric field in detail row (impact values)
+ */
+function startDetailFieldEdit(recType, recId, field, spanEl) {
+    if (spanEl.querySelector('input')) return;
+
+    const rec = findRecommendationById(recId, recType);
+    if (!rec) return;
+
+    const currentValue = rec[field] || 0;
+    const originalHTML = spanEl.innerHTML;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.1';
+    input.min = '0';
+    input.className = 'rec-row-detail__edit-input';
+    input.value = currentValue;
+
+    spanEl.innerHTML = '';
+    spanEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    let saved = false;
+
+    const saveField = async () => {
+        if (saved) return;
+        saved = true;
+        const newValue = parseFloat(input.value);
+        if (!isNaN(newValue) && newValue !== currentValue) {
+            await updateRecField(recType, recId, field, newValue);
+        } else {
+            spanEl.innerHTML = originalHTML;
+        }
+    };
+
+    input.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            await saveField();
+        } else if (e.key === 'Escape') {
+            saved = true;
+            spanEl.innerHTML = originalHTML;
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(saveField, 150);
+    });
 }
 
 // ============================================================
@@ -12553,7 +12988,19 @@ function openToolsEditPopup(recType, recId, event) {
     if (existingPopup) existingPopup.remove();
 
     const currentTools = rec.tools || [];
-    const allTools = ['Targetprocess', 'Costing', 'Planning', 'Cloudability'];
+
+    // Build dynamic tools list from all recommendations + defaults
+    const defaultTools = ['Targetprocess', 'Costing', 'Planning', 'Cloudability'];
+    const allToolsSet = new Set(defaultTools);
+    const allRecs = getAllFilteredRecommendations();
+    allRecs.forEach(r => {
+        if (r.tools && Array.isArray(r.tools)) {
+            r.tools.forEach(t => allToolsSet.add(t));
+        }
+    });
+    // Also include current rec's tools (in case they aren't in filtered list)
+    currentTools.forEach(t => allToolsSet.add(t));
+    const allTools = Array.from(allToolsSet).sort((a, b) => a.localeCompare(b));
 
     const popup = document.createElement('div');
     popup.id = 'recToolsPopup';
@@ -12565,20 +13012,29 @@ function openToolsEditPopup(recType, recId, event) {
         border-radius: 8px;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
         padding: 12px;
-        min-width: 200px;
+        min-width: 220px;
+        max-height: 400px;
+        display: flex;
+        flex-direction: column;
     `;
 
     popup.innerHTML = `
         <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--cds-text-secondary);">Select Tools</div>
-        <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div id="recToolsCheckboxList" style="display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 220px; padding-right: 4px;">
             ${allTools.map(tool => `
                 <label class="checkbox-chip" style="width: 100%;">
-                    <input type="checkbox" name="popupTools" value="${tool}" ${currentTools.includes(tool) ? 'checked' : ''}>
-                    <span class="checkbox-chip__label" style="width: 100%; justify-content: flex-start;">${tool}</span>
+                    <input type="checkbox" name="popupTools" value="${escapeHtml(tool)}" ${currentTools.includes(tool) ? 'checked' : ''}>
+                    <span class="checkbox-chip__label" style="width: 100%; justify-content: flex-start;">${escapeHtml(tool)}</span>
                 </label>
             `).join('')}
         </div>
-        <div style="display: flex; gap: 8px; margin-top: 12px;">
+        <div style="display: flex; gap: 4px; margin-top: 10px; align-items: center;">
+            <input type="text" id="recToolsNewInput" placeholder="Add new tool..." style="flex: 1; padding: 4px 8px; font-size: 12px; border: 1px solid var(--cds-border-subtle-01); border-radius: 4px; background: var(--cds-field-01, #fff); color: var(--cds-text-primary); outline: none;">
+            <button class="btn btn--ghost btn--sm" onclick="addNewToolToPopup()" style="padding: 4px 8px; white-space: nowrap;" title="Add tool">
+                <svg width="14" height="14" viewBox="0 0 32 32" fill="currentColor"><path d="M17 15V7h-2v8H7v2h8v8h2v-8h8v-2h-8z"/></svg>
+            </button>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
             <button class="btn btn--ghost btn--sm" onclick="closeToolsPopup()" style="flex: 1;">Cancel</button>
             <button class="btn btn--primary btn--sm" onclick="saveToolsFromPopup('${recType}', ${recId})" style="flex: 1;">Save</button>
         </div>
@@ -12586,9 +13042,18 @@ function openToolsEditPopup(recType, recId, event) {
 
     document.body.appendChild(popup);
 
+    // Handle Enter key in the new tool input
+    const newToolInput = popup.querySelector('#recToolsNewInput');
+    newToolInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addNewToolToPopup();
+        }
+    });
+
     // Position popup near the click
     const rect = event.target.getBoundingClientRect();
-    popup.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    popup.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
     popup.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - popup.offsetHeight - 10)}px`;
 
     // Close on outside click
@@ -12599,6 +13064,47 @@ function openToolsEditPopup(recType, recId, event) {
         }
     };
     setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+}
+
+/**
+ * Add a new tool to the tools popup checkbox list
+ */
+function addNewToolToPopup() {
+    const popup = document.getElementById('recToolsPopup');
+    if (!popup) return;
+
+    const input = popup.querySelector('#recToolsNewInput');
+    const toolName = input.value.trim();
+    if (!toolName) return;
+
+    // Check if tool already exists in the list
+    const existing = Array.from(popup.querySelectorAll('input[name="popupTools"]')).map(cb => cb.value.toLowerCase());
+    if (existing.includes(toolName.toLowerCase())) {
+        // Just check the existing one
+        const match = popup.querySelector(`input[name="popupTools"][value="${CSS.escape(toolName)}"]`) ||
+            Array.from(popup.querySelectorAll('input[name="popupTools"]')).find(cb => cb.value.toLowerCase() === toolName.toLowerCase());
+        if (match) match.checked = true;
+        input.value = '';
+        input.focus();
+        return;
+    }
+
+    // Add new checkbox to the list
+    const list = popup.querySelector('#recToolsCheckboxList');
+    const label = document.createElement('label');
+    label.className = 'checkbox-chip';
+    label.style.width = '100%';
+    label.innerHTML = `
+        <input type="checkbox" name="popupTools" value="${escapeHtml(toolName)}" checked>
+        <span class="checkbox-chip__label" style="width: 100%; justify-content: flex-start;">${escapeHtml(toolName)}</span>
+    `;
+    list.appendChild(label);
+
+    // Scroll to the new item
+    list.scrollTop = list.scrollHeight;
+
+    input.value = '';
+    input.focus();
 }
 
 /**
@@ -12985,6 +13491,83 @@ async function bulkDismissRecommendations() {
 }
 
 /**
+ * Delete a single recommendation
+ */
+async function deleteRecommendation(recType, recId) {
+    if (!confirm('Are you sure you want to delete this recommendation? This cannot be undone.')) {
+        return;
+    }
+
+    try {
+        let url;
+        if (recType === 'custom') {
+            url = `${API_BASE_URL}/assessments/recommendations/${recId}`;
+        } else {
+            url = `${API_BASE_URL}/recommendations/${recId}`;
+        }
+
+        const response = await fetch(url, { method: 'DELETE' });
+
+        if (response.ok) {
+            showToast('Recommendation deleted', 'success');
+            await refreshRecommendationsData();
+        } else {
+            const data = await response.json().catch(() => ({}));
+            showToast(data.detail || 'Failed to delete recommendation', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to delete recommendation:', error);
+        showToast('Failed to delete recommendation', 'error');
+    }
+}
+
+/**
+ * Bulk delete selected recommendations
+ */
+async function bulkDeleteRecommendations() {
+    if (!confirm(`Are you sure you want to delete ${selectedRecIds.size} recommendations? This cannot be undone.`)) {
+        return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    const operations = Array.from(selectedRecIds).map(async (key) => {
+        const [recType, recId] = key.split('-');
+        try {
+            let url;
+            if (recType === 'custom') {
+                url = `${API_BASE_URL}/assessments/recommendations/${recId}`;
+            } else {
+                url = `${API_BASE_URL}/recommendations/${recId}`;
+            }
+
+            const response = await fetch(url, { method: 'DELETE' });
+            if (response.ok) {
+                successCount++;
+            } else {
+                failCount++;
+            }
+        } catch (error) {
+            console.error('Failed to delete recommendation:', error);
+            failCount++;
+        }
+    });
+
+    await Promise.all(operations);
+
+    selectedRecIds.clear();
+    updateBulkActionBar();
+    await refreshRecommendationsData();
+
+    if (failCount === 0) {
+        showToast(`Deleted ${successCount} recommendations`, 'success');
+    } else {
+        showToast(`Deleted ${successCount}, failed ${failCount}`, 'warning');
+    }
+}
+
+/**
  * Refresh recommendations data and re-render table
  */
 async function refreshRecommendationsData() {
@@ -13013,6 +13596,7 @@ window.updateRecField = updateRecField;
 window.openToolsEditPopup = openToolsEditPopup;
 window.closeToolsPopup = closeToolsPopup;
 window.saveToolsFromPopup = saveToolsFromPopup;
+window.addNewToolToPopup = addNewToolToPopup;
 window.openBulkEditStatusModal = openBulkEditStatusModal;
 window.closeBulkEditStatusModal = closeBulkEditStatusModal;
 window.applyBulkStatusChange = applyBulkStatusChange;
@@ -13026,6 +13610,8 @@ window.openBulkSendToRoadmapModal = openBulkSendToRoadmapModal;
 window.closeBulkSendToRoadmapModal = closeBulkSendToRoadmapModal;
 window.handleBulkSendToRoadmap = handleBulkSendToRoadmap;
 window.bulkDismissRecommendations = bulkDismissRecommendations;
+window.deleteRecommendation = deleteRecommendation;
+window.bulkDeleteRecommendations = bulkDeleteRecommendations;
 
 
 // ============================================================
@@ -13045,6 +13631,7 @@ let recTableFilterState = {
     status: '',
     tools: '',
     category: '',
+    framework: '',
     scoreMin: null,
     source: ''
 };
@@ -13148,6 +13735,7 @@ function applyTableFilters() {
     recTableFilterState.status = document.getElementById('recFilterStatus')?.value || '';
     recTableFilterState.tools = document.getElementById('recFilterTools')?.value || '';
     recTableFilterState.category = (document.getElementById('recFilterCategory')?.value || '').toLowerCase().trim();
+    recTableFilterState.framework = document.getElementById('recFilterFramework')?.value || '';
     recTableFilterState.scoreMin = parseFloat(document.getElementById('recFilterScoreMin')?.value) || null;
     recTableFilterState.source = document.getElementById('recFilterSource')?.value || '';
 
@@ -13209,6 +13797,12 @@ function filterRecommendationsTable(recs) {
             if (!category.includes(recTableFilterState.category)) return false;
         }
 
+        // Framework filter
+        if (recTableFilterState.framework) {
+            const recFramework = getRecFrameworkCode(rec);
+            if (recFramework !== recTableFilterState.framework) return false;
+        }
+
         // Score min filter
         if (recTableFilterState.scoreMin !== null) {
             const score = rec.priority_score || 0;
@@ -13235,6 +13829,7 @@ function clearAllTableFilters() {
         status: '',
         tools: '',
         category: '',
+        framework: '',
         scoreMin: null,
         source: ''
     };
@@ -13245,6 +13840,7 @@ function clearAllTableFilters() {
     const statusSelect = document.getElementById('recFilterStatus');
     const toolsSelect = document.getElementById('recFilterTools');
     const categoryInput = document.getElementById('recFilterCategory');
+    const frameworkSelect = document.getElementById('recFilterFramework');
     const scoreMinInput = document.getElementById('recFilterScoreMin');
     const sourceSelect = document.getElementById('recFilterSource');
 
@@ -13253,6 +13849,7 @@ function clearAllTableFilters() {
     if (statusSelect) statusSelect.value = '';
     if (toolsSelect) toolsSelect.value = '';
     if (categoryInput) categoryInput.value = '';
+    if (frameworkSelect) frameworkSelect.value = '';
     if (scoreMinInput) scoreMinInput.value = '';
     if (sourceSelect) sourceSelect.value = '';
 
@@ -13277,6 +13874,7 @@ function clearTableFilter(filterKey) {
         status: 'recFilterStatus',
         tools: 'recFilterTools',
         category: 'recFilterCategory',
+        framework: 'recFilterFramework',
         scoreMin: 'recFilterScoreMin',
         source: 'recFilterSource'
     };
@@ -13318,6 +13916,10 @@ function updateActiveFiltersDisplay() {
     if (recTableFilterState.category) {
         activeFilters.push({ key: 'category', label: `Category: "${recTableFilterState.category}"` });
     }
+    if (recTableFilterState.framework) {
+        const fwLabels = { spm: 'SPM', tbm: 'TBM', finops: 'FinOps' };
+        activeFilters.push({ key: 'framework', label: `Framework: ${fwLabels[recTableFilterState.framework] || recTableFilterState.framework}` });
+    }
     if (recTableFilterState.scoreMin !== null) {
         activeFilters.push({ key: 'scoreMin', label: `Score ≥ ${recTableFilterState.scoreMin}` });
     }
@@ -13350,6 +13952,7 @@ function hasActiveTableFilters() {
            recTableFilterState.status !== '' ||
            recTableFilterState.tools !== '' ||
            recTableFilterState.category !== '' ||
+           recTableFilterState.framework !== '' ||
            recTableFilterState.scoreMin !== null ||
            recTableFilterState.source !== '';
 }
@@ -14972,6 +15575,7 @@ function showAssessmentTypeTab(typeCode) {
 let reportData = {
     customer: null,
     comprehensiveReport: null,
+    assessmentReports: {},  // Keyed by type code, contains per-question detail with evidence
     recommendations: [],
     roadmap: [],
     flowVisualization: null,
@@ -15016,9 +15620,31 @@ async function loadReportData(customerId) {
             console.log('Targets not available');
         }
 
+        // Fetch individual assessment reports (with question-level detail/evidence)
+        // for each completed assessment in the comprehensive report
+        let assessmentReports = {};
+        if (comprehensiveReport?.assessment_reports) {
+            const reportFetches = comprehensiveReport.assessment_reports
+                .filter(r => r.scores?.assessment_id)
+                .map(async (r) => {
+                    try {
+                        const resp = await fetch(`${API_BASE_URL}/assessments/${r.scores.assessment_id}/report`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            const code = r.assessment_type?.code || r.scores?.assessment_type_code;
+                            if (code) assessmentReports[code.toLowerCase()] = data;
+                        }
+                    } catch (e) {
+                        console.log(`Individual report not available for assessment ${r.scores.assessment_id}`);
+                    }
+                });
+            await Promise.all(reportFetches);
+        }
+
         reportData = {
             customer,
             comprehensiveReport,
+            assessmentReports,
             recommendations: recommendations || [],
             roadmap: roadmap || [],
             flowVisualization,
@@ -15290,7 +15916,7 @@ function buildExecutiveSummarySection() {
 
     // Calculate metrics
     const overallScore = comprehensive?.overall_score?.toFixed(1) || '-';
-    const assessmentCount = comprehensive?.assessment_summaries?.length || 0;
+    const assessmentCount = comprehensive?.assessment_reports?.filter(r => r.scores?.has_assessment)?.length || 0;
     const pendingRecs = recommendations.filter(r => r.status === 'pending').length;
     const openRisks = risks.filter(r => r.status !== 'resolved').length;
 
@@ -15370,9 +15996,9 @@ function buildAccountOverviewSection() {
 // Build Assessment Details section
 function buildAssessmentDetailsSection() {
     const comprehensive = reportData.comprehensiveReport;
-    const summaries = comprehensive?.assessment_summaries || [];
+    const reports = (comprehensive?.assessment_reports || []).filter(r => r.scores?.has_assessment);
 
-    if (summaries.length === 0) {
+    if (reports.length === 0) {
         return `
             <div class="generated-report__section">
                 <h2 class="generated-report__section-title">Assessment Details</h2>
@@ -15381,12 +16007,12 @@ function buildAssessmentDetailsSection() {
         `;
     }
 
-    let rows = summaries.map(summary => `
+    let rows = reports.map(report => `
         <tr>
-            <td style="font-weight: 500;">${escapeHtml(summary.type_name || summary.type_code?.toUpperCase() || '-')}</td>
-            <td>${summary.overall_score?.toFixed(1) || '-'}</td>
-            <td>${formatDate(summary.completed_date)}</td>
-            <td>${summary.dimension_count || '-'} dimensions</td>
+            <td style="font-weight: 500;">${escapeHtml(report.assessment_type?.name || report.scores?.assessment_type_code?.toUpperCase() || '-')}</td>
+            <td>${report.scores?.overall_score?.toFixed(1) || '-'}</td>
+            <td>${formatDate(report.scores?.assessment_date)}</td>
+            <td>${report.scores?.dimensions?.length || '-'} dimensions</td>
         </tr>
     `).join('');
 
@@ -15453,7 +16079,8 @@ function buildScoreTargetsSection() {
     const comprehensive = reportData.comprehensiveReport;
     const targets = reportData.targets;
 
-    if (!comprehensive?.assessment_summaries || comprehensive.assessment_summaries.length === 0) {
+    const reports = (comprehensive?.assessment_reports || []).filter(r => r.scores?.has_assessment);
+    if (reports.length === 0) {
         return `
             <div class="generated-report__section">
                 <h2 class="generated-report__section-title">Score Targets Comparison</h2>
@@ -15464,14 +16091,14 @@ function buildScoreTargetsSection() {
 
     // Build gap items for each assessment type
     let gapItems = '';
-    comprehensive.assessment_summaries.forEach(summary => {
-        const currentScore = summary.overall_score || 0;
+    reports.forEach(report => {
+        const currentScore = report.scores?.overall_score || 0;
         const targetScore = 3.5; // Default target
         const gap = targetScore - currentScore;
 
         gapItems += `
             <div class="report-gap-item">
-                <div class="report-gap-item__label">${escapeHtml(summary.type_name || summary.type_code?.toUpperCase())}</div>
+                <div class="report-gap-item__label">${escapeHtml(report.assessment_type?.name || report.scores?.assessment_type_code?.toUpperCase())}</div>
                 <div class="report-gap-item__scores">
                     <span class="report-gap-item__current">${currentScore.toFixed(1)}</span>
                     <span class="report-gap-item__arrow">→</span>
@@ -15495,8 +16122,8 @@ function buildScoreTargetsSection() {
 // Build Framework Section (SPM, TBM, or FinOps)
 function buildFrameworkSection(typeCode) {
     const comprehensive = reportData.comprehensiveReport;
-    const summary = comprehensive?.assessment_summaries?.find(
-        s => s.type_code?.toLowerCase() === typeCode.toLowerCase()
+    const report = comprehensive?.assessment_reports?.find(
+        r => (r.assessment_type?.code || r.scores?.assessment_type_code)?.toLowerCase() === typeCode.toLowerCase()
     );
 
     const typeNames = {
@@ -15505,7 +16132,7 @@ function buildFrameworkSection(typeCode) {
         finops: 'FinOps'
     };
 
-    if (!summary) {
+    if (!report || !report.scores?.has_assessment) {
         return `
             <div class="generated-report__section">
                 <h2 class="generated-report__section-title">${typeNames[typeCode] || typeCode.toUpperCase()} Assessment</h2>
@@ -15514,21 +16141,62 @@ function buildFrameworkSection(typeCode) {
         `;
     }
 
-    const dimensionScores = summary.dimension_scores || [];
+    const overallScore = report.scores?.overall_score || 0;
+    const dimensions = report.scores?.dimensions || [];
+
+    // Get individual assessment report with question-level detail (description/evidence)
+    const detailedReport = reportData.assessmentReports?.[typeCode.toLowerCase()];
 
     let dimensionHtml = '';
-    dimensionScores.forEach(dim => {
+    dimensions.forEach(dim => {
         const score = dim.score || 0;
         const percentage = (score / 5) * 100;
         const color = score >= 3.5 ? '#24a148' : score >= 2.5 ? '#f1c21b' : '#da1e28';
 
+        // Find matching dimension in detailed report for question-level data
+        const detailedDim = detailedReport?.dimensions?.find(
+            d => d.dimension_name === dim.name
+        );
+
+        let questionsHtml = '';
+        if (detailedDim?.questions?.length) {
+            questionsHtml = detailedDim.questions.map(q => {
+                if (q.score === null || q.score === undefined) return '';
+                const hasDetail = q.score_description || q.score_evidence;
+                if (!hasDetail) return '';
+
+                const qScoreColor = q.score >= 3.5 ? '#24a148' : q.score >= 2.5 ? '#f1c21b' : '#da1e28';
+                return `
+                    <div style="padding: 10px 12px; border-left: 3px solid ${qScoreColor}; background: #f9f9f9; border-radius: 0 4px 4px 0; margin-bottom: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                            <span style="font-size: 13px; font-weight: 500; color: #161616; flex: 1;">${escapeHtml(q.question_text)}</span>
+                            <span style="font-size: 12px; font-weight: 600; color: ${qScoreColor}; margin-left: 12px; white-space: nowrap;">${q.score !== null ? q.score + '/5' : '-'}${q.score_label ? ' - ' + escapeHtml(q.score_label) : ''}</span>
+                        </div>
+                        ${q.score_description ? `
+                            <div style="font-size: 12px; color: #525252; margin-top: 4px;">
+                                <strong style="color: #393939;">Description:</strong> ${escapeHtml(q.score_description)}
+                            </div>
+                        ` : ''}
+                        ${q.score_evidence ? `
+                            <div style="font-size: 12px; color: #525252; margin-top: 4px;">
+                                <strong style="color: #393939;">Evidence:</strong> ${escapeHtml(q.score_evidence)}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
         dimensionHtml += `
-            <div class="report-dimension-score">
-                <div class="report-dimension-score__name">${escapeHtml(dim.name || dim.dimension_name)}</div>
-                <div class="report-dimension-score__bar">
-                    <div class="report-dimension-score__fill" style="width: ${percentage}%; background: ${color};"></div>
+            <div style="margin-bottom: 16px;">
+                <div class="report-dimension-score">
+                    <div class="report-dimension-score__name">${escapeHtml(dim.name)}</div>
+                    <div class="report-dimension-score__bar">
+                        <div class="report-dimension-score__fill" style="width: ${percentage}%; background: ${color};"></div>
+                    </div>
+                    <div class="report-dimension-score__value">${score.toFixed(1)}</div>
                 </div>
-                <div class="report-dimension-score__value">${score.toFixed(1)}</div>
+                ${questionsHtml ? `<div style="margin-top: 8px; margin-left: 4px;">${questionsHtml}</div>` : ''}
             </div>
         `;
     });
@@ -15537,13 +16205,13 @@ function buildFrameworkSection(typeCode) {
         <div class="generated-report__section">
             <h2 class="generated-report__section-title">${typeNames[typeCode] || typeCode.toUpperCase()} Assessment</h2>
             <div class="report-score-display" style="margin-bottom: 20px;">
-                <div class="report-score-circle report-score-circle--${summary.overall_score >= 3.5 ? 'green' : summary.overall_score >= 2.5 ? 'yellow' : 'red'}">
-                    ${(summary.overall_score || 0).toFixed(1)}
+                <div class="report-score-circle report-score-circle--${overallScore >= 3.5 ? 'green' : overallScore >= 2.5 ? 'yellow' : 'red'}">
+                    ${overallScore.toFixed(1)}
                 </div>
                 <div class="report-score-details">
                     <h3 style="margin: 0 0 8px 0; font-size: 16px;">Overall ${typeCode.toUpperCase()} Score</h3>
                     <p style="margin: 0; color: #525252; font-size: 14px;">
-                        ${getScoreInterpretation(summary.overall_score || 0)}
+                        ${getScoreInterpretation(overallScore)}
                     </p>
                 </div>
             </div>
@@ -15691,7 +16359,8 @@ function buildRoadmapSection() {
 function buildGapAnalysisSection() {
     const comprehensive = reportData.comprehensiveReport;
 
-    if (!comprehensive?.assessment_summaries) {
+    const reports = (comprehensive?.assessment_reports || []).filter(r => r.scores?.has_assessment);
+    if (reports.length === 0) {
         return `
             <div class="generated-report__section">
                 <h2 class="generated-report__section-title">Gap Analysis</h2>
@@ -15702,13 +16371,13 @@ function buildGapAnalysisSection() {
 
     // Find all weak dimensions across assessments
     let weakDimensions = [];
-    comprehensive.assessment_summaries.forEach(summary => {
-        (summary.dimension_scores || []).forEach(dim => {
+    reports.forEach(report => {
+        (report.scores?.dimensions || []).forEach(dim => {
             if (dim.score < 3.0) {
                 weakDimensions.push({
                     ...dim,
-                    typeCode: summary.type_code,
-                    typeName: summary.type_name
+                    typeCode: report.assessment_type?.code || report.scores?.assessment_type_code,
+                    typeName: report.assessment_type?.name || report.scores?.assessment_type_name
                 });
             }
         });
@@ -15809,15 +16478,15 @@ function initializeReportCharts(components) {
 // Render radar chart for report
 function renderReportRadarChart(canvas) {
     const comprehensive = reportData.comprehensiveReport;
-    const summaries = comprehensive?.assessment_summaries || [];
+    const reports = (comprehensive?.assessment_reports || []).filter(r => r.scores?.has_assessment);
 
-    if (summaries.length === 0) return;
+    if (reports.length === 0) return;
 
     // Collect all unique dimensions across all assessments
     const allDimensions = new Set();
-    summaries.forEach(summary => {
-        (summary.dimension_scores || []).forEach(dim => {
-            allDimensions.add(dim.name || dim.dimension_name);
+    reports.forEach(report => {
+        (report.scores?.dimensions || []).forEach(dim => {
+            allDimensions.add(dim.name);
         });
     });
 
@@ -15830,19 +16499,19 @@ function renderReportRadarChart(canvas) {
         finops: { bg: 'rgba(138, 63, 252, 0.2)', border: '#8a3ffc' }
     };
 
-    const datasets = summaries.map(summary => {
-        const typeCode = summary.type_code?.toLowerCase() || 'spm';
+    const datasets = reports.map(report => {
+        const typeCode = (report.assessment_type?.code || report.scores?.assessment_type_code)?.toLowerCase() || 'spm';
         const colors = typeColors[typeCode] || typeColors.spm;
 
         const data = labels.map(label => {
-            const dim = (summary.dimension_scores || []).find(
-                d => (d.name || d.dimension_name) === label
+            const dim = (report.scores?.dimensions || []).find(
+                d => d.name === label
             );
             return dim?.score || 0;
         });
 
         return {
-            label: summary.type_name || summary.type_code?.toUpperCase() || 'Assessment',
+            label: report.assessment_type?.name || report.scores?.assessment_type_code?.toUpperCase() || 'Assessment',
             data: data,
             backgroundColor: colors.bg,
             borderColor: colors.border,
