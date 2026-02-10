@@ -45,8 +45,8 @@ export default defineConfig({
 
   // Shared settings for all projects
   use: {
-    // Base URL for navigating
-    baseURL: process.env.BASE_URL || 'http://localhost:8000',
+    // Base URL for navigating - use frontend (nginx) on port 3000
+    baseURL: process.env.BASE_URL || 'http://localhost:3000',
 
     // Collect trace on failure
     trace: 'on-first-retry',
@@ -114,11 +114,12 @@ export default defineConfig({
     },
   ],
 
-  // Web server configuration - starts the app automatically
+  // Web server configuration - uses already running containers
+  // Start containers with: podman-compose up -d
   webServer: {
-    command: 'cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000',
-    url: 'http://localhost:8000/health',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
+    command: 'echo "Using existing containers - ensure podman-compose is running"',
+    url: 'http://localhost:3000/',
+    reuseExistingServer: true,
+    timeout: 10 * 1000,
   },
 });

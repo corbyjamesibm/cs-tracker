@@ -17,14 +17,14 @@ setup('authenticate', async ({ page, request }) => {
   if (!authData.auth_enabled) {
     // Auth is disabled, no need to login
     // Just visit the app and save empty state
-    await page.goto('/prototype/index.html');
+    await page.goto('/index.html');
     await page.waitForLoadState('networkidle');
     await page.context().storageState({ path: authFile });
     return;
   }
 
   // Navigate to login page
-  await page.goto('/prototype/login.html');
+  await page.goto('/login.html');
 
   // Wait for the login form to be visible
   await expect(page.locator('form, .login-form, #login-form')).toBeVisible({ timeout: 10000 });
