@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports - Customer Status Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <style>
+    .report-card {
+      background: white;
+      border-radius: 8px;
+      border: 1px solid var(--cds-border-subtle-01);
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .report-card:hover {
+      border-color: var(--cds-interactive);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    .report-card__icon {
+      width: 48px;
+      height: 48px;
+      background: var(--cds-layer-02);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .report-card__icon svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--cds-interactive);
+    }
+    .report-card__title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--cds-text-primary);
+    }
+    .report-card__description {
+      font-size: 14px;
+      color: var(--cds-text-secondary);
+      line-height: 1.5;
+    }
+    .reports-section {
+      margin-bottom: 32px;
+    }
+    .reports-section__title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--cds-text-primary);
+    }
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .coming-soon {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .coming-soon:hover {
+      border-color: var(--cds-border-subtle-01);
+      box-shadow: none;
+    }
+    .coming-soon .report-card__title::after {
+      content: 'Coming Soon';
+      font-size: 10px;
+      font-weight: 500;
+      background: var(--cds-layer-02);
+      color: var(--cds-text-secondary);
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Side Navigation -->
+    <nav class="side-nav" id="sideNav">
+      <div class="side-nav__header">
+        <div class="side-nav__logo">CS</div>
+        <span class="side-nav__title">CS Tracker</span>
+      </div>
+      <ul class="side-nav__items">
+        <li class="side-nav__item">
+          <a href="index.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2zm12 26h-6V16H10v12H4V13.21l12-9 12 9V28z"/></svg>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="customers.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zM12 6h8v4h-8V6zm16 20H4V12h24v14z"/></svg>
+            <span>Customers</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="tasks.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            <span>Tasks</span>
+          </a>
+        </li>
+        <li class="side-nav__divider"></li>
+        <li class="side-nav__item">
+          <a href="reports.html" class="side-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+            <span>Reports</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="assessment-builder.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M26 2H6a2 2 0 00-2 2v24a2 2 0 002 2h14l8-8V4a2 2 0 00-2-2zm0 2v14h-6a2 2 0 00-2 2v6H6V4zM20 24v3.17L25.17 22H22a2 2 0 00-2 2z"/></svg>
+            <span>Assessment Builder</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="admin.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M27 16.76V16v-.77l1.92-1.68a2 2 0 00.4-2.4l-2-3.46a2 2 0 00-1.94-1 2 2 0 00-.64.1l-2.43.82a11.35 11.35 0 00-1.31-.75l-.51-2.52a2 2 0 00-2-1.61h-4a2 2 0 00-2 1.61l-.51 2.52a11.48 11.48 0 00-1.32.75l-2.38-.86a2 2 0 00-.68-.09 2 2 0 00-1.72 1l-2 3.46a2 2 0 00.4 2.4l1.92 1.68V16v.77l-1.92 1.68a2 2 0 00-.4 2.4l2 3.46a2 2 0 00 1.72 1 2 2 0 00.68-.09l2.42-.82a11.35 11.35 0 001.31.75l.51 2.52a2 2 0 002 1.61h4a2 2 0 002-1.61l.51-2.52a11.48 11.48 0 001.32-.75l2.42.82a2 2 0 00.64.09 2 2 0 001.72-1l2-3.46a2 2 0 00-.4-2.4zM16 22a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
+            <span>Admin</span>
+          </a>
+        </li>
+      </ul>
+      <button class="side-nav__toggle" id="navToggleBtn" title="Collapse menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="11 17 6 12 11 7"></polyline>
+          <polyline points="18 17 13 12 18 7"></polyline>
+        </svg>
+        <span class="side-nav__toggle-text">Collapse</span>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="header__left">
+          <button class="hamburger" onclick="toggleNav()">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <div>
+            <h1 class="header__title">Reports</h1>
+            <p class="header__subtitle">Analytics and insights for your portfolio</p>
+          </div>
+        </div>
+        <div class="header__right">
+          <div class="search">
+            <svg class="search__icon" width="16" height="16" viewBox="0 0 32 32"><path d="M29 27.59l-7.55-7.55A11 11 0 1020 21.46L27.59 29zM4 13a9 9 0 119 9 9 9 0 01-9-9z"/></svg>
+            <input type="text" class="search__input" placeholder="Search reports...">
+          </div>
+          <button class="btn btn--ghost btn--icon">
+            <svg width="20" height="20" viewBox="0 0 32 32"><path d="M28.7 20.3L26 17.6V13a10 10 0 00-9-9.95V1h-2v2.05A10 10 0 006 13v4.6l-2.7 2.7a1 1 0 00-.3.7v3a1 1 0 001 1h7a5 5 0 0010 0h7a1 1 0 001-1v-3a1 1 0 00-.3-.7zM16 28a3 3 0 01-3-3h6a3 3 0 01-3 3zm11-5H5v-1.59l2.7-2.7A1 1 0 008 18v-5a8 8 0 0116 0v5a1 1 0 00.3.7l2.7 2.7z"/></svg>
+          </button>
+          <div class="user-menu">
+            <div class="avatar user-avatar">CJ</div>
+            <span class="user-menu__name user-name">Corby James</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <div class="page-content">
+        <!-- Portfolio Reports -->
+        <div class="reports-section">
+          <h2 class="reports-section__title">Portfolio Reports</h2>
+          <div class="reports-grid">
+            <div class="report-card" onclick="openReport('portfolio-summary')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/><path d="M16 8v8l6 4"/></svg>
+              </div>
+              <h3 class="report-card__title">Portfolio Summary</h3>
+              <p class="report-card__description">Overview of all customers, ARR distribution, health status, and key metrics across your portfolio.</p>
+            </div>
+            <div class="report-card" onclick="openReport('health-trends')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M4 28V10h4v18H4zm6-14v14h4V14h-4zm6-6v20h4V8h-4zm6 8v12h4V16h-4z"/></svg>
+              </div>
+              <h3 class="report-card__title">Health Trends</h3>
+              <p class="report-card__description">Track customer health changes over time. Identify patterns and early warning signs for at-risk accounts.</p>
+            </div>
+            <div class="report-card" onclick="openReport('renewal-forecast')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M26 4h-4V2h-2v2h-8V2h-2v2H6c-1.1 0-2 .9-2 2v20c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 22H6V12h20v14zm0-16H6V6h4v2h2V6h8v2h2V6h4v4z"/></svg>
+              </div>
+              <h3 class="report-card__title">Renewal Forecast</h3>
+              <p class="report-card__description">Upcoming renewals by quarter with ARR at risk analysis and recommended actions for each account.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assessment Reports -->
+        <div class="reports-section">
+          <h2 class="reports-section__title">Assessment Analytics</h2>
+          <div class="reports-grid">
+            <div class="report-card" onclick="openReport('assessment-summary')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M16 4L6 8v8c0 5.55 4.27 10.74 10 12 5.73-1.26 10-6.45 10-12V8l-10-4zm0 13h8c-.47 4.11-3.55 7.67-8 8.88V17H8V9.99l8-3.2V17z"/></svg>
+              </div>
+              <h3 class="report-card__title">Assessment Summary</h3>
+              <p class="report-card__description">Aggregate view of maturity assessments across all frameworks (SPM, TBM, FinOps) with dimension breakdowns.</p>
+            </div>
+            <div class="report-card" onclick="openReport('maturity-comparison')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M28 4H4c-1.1 0-2 .9-2 2v20c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 22H4V6h24v20z"/><path d="M6 18h6v6H6zm8-8h6v14h-6zm8-4h6v18h-6z"/></svg>
+              </div>
+              <h3 class="report-card__title">Maturity Comparison</h3>
+              <p class="report-card__description">Compare maturity scores across customers to identify leaders, laggards, and common improvement areas.</p>
+            </div>
+            <div class="report-card coming-soon" onclick="openReport('progress-tracking')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M30 15H17V2h-2v13H2v2h13v13h2V17h13v-2z"/></svg>
+              </div>
+              <h3 class="report-card__title">Progress Tracking</h3>
+              <p class="report-card__description">Track assessment score improvements over time for individual customers and your entire portfolio.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Operational Reports -->
+        <div class="reports-section">
+          <h2 class="reports-section__title">Operational Reports</h2>
+          <div class="reports-grid">
+            <div class="report-card" onclick="openReport('roadmap-status')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M10 6h18v2H10zm-6 0h2v2H4zm0 8h2v2H4zm0 8h2v2H4zm6-8h18v2H10zm0 8h18v2H10z"/></svg>
+              </div>
+              <h3 class="report-card__title">Roadmap Status</h3>
+              <p class="report-card__description">Overview of all roadmap items across customers showing progress, blockers, and upcoming milestones.</p>
+            </div>
+            <div class="report-card" onclick="openReport('task-metrics')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+              </div>
+              <h3 class="report-card__title">Task Metrics</h3>
+              <p class="report-card__description">Task completion rates, overdue items, and workload distribution across your customer portfolio.</p>
+            </div>
+            <div class="report-card coming-soon" onclick="openReport('activity-timeline')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M2 28h28v2H2zm25-17a1 1 0 00-1 1v14h2V12a1 1 0 00-1-1zm-7-5a1 1 0 00-1 1v19h2V7a1 1 0 00-1-1zm-7 9a1 1 0 00-1 1v10h2V16a1 1 0 00-1-1zm-7 4a1 1 0 00-1 1v6h2v-6a1 1 0 00-1-1z"/></svg>
+              </div>
+              <h3 class="report-card__title">Activity Timeline</h3>
+              <p class="report-card__description">Detailed timeline of all customer interactions, meetings, and engagement activities.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Export Section -->
+        <div class="reports-section">
+          <h2 class="reports-section__title">Export & Schedule</h2>
+          <div class="reports-grid">
+            <div class="report-card coming-soon" onclick="openReport('export-data')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zm0-10l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10 10-10z"/></svg>
+              </div>
+              <h3 class="report-card__title">Export Data</h3>
+              <p class="report-card__description">Export portfolio data to CSV or Excel for offline analysis and custom reporting.</p>
+            </div>
+            <div class="report-card coming-soon" onclick="openReport('scheduled-reports')">
+              <div class="report-card__icon">
+                <svg viewBox="0 0 32 32"><path d="M30 3.41L28.59 2 26 4.59 23.41 2 22 3.41 24.59 6 22 8.59 23.41 10 26 7.41 28.59 10 30 8.59 27.41 6 30 3.41zM22 16v5a5 5 0 01-10 0v-5a5 5 0 0110 0zm-2 0a3 3 0 00-6 0v5a3 3 0 006 0z"/><path d="M26 14v7a10 10 0 01-20 0v-7h2v7a8 8 0 0016 0v-7z"/></svg>
+              </div>
+              <h3 class="report-card__title">Scheduled Reports</h3>
+              <p class="report-card__description">Set up automated email reports delivered to your inbox on a daily, weekly, or monthly basis.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="bottom-nav">
+      <ul class="bottom-nav__items">
+        <li>
+          <a href="index.html" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2z"/></svg>
+            Home
+          </a>
+        </li>
+        <li>
+          <a href="customers.html" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2z"/></svg>
+            Customers
+          </a>
+        </li>
+        <li>
+          <a href="tasks.html" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            Tasks
+          </a>
+        </li>
+        <li>
+          <a href="reports.html" class="bottom-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+            Reports
+          </a>
+        </li>
+        <li>
+          <a href="#" class="bottom-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M4 6h24v2H4zm0 9h24v2H4zm0 9h24v2H4z"/></svg>
+            More
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+
+  <!-- Chat Widget -->
+  <button class="chat-trigger" id="chatTrigger" onclick="toggleChatPanel()" title="CS Assistant">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+      <path d="M7 9h10v2H7zm0-3h10v2H7zm0 6h7v2H7z"/>
+    </svg>
+  </button>
+
+  <div class="chat-panel" id="chatPanel">
+    <div class="chat-header">
+      <div class="chat-header__title">
+        <div class="chat-header__status"></div>
+        <h3>CS Assistant</h3>
+      </div>
+      <div class="chat-header__actions">
+        <button class="chat-header__btn" onclick="clearChat()" title="Clear chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+          </svg>
+        </button>
+        <button class="chat-header__btn" onclick="toggleChatPanel()" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-area">
+      <div class="chat-input-wrapper">
+        <textarea id="chatInput" placeholder="Ask about customers, tasks, risks..." rows="1"></textarea>
+      </div>
+      <button id="chatSendBtn" onclick="sendMessage()" title="Send">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/auth.js?v=6"></script>
+  <script src="js/api.js?v=13"></script>
+  <script src="js/chat.js?v=1"></script>
+  <script>
+    function toggleNav() {
+      document.getElementById('sideNav').classList.toggle('open');
+    }
+
+    function openReport(reportId) {
+      // Check if it's a coming soon report
+      const card = event.currentTarget;
+      if (card.classList.contains('coming-soon')) {
+        showToast('This report is coming soon!', 'info');
+        return;
+      }
+
+      // Navigate to specific report views
+      switch(reportId) {
+        case 'portfolio-summary':
+          window.location.href = 'customers.html';
+          break;
+        case 'health-trends':
+          window.location.href = 'customers.html?view=health';
+          break;
+        case 'renewal-forecast':
+          window.location.href = 'customers.html?filter=renewals';
+          break;
+        case 'assessment-summary':
+          window.location.href = 'reports/assessment-summary.html';
+          break;
+        case 'maturity-comparison':
+          window.location.href = 'reports/maturity-comparison.html';
+          break;
+        case 'roadmap-status':
+          window.location.href = 'reports/roadmap-status.html';
+          break;
+        case 'task-metrics':
+          window.location.href = 'tasks.html';
+          break;
+        default:
+          showToast('Report not available', 'warning');
+      }
+    }
+
+    function showToast(message, type = 'info') {
+      // Create toast element
+      const toast = document.createElement('div');
+      toast.className = `toast toast--${type}`;
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: ${type === 'info' ? '#0f62fe' : type === 'warning' ? '#f1c21b' : '#24a148'};
+        color: ${type === 'warning' ? '#161616' : 'white'};
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-size: 14px;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        animation: slideUp 0.3s ease;
+      `;
+      toast.textContent = message;
+
+      document.body.appendChild(toast);
+
+      // Auto-remove after 3 seconds
+      setTimeout(() => {
+        toast.style.animation = 'slideDown 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Add animation keyframes
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+      @keyframes slideDown {
+        from { opacity: 1; transform: translateX(-50%) translateY(0); }
+        to { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      }
+    `;
+    document.head.appendChild(style);
+
+    // Nav collapse functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const sideNav = document.getElementById('sideNav');
+      const toggleBtn = document.getElementById('navToggleBtn');
+
+      // Restore collapsed state from localStorage
+      if (localStorage.getItem('navCollapsed') === 'true') {
+        sideNav.classList.add('collapsed');
+      }
+
+      // Toggle collapse on button click
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+          sideNav.classList.toggle('collapsed');
+          localStorage.setItem('navCollapsed', sideNav.classList.contains('collapsed'));
+        });
+      }
+    });
+  </script>
+</body>
+</html>

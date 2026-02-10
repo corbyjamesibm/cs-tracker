@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment Summary Report - CS Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    /* Report-specific styles */
+    .report-header {
+      background: linear-gradient(135deg, #161616 0%, #393939 100%);
+      color: white;
+      padding: var(--cds-spacing-06);
+      margin: 0 calc(-1 * var(--cds-spacing-06)) var(--cds-spacing-05);
+    }
+    .report-header__top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--cds-spacing-05);
+    }
+    .report-header__title {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: var(--cds-spacing-02);
+    }
+    .report-header__subtitle {
+      font-size: 0.875rem;
+      opacity: 0.8;
+    }
+    .report-header__actions {
+      display: flex;
+      gap: var(--cds-spacing-03);
+    }
+
+    /* Summary cards */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--cds-spacing-05);
+      margin-bottom: var(--cds-spacing-06);
+    }
+    .summary-card {
+      background: white;
+      border-radius: 8px;
+      border: 1px solid var(--cds-border-subtle-01);
+      padding: var(--cds-spacing-05);
+      text-align: center;
+    }
+    .summary-card__value {
+      font-size: 2.5rem;
+      font-weight: 600;
+      color: var(--cds-text-primary);
+      margin-bottom: var(--cds-spacing-02);
+    }
+    .summary-card__value.spm { color: var(--spm-color); }
+    .summary-card__value.tbm { color: var(--tbm-color); }
+    .summary-card__value.finops { color: var(--finops-color); }
+    .summary-card__label {
+      font-size: 0.875rem;
+      color: var(--cds-text-secondary);
+    }
+    .summary-card__sublabel {
+      font-size: 0.75rem;
+      color: var(--cds-text-helper);
+      margin-top: var(--cds-spacing-02);
+    }
+
+    /* Chart section */
+    .chart-section {
+      background: white;
+      border-radius: 8px;
+      border: 1px solid var(--cds-border-subtle-01);
+      padding: var(--cds-spacing-05);
+      margin-bottom: var(--cds-spacing-06);
+    }
+    .chart-section__title {
+      font-size: 1.125rem;
+      font-weight: 600;
+      margin-bottom: var(--cds-spacing-04);
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+    }
+
+    /* Filter controls */
+    .filter-controls {
+      display: flex;
+      gap: var(--cds-spacing-04);
+      margin-bottom: var(--cds-spacing-05);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: var(--cds-spacing-03);
+    }
+    .filter-group label {
+      font-size: 0.875rem;
+      color: var(--cds-text-secondary);
+    }
+    .filter-select {
+      padding: var(--cds-spacing-03) var(--cds-spacing-04);
+      border: 1px solid var(--cds-border-strong-01);
+      border-radius: 4px;
+      font-size: 0.875rem;
+      background: white;
+      min-width: 150px;
+    }
+    .search-input {
+      padding: var(--cds-spacing-03) var(--cds-spacing-04);
+      border: 1px solid var(--cds-border-strong-01);
+      border-radius: 4px;
+      font-size: 0.875rem;
+      min-width: 250px;
+    }
+
+    /* Data table */
+    .data-table-section {
+      background: white;
+      border-radius: 8px;
+      border: 1px solid var(--cds-border-subtle-01);
+      overflow: hidden;
+    }
+    .data-table-header {
+      padding: var(--cds-spacing-05);
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .data-table-header__title {
+      font-size: 1.125rem;
+      font-weight: 600;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table th {
+      background: var(--cds-layer-02);
+      padding: var(--cds-spacing-04) var(--cds-spacing-05);
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--cds-text-secondary);
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+    }
+    .data-table th.sortable {
+      cursor: pointer;
+    }
+    .data-table th.sortable:hover {
+      background: var(--cds-layer-hover-01);
+    }
+    .data-table td {
+      padding: var(--cds-spacing-04) var(--cds-spacing-05);
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+      font-size: 0.875rem;
+    }
+    .data-table tr:hover {
+      background: var(--cds-layer-hover-01);
+    }
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+    .score-cell {
+      font-weight: 600;
+    }
+    .score-cell.low { color: var(--health-red); }
+    .score-cell.medium { color: var(--health-yellow); }
+    .score-cell.high { color: var(--health-green); }
+    .no-data {
+      color: var(--cds-text-placeholder);
+      font-style: italic;
+    }
+    .customer-link {
+      color: var(--cds-link-primary);
+      text-decoration: none;
+    }
+    .customer-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Assessment type badges */
+    .type-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .type-badge.spm {
+      background: rgba(15, 98, 254, 0.1);
+      color: var(--spm-color);
+    }
+    .type-badge.tbm {
+      background: rgba(25, 128, 56, 0.1);
+      color: var(--tbm-color);
+    }
+    .type-badge.finops {
+      background: rgba(138, 63, 252, 0.1);
+      color: var(--finops-color);
+    }
+
+    /* Print styles */
+    @media print {
+      .side-nav, .header__right, .report-header__actions, .filter-controls {
+        display: none !important;
+      }
+      .main-content {
+        margin-left: 0 !important;
+      }
+      .report-header {
+        margin: 0;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      .chart-container {
+        page-break-inside: avoid;
+      }
+      .data-table-section {
+        page-break-before: always;
+      }
+    }
+
+    /* Loading state */
+    .loading-overlay {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--cds-spacing-09);
+      color: var(--cds-text-secondary);
+    }
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--cds-border-subtle-01);
+      border-top-color: var(--cds-interactive);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: var(--cds-spacing-04);
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .report-header {
+        padding: var(--cds-spacing-05);
+        margin: calc(-1 * var(--cds-spacing-05));
+        margin-bottom: var(--cds-spacing-04);
+      }
+      .report-header__title {
+        font-size: 1.5rem;
+      }
+      .summary-cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .filter-controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .filter-group {
+        width: 100%;
+      }
+      .filter-select, .search-input {
+        width: 100%;
+      }
+      .data-table-section {
+        overflow-x: auto;
+      }
+      .data-table {
+        min-width: 800px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Side Navigation -->
+    <nav class="side-nav" id="sideNav">
+      <div class="side-nav__header">
+        <div class="side-nav__logo">CS</div>
+        <span class="side-nav__title">CS Tracker</span>
+      </div>
+      <ul class="side-nav__items">
+        <li class="side-nav__item">
+          <a href="../index.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2zm12 26h-6V16H10v12H4V13.21l12-9 12 9V28z"/></svg>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../customers.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zM12 6h8v4h-8V6zm16 20H4V12h24v14z"/></svg>
+            <span>Customers</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../tasks.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            <span>Tasks</span>
+          </a>
+        </li>
+        <li class="side-nav__divider"></li>
+        <li class="side-nav__item">
+          <a href="../reports.html" class="side-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+            <span>Reports</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../assessment-builder.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M26 2H6a2 2 0 00-2 2v24a2 2 0 002 2h14l8-8V4a2 2 0 00-2-2zm0 2v14h-6a2 2 0 00-2 2v6H6V4zM20 24v3.17L25.17 22H22a2 2 0 00-2 2z"/></svg>
+            <span>Assessment Builder</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../admin.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M27 16.76V16v-.77l1.92-1.68a2 2 0 00.4-2.4l-2-3.46a2 2 0 00-1.94-1 2 2 0 00-.64.1l-2.43.82a11.35 11.35 0 00-1.31-.75l-.51-2.52a2 2 0 00-2-1.61h-4a2 2 0 00-2 1.61l-.51 2.52a11.48 11.48 0 00-1.32.75l-2.38-.86a2 2 0 00-.68-.09 2 2 0 00-1.72 1l-2 3.46a2 2 0 00.4 2.4l1.92 1.68V16v.77l-1.92 1.68a2 2 0 00-.4 2.4l2 3.46a2 2 0 00 1.72 1 2 2 0 00.68-.09l2.42-.82a11.35 11.35 0 001.31.75l.51 2.52a2 2 0 002 1.61h4a2 2 0 002-1.61l.51-2.52a11.48 11.48 0 001.32-.75l2.42.82a2 2 0 00.64.09 2 2 0 001.72-1l2-3.46a2 2 0 00-.4-2.4zM16 22a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
+            <span>Admin</span>
+          </a>
+        </li>
+      </ul>
+      <button class="side-nav__toggle" id="navToggleBtn" title="Collapse menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="11 17 6 12 11 7"></polyline>
+          <polyline points="18 17 13 12 18 7"></polyline>
+        </svg>
+        <span class="side-nav__toggle-text">Collapse</span>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="header__left">
+          <button class="hamburger" onclick="toggleNav()">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <div>
+            <a href="../reports.html" style="color: var(--cds-text-secondary); text-decoration: none; font-size: 0.875rem; display: flex; align-items: center; gap: 4px;">
+              <svg width="16" height="16" viewBox="0 0 32 32"><path d="M10 16L20 6l1.4 1.4-8.6 8.6 8.6 8.6L20 26z" fill="currentColor"/></svg>
+              Back to Reports
+            </a>
+            <h1 class="header__title">Assessment Summary</h1>
+          </div>
+        </div>
+        <div class="header__right">
+          <button class="btn btn--ghost" onclick="exportReport()">
+            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zm0-10l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10 10-10z" fill="currentColor"/></svg>
+            Export
+          </button>
+          <button class="btn btn--ghost" onclick="window.print()">
+            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M28 9h-4V5H8v4H4a2 2 0 00-2 2v10h6v6h16v-6h6V11a2 2 0 00-2-2zM10 7h12v2H10zm12 18H10v-8h12zm4-8h-2v-2H8v2H6v-6h20z" fill="currentColor"/></svg>
+            Print
+          </button>
+          <div class="user-menu">
+            <div class="avatar user-avatar">CJ</div>
+            <span class="user-menu__name user-name">Corby James</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <div class="page-content" id="pageContent">
+        <!-- Loading State -->
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="loading-spinner"></div>
+          <span>Loading assessment data...</span>
+        </div>
+
+        <!-- Report Content (hidden until loaded) -->
+        <div id="reportContent" style="display: none;">
+          <!-- Report Header -->
+          <div class="report-header">
+            <div class="report-header__top">
+              <div>
+                <h1 class="report-header__title">Assessment Summary Report</h1>
+                <p class="report-header__subtitle">Portfolio maturity assessment overview across all frameworks</p>
+              </div>
+              <div class="report-header__actions">
+                <button class="btn btn--primary" onclick="refreshData()">
+                  <svg width="16" height="16" viewBox="0 0 32 32"><path d="M12 10H6.78A11 11 0 0127 16h2A13 13 0 006 7.68V4H4v8h8zm8 12h5.22A11 11 0 015 16H3a13 13 0 0021 10.32V30h2v-8h-8z" fill="currentColor"/></svg>
+                  Refresh
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary Cards -->
+          <div class="summary-cards" id="summaryCards">
+            <div class="summary-card">
+              <div class="summary-card__value" id="totalCustomers">-</div>
+              <div class="summary-card__label">Total Customers</div>
+              <div class="summary-card__sublabel" id="assessedCount">- assessed</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-card__value spm" id="avgSpmScore">-</div>
+              <div class="summary-card__label">Avg SPM Score</div>
+              <div class="summary-card__sublabel" id="spmCount">- customers</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-card__value tbm" id="avgTbmScore">-</div>
+              <div class="summary-card__label">Avg TBM Score</div>
+              <div class="summary-card__sublabel" id="tbmCount">- customers</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-card__value finops" id="avgFinopsScore">-</div>
+              <div class="summary-card__label">Avg FinOps Score</div>
+              <div class="summary-card__sublabel" id="finopsCount">- customers</div>
+            </div>
+          </div>
+
+          <!-- Dimension Scores Chart -->
+          <div class="chart-section">
+            <h2 class="chart-section__title">Dimension Scores by Framework</h2>
+            <div class="chart-container">
+              <canvas id="dimensionChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Customers Table -->
+          <div class="data-table-section">
+            <div class="data-table-header">
+              <h2 class="data-table-header__title">Customer Assessment Scores</h2>
+            </div>
+
+            <!-- Filter Controls -->
+            <div class="filter-controls" style="padding: var(--cds-spacing-05);">
+              <div class="filter-group">
+                <label for="frameworkFilter">Framework:</label>
+                <select id="frameworkFilter" class="filter-select" onchange="filterData()">
+                  <option value="all">All Frameworks</option>
+                  <option value="spm">SPM Only</option>
+                  <option value="tbm">TBM Only</option>
+                  <option value="finops">FinOps Only</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="customerSearch">Search:</label>
+                <input type="text" id="customerSearch" class="search-input" placeholder="Search by customer name..." oninput="filterData()">
+              </div>
+            </div>
+
+            <table class="data-table" id="customersTable">
+              <thead>
+                <tr>
+                  <th class="sortable" data-sort="customer_name">Customer Name</th>
+                  <th class="sortable" data-sort="spm_score">SPM Score</th>
+                  <th class="sortable" data-sort="tbm_score">TBM Score</th>
+                  <th class="sortable" data-sort="finops_score">FinOps Score</th>
+                  <th class="sortable" data-sort="avg_score">Avg Score</th>
+                </tr>
+              </thead>
+              <tbody id="customersTableBody">
+                <!-- Data loaded dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../js/auth.js?v=6"></script>
+  <script src="../js/api.js?v=14"></script>
+  <script>
+    // State management
+    let portfolioData = null;
+    let filteredCustomers = [];
+    let dimensionChart = null;
+    let currentSort = { field: 'avg_score', direction: 'desc' };
+
+    // Toggle navigation
+    function toggleNav() {
+      document.getElementById('sideNav').classList.toggle('open');
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Setup nav collapse
+      const sideNav = document.getElementById('sideNav');
+      const toggleBtn = document.getElementById('navToggleBtn');
+
+      if (localStorage.getItem('navCollapsed') === 'true') {
+        sideNav.classList.add('collapsed');
+      }
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+          sideNav.classList.toggle('collapsed');
+          localStorage.setItem('navCollapsed', sideNav.classList.contains('collapsed'));
+        });
+      }
+
+      // Setup table sorting
+      document.querySelectorAll('.data-table th.sortable').forEach(th => {
+        th.addEventListener('click', () => sortTable(th.dataset.sort));
+      });
+
+      // Load data
+      await loadPortfolioSummary();
+    });
+
+    // Load portfolio summary data
+    async function loadPortfolioSummary() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/assessments/portfolio-summary`);
+        if (!response.ok) throw new Error('Failed to load portfolio summary');
+
+        portfolioData = await response.json();
+        filteredCustomers = [...portfolioData.customers];
+
+        // Update UI
+        updateSummaryCards();
+        updateDimensionChart();
+        renderCustomersTable();
+
+        // Show content
+        document.getElementById('loadingOverlay').style.display = 'none';
+        document.getElementById('reportContent').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading portfolio summary:', error);
+        document.getElementById('loadingOverlay').innerHTML = `
+          <div style="text-align: center; color: var(--cds-support-error);">
+            <svg width="48" height="48" viewBox="0 0 32 32"><path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-1 7h2v10h-2V9zm1 17c-.8 0-1.5-.7-1.5-1.5S15.2 23 16 23s1.5.7 1.5 1.5S16.8 26 16 26z" fill="currentColor"/></svg>
+            <p style="margin-top: 16px;">Failed to load assessment data</p>
+            <button class="btn btn--primary" onclick="location.reload()" style="margin-top: 16px;">Try Again</button>
+          </div>
+        `;
+      }
+    }
+
+    // Update summary cards
+    function updateSummaryCards() {
+      if (!portfolioData) return;
+
+      document.getElementById('totalCustomers').textContent = portfolioData.total_customers;
+      document.getElementById('assessedCount').textContent = `${portfolioData.customers_assessed} assessed`;
+
+      document.getElementById('avgSpmScore').textContent = portfolioData.avg_spm_score?.toFixed(1) || '-';
+      document.getElementById('spmCount').textContent = `${portfolioData.customers_with_spm} customers`;
+
+      document.getElementById('avgTbmScore').textContent = portfolioData.avg_tbm_score?.toFixed(1) || '-';
+      document.getElementById('tbmCount').textContent = `${portfolioData.customers_with_tbm} customers`;
+
+      document.getElementById('avgFinopsScore').textContent = portfolioData.avg_finops_score?.toFixed(1) || '-';
+      document.getElementById('finopsCount').textContent = `${portfolioData.customers_with_finops} customers`;
+    }
+
+    // Update dimension chart
+    function updateDimensionChart() {
+      if (!portfolioData || !portfolioData.dimension_scores.length) return;
+
+      const ctx = document.getElementById('dimensionChart').getContext('2d');
+
+      // Group by assessment type
+      const typeGroups = {};
+      portfolioData.dimension_scores.forEach(d => {
+        if (!typeGroups[d.assessment_type]) {
+          typeGroups[d.assessment_type] = {
+            color: d.assessment_type_color,
+            dimensions: []
+          };
+        }
+        typeGroups[d.assessment_type].dimensions.push(d);
+      });
+
+      // Build chart data
+      const labels = [];
+      const datasets = [];
+
+      Object.entries(typeGroups).forEach(([typeName, typeData]) => {
+        const data = typeData.dimensions.map(d => ({
+          x: d.dimension_name,
+          y: d.avg_score
+        }));
+
+        typeData.dimensions.forEach(d => {
+          if (!labels.includes(d.dimension_name)) {
+            labels.push(d.dimension_name);
+          }
+        });
+
+        datasets.push({
+          label: typeName,
+          data: typeData.dimensions.map(d => d.avg_score),
+          backgroundColor: typeData.color + '80',
+          borderColor: typeData.color,
+          borderWidth: 2,
+          borderRadius: 4,
+        });
+      });
+
+      // Sort labels alphabetically
+      labels.sort();
+
+      // Destroy existing chart
+      if (dimensionChart) {
+        dimensionChart.destroy();
+      }
+
+      // Create new chart
+      dimensionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: datasets.map(ds => ({
+            ...ds,
+            data: labels.map(label => {
+              const typeData = typeGroups[ds.label];
+              const dim = typeData.dimensions.find(d => d.dimension_name === label);
+              return dim ? dim.avg_score : null;
+            })
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const typeName = context.dataset.label;
+                  const typeData = typeGroups[typeName];
+                  const dim = typeData.dimensions.find(d => d.dimension_name === context.label);
+                  if (dim) {
+                    return `${typeName}: ${dim.avg_score.toFixed(2)} (${dim.customer_count} customers)`;
+                  }
+                  return `${typeName}: N/A`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: {
+                display: false
+              }
+            },
+            y: {
+              beginAtZero: true,
+              max: 5,
+              title: {
+                display: true,
+                text: 'Average Score'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // Render customers table
+    function renderCustomersTable() {
+      const tbody = document.getElementById('customersTableBody');
+
+      if (filteredCustomers.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align: center; padding: 32px;">
+              <span class="no-data">No customers match the current filters</span>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = filteredCustomers.map(customer => `
+        <tr>
+          <td>
+            <a href="../customer-detail.html?id=${customer.customer_id}" class="customer-link">
+              ${customer.customer_name}
+            </a>
+          </td>
+          <td class="${getScoreClass(customer.spm_score)}">
+            ${customer.spm_score !== null ? customer.spm_score.toFixed(1) : '<span class="no-data">-</span>'}
+          </td>
+          <td class="${getScoreClass(customer.tbm_score)}">
+            ${customer.tbm_score !== null ? customer.tbm_score.toFixed(1) : '<span class="no-data">-</span>'}
+          </td>
+          <td class="${getScoreClass(customer.finops_score)}">
+            ${customer.finops_score !== null ? customer.finops_score.toFixed(1) : '<span class="no-data">-</span>'}
+          </td>
+          <td class="${getScoreClass(customer.avg_score)}">
+            ${customer.avg_score !== null ? customer.avg_score.toFixed(1) : '<span class="no-data">-</span>'}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Get score CSS class
+    function getScoreClass(score) {
+      if (score === null) return '';
+      if (score < 2) return 'score-cell low';
+      if (score < 3.5) return 'score-cell medium';
+      return 'score-cell high';
+    }
+
+    // Filter data
+    function filterData() {
+      if (!portfolioData) return;
+
+      const framework = document.getElementById('frameworkFilter').value;
+      const searchTerm = document.getElementById('customerSearch').value.toLowerCase();
+
+      filteredCustomers = portfolioData.customers.filter(customer => {
+        // Framework filter
+        if (framework !== 'all') {
+          if (framework === 'spm' && customer.spm_score === null) return false;
+          if (framework === 'tbm' && customer.tbm_score === null) return false;
+          if (framework === 'finops' && customer.finops_score === null) return false;
+        }
+
+        // Search filter
+        if (searchTerm && !customer.customer_name.toLowerCase().includes(searchTerm)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      // Re-apply sort
+      sortCustomers();
+      renderCustomersTable();
+    }
+
+    // Sort table
+    function sortTable(field) {
+      if (currentSort.field === field) {
+        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSort.field = field;
+        currentSort.direction = 'desc';
+      }
+
+      sortCustomers();
+      renderCustomersTable();
+
+      // Update sort indicators
+      document.querySelectorAll('.data-table th.sortable').forEach(th => {
+        th.classList.remove('sorted-asc', 'sorted-desc');
+        if (th.dataset.sort === field) {
+          th.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        }
+      });
+    }
+
+    // Sort customers array
+    function sortCustomers() {
+      filteredCustomers.sort((a, b) => {
+        let aVal = a[currentSort.field];
+        let bVal = b[currentSort.field];
+
+        // Handle null values
+        if (aVal === null && bVal === null) return 0;
+        if (aVal === null) return 1;
+        if (bVal === null) return -1;
+
+        // String comparison for names
+        if (typeof aVal === 'string') {
+          return currentSort.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+        }
+
+        // Numeric comparison
+        return currentSort.direction === 'asc' ? aVal - bVal : bVal - aVal;
+      });
+    }
+
+    // Refresh data
+    async function refreshData() {
+      document.getElementById('loadingOverlay').style.display = 'flex';
+      document.getElementById('reportContent').style.display = 'none';
+      await loadPortfolioSummary();
+    }
+
+    // Export report
+    function exportReport() {
+      if (!portfolioData) return;
+
+      // Build CSV content
+      const headers = ['Customer Name', 'SPM Score', 'TBM Score', 'FinOps Score', 'Avg Score'];
+      const rows = filteredCustomers.map(c => [
+        c.customer_name,
+        c.spm_score ?? '',
+        c.tbm_score ?? '',
+        c.finops_score ?? '',
+        c.avg_score ?? ''
+      ]);
+
+      const csv = [
+        headers.join(','),
+        ...rows.map(r => r.map(v => `"${v}"`).join(','))
+      ].join('\n');
+
+      // Download
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `assessment-summary-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

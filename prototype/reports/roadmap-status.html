@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roadmap Status Report - CS Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    /* Report Header */
+    .report-header {
+      background: linear-gradient(135deg, #161616 0%, #393939 100%);
+      color: white;
+      padding: 24px;
+      margin: 0 -24px 24px -24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .report-header__back {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: white;
+      text-decoration: none;
+      font-size: 14px;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+    .report-header__back:hover {
+      opacity: 1;
+    }
+    .report-header__back svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+    .report-header__title {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .report-header__subtitle {
+      font-size: 14px;
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+    .report-header__actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Summary Cards */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .summary-card {
+      background: white;
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+    .summary-card__value {
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--cds-text-primary);
+      margin-bottom: 4px;
+    }
+    .summary-card__label {
+      font-size: 12px;
+      color: var(--cds-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .summary-card--blue .summary-card__value { color: #0f62fe; }
+    .summary-card--yellow .summary-card__value { color: #f1c21b; }
+    .summary-card--green .summary-card__value { color: #24a148; }
+    .summary-card--red .summary-card__value { color: #da1e28; }
+
+    /* Filters */
+    .filters-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .filter-group label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--cds-text-secondary);
+    }
+    .filter-group select,
+    .filter-group input {
+      padding: 8px 12px;
+      border: 1px solid var(--cds-border-strong-01);
+      border-radius: 4px;
+      font-size: 14px;
+      min-width: 150px;
+      background: white;
+    }
+    .filter-group select:focus,
+    .filter-group input:focus {
+      outline: none;
+      border-color: var(--cds-interactive);
+      box-shadow: 0 0 0 1px var(--cds-interactive);
+    }
+    .filters-row .btn--secondary {
+      height: 36px;
+    }
+
+    /* Charts Section */
+    .charts-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    .chart-card {
+      background: white;
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .chart-card__title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--cds-text-primary);
+    }
+    .chart-container {
+      height: 250px;
+      position: relative;
+    }
+
+    /* Timeline Section */
+    .timeline-section {
+      background: white;
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .timeline-section__title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--cds-text-primary);
+    }
+    .timeline-quarters {
+      display: flex;
+      gap: 16px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .timeline-quarter {
+      flex: 0 0 220px;
+      background: var(--cds-layer-01);
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .timeline-quarter--current {
+      border-color: var(--cds-interactive);
+      border-width: 2px;
+    }
+    .timeline-quarter__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .timeline-quarter__name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .timeline-quarter__count {
+      background: var(--cds-layer-02);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .timeline-quarter--current .timeline-quarter__name {
+      color: var(--cds-interactive);
+    }
+    .timeline-quarter__stats {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .timeline-stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--cds-text-secondary);
+    }
+    .timeline-stat__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .timeline-stat__dot--planned { background: #0f62fe; }
+    .timeline-stat__dot--in-progress { background: #f1c21b; }
+    .timeline-stat__dot--completed { background: #24a148; }
+    .timeline-stat__dot--delayed { background: #da1e28; }
+
+    /* Data Table */
+    .table-section {
+      background: white;
+      border: 1px solid var(--cds-border-subtle-01);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .table-section__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+    }
+    .table-section__title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--cds-text-primary);
+    }
+    .table-section__count {
+      font-size: 14px;
+      color: var(--cds-text-secondary);
+    }
+    .roadmap-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .roadmap-table th {
+      background: var(--cds-layer-01);
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--cds-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+    }
+    .roadmap-table td {
+      padding: 12px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--cds-border-subtle-01);
+      vertical-align: top;
+    }
+    .roadmap-table tr:hover {
+      background: var(--cds-layer-hover-01);
+    }
+    .roadmap-table__customer {
+      font-weight: 500;
+      color: var(--cds-interactive);
+      cursor: pointer;
+    }
+    .roadmap-table__customer:hover {
+      text-decoration: underline;
+    }
+    .roadmap-table__title {
+      font-weight: 500;
+      max-width: 250px;
+    }
+    .roadmap-table__description {
+      font-size: 12px;
+      color: var(--cds-text-secondary);
+      margin-top: 4px;
+      max-width: 250px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Status Tags */
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-tag--planned {
+      background: rgba(15, 98, 254, 0.1);
+      color: #0f62fe;
+    }
+    .status-tag--in_progress {
+      background: rgba(241, 194, 27, 0.2);
+      color: #8a6d00;
+    }
+    .status-tag--completed {
+      background: rgba(36, 161, 72, 0.1);
+      color: #24a148;
+    }
+    .status-tag--delayed {
+      background: rgba(218, 30, 40, 0.1);
+      color: #da1e28;
+    }
+    .status-tag--cancelled {
+      background: var(--cds-layer-02);
+      color: var(--cds-text-secondary);
+    }
+
+    /* Category Tags */
+    .category-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--cds-layer-02);
+      color: var(--cds-text-secondary);
+      text-transform: capitalize;
+    }
+
+    /* Dependency Badge */
+    .dependency-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--cds-text-secondary);
+    }
+    .dependency-badge svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* Progress Bar */
+    .progress-bar {
+      width: 60px;
+      height: 6px;
+      background: var(--cds-layer-02);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-bar__fill {
+      height: 100%;
+      background: var(--cds-interactive);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .progress-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .progress-cell__value {
+      font-size: 12px;
+      color: var(--cds-text-secondary);
+      min-width: 30px;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--cds-text-secondary);
+    }
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      fill: var(--cds-border-subtle-01);
+      margin-bottom: 16px;
+    }
+    .empty-state__title {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--cds-text-primary);
+      margin-bottom: 8px;
+    }
+    .empty-state__description {
+      font-size: 14px;
+    }
+
+    /* Print Styles */
+    @media print {
+      .side-nav, .header, .filters-row, .report-header__actions, .btn {
+        display: none !important;
+      }
+      .main-content {
+        margin: 0;
+        padding: 0;
+      }
+      .report-header {
+        background: none !important;
+        color: black !important;
+        margin: 0 0 20px 0;
+        padding: 0;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      .report-header__title {
+        color: black;
+      }
+      .summary-cards {
+        grid-template-columns: repeat(4, 1fr);
+      }
+      .charts-section {
+        page-break-inside: avoid;
+      }
+      .table-section {
+        page-break-before: always;
+      }
+      .roadmap-table {
+        font-size: 11px;
+      }
+      .roadmap-table th, .roadmap-table td {
+        padding: 8px;
+      }
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .summary-cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .charts-section {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 768px) {
+      .summary-cards {
+        grid-template-columns: 1fr 1fr;
+      }
+      .filters-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .filter-group select,
+      .filter-group input {
+        width: 100%;
+      }
+      .roadmap-table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Side Navigation -->
+    <nav class="side-nav" id="sideNav">
+      <div class="side-nav__header">
+        <div class="side-nav__logo">CS</div>
+        <span class="side-nav__title">CS Tracker</span>
+      </div>
+      <ul class="side-nav__items">
+        <li class="side-nav__item">
+          <a href="../index.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2zm12 26h-6V16H10v12H4V13.21l12-9 12 9V28z"/></svg>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../customers.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zM12 6h8v4h-8V6zm16 20H4V12h24v14z"/></svg>
+            <span>Customers</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../tasks.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            <span>Tasks</span>
+          </a>
+        </li>
+        <li class="side-nav__divider"></li>
+        <li class="side-nav__item">
+          <a href="../reports.html" class="side-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+            <span>Reports</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../assessment-builder.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M26 2H6a2 2 0 00-2 2v24a2 2 0 002 2h14l8-8V4a2 2 0 00-2-2zm0 2v14h-6a2 2 0 00-2 2v6H6V4zM20 24v3.17L25.17 22H22a2 2 0 00-2 2z"/></svg>
+            <span>Assessment Builder</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="../admin.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M27 16.76V16v-.77l1.92-1.68a2 2 0 00.4-2.4l-2-3.46a2 2 0 00-1.94-1 2 2 0 00-.64.1l-2.43.82a11.35 11.35 0 00-1.31-.75l-.51-2.52a2 2 0 00-2-1.61h-4a2 2 0 00-2 1.61l-.51 2.52a11.48 11.48 0 00-1.32.75l-2.38-.86a2 2 0 00-.68-.09 2 2 0 00-1.72 1l-2 3.46a2 2 0 00.4 2.4l1.92 1.68V16v.77l-1.92 1.68a2 2 0 00-.4 2.4l2 3.46a2 2 0 001.72 1 2 2 0 00.68-.09l2.42-.82a11.35 11.35 0 001.31.75l.51 2.52a2 2 0 002 1.61h4a2 2 0 002-1.61l.51-2.52a11.48 11.48 0 001.32-.75l2.42.82a2 2 0 00.64.09 2 2 0 001.72-1l2-3.46a2 2 0 00-.4-2.4zM16 22a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
+            <span>Admin</span>
+          </a>
+        </li>
+      </ul>
+      <button class="side-nav__toggle" id="navToggleBtn" title="Collapse menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="11 17 6 12 11 7"></polyline>
+          <polyline points="18 17 13 12 18 7"></polyline>
+        </svg>
+        <span class="side-nav__toggle-text">Collapse</span>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Report Header -->
+      <div class="report-header">
+        <div>
+          <a href="../reports.html" class="report-header__back">
+            <svg viewBox="0 0 32 32"><path d="M10 16L20 6l1.4 1.4-8.6 8.6 8.6 8.6L20 26z"/></svg>
+            Back to Reports
+          </a>
+          <h1 class="report-header__title">Roadmap Status Report</h1>
+          <p class="report-header__subtitle">Overview of all roadmap items across your customer portfolio</p>
+        </div>
+        <div class="report-header__actions">
+          <button class="btn btn--secondary" onclick="window.print()">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M28 9h-4V5H8v4H4a2 2 0 00-2 2v10a2 2 0 002 2h4v4h16v-4h4a2 2 0 002-2V11a2 2 0 00-2-2zM10 7h12v2H10zm12 18H10v-6h12zm6-6h-4v-2H8v2H4V11h24z"/></svg>
+            Print
+          </button>
+          <button class="btn btn--secondary" onclick="exportToCSV()">
+            <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M26 24v4H6v-4H4v4a2 2 0 002 2h20a2 2 0 002-2v-4zm0-10l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10 10-10z"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Page Content -->
+      <div class="page-content">
+        <!-- Summary Cards -->
+        <div class="summary-cards" data-testid="summary-cards">
+          <div class="summary-card">
+            <div class="summary-card__value" id="totalItems">-</div>
+            <div class="summary-card__label">Total Items</div>
+          </div>
+          <div class="summary-card summary-card--yellow">
+            <div class="summary-card__value" id="inProgressCount">-</div>
+            <div class="summary-card__label">In Progress</div>
+          </div>
+          <div class="summary-card summary-card--green">
+            <div class="summary-card__value" id="completedCount">-</div>
+            <div class="summary-card__label">Completed</div>
+          </div>
+          <div class="summary-card summary-card--red">
+            <div class="summary-card__value" id="blockedCount">-</div>
+            <div class="summary-card__label">Delayed / At Risk</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-row">
+          <div class="filter-group">
+            <label for="statusFilter">Status</label>
+            <select id="statusFilter" onchange="applyFilters()">
+              <option value="">All Statuses</option>
+              <option value="planned">Planned</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="delayed">Delayed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="categoryFilter">Category</label>
+            <select id="categoryFilter" onchange="applyFilters()">
+              <option value="">All Categories</option>
+              <option value="feature">Feature</option>
+              <option value="enhancement">Enhancement</option>
+              <option value="integration">Integration</option>
+              <option value="migration">Migration</option>
+              <option value="optimization">Optimization</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="quarterFilter">Quarter</label>
+            <select id="quarterFilter" onchange="applyFilters()">
+              <option value="">All Quarters</option>
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="searchInput">Search</label>
+            <input type="text" id="searchInput" placeholder="Search customer or item..." oninput="applyFilters()">
+          </div>
+          <button class="btn btn--secondary" onclick="clearFilters()">Clear Filters</button>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-section">
+          <div class="chart-card">
+            <h3 class="chart-card__title">Status Distribution</h3>
+            <div class="chart-container">
+              <canvas id="statusChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3 class="chart-card__title">Category Breakdown</h3>
+            <div class="chart-container">
+              <canvas id="categoryChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="timeline-section">
+          <h3 class="timeline-section__title">Quarterly Timeline</h3>
+          <div class="timeline-quarters" id="timelineQuarters" data-testid="timeline-quarters">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="table-section">
+          <div class="table-section__header">
+            <h3 class="table-section__title">All Roadmap Items</h3>
+            <span class="table-section__count" id="tableCount">0 items</span>
+          </div>
+          <div id="tableContainer">
+            <table class="roadmap-table" data-testid="roadmap-table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Item</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Quarter</th>
+                  <th>Progress</th>
+                  <th>Dependencies</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="emptyState" style="display: none;">
+            <svg viewBox="0 0 32 32"><path d="M10 6h18v2H10zm-6 0h2v2H4zm0 8h2v2H4zm0 8h2v2H4zm6-8h18v2H10zm0 8h18v2H10z"/></svg>
+            <h4 class="empty-state__title">No roadmap items found</h4>
+            <p class="empty-state__description">Try adjusting your filters or add roadmap items to your customers.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../js/auth.js?v=6"></script>
+  <script src="../js/api.js?v=14"></script>
+  <script>
+    // Global state (API_BASE_URL is provided by api.js)
+    let reportData = null;
+    let filteredItems = [];
+    let statusChart = null;
+    let categoryChart = null;
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async function() {
+      // Initialize nav collapse
+      initNavCollapse();
+
+      // Load report data
+      await loadReportData();
+    });
+
+    function initNavCollapse() {
+      const sideNav = document.getElementById('sideNav');
+      const toggleBtn = document.getElementById('navToggleBtn');
+
+      if (localStorage.getItem('navCollapsed') === 'true') {
+        sideNav.classList.add('collapsed');
+      }
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+          sideNav.classList.toggle('collapsed');
+          localStorage.setItem('navCollapsed', sideNav.classList.contains('collapsed'));
+        });
+      }
+    }
+
+    async function loadReportData() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/roadmaps/portfolio-status`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        reportData = await response.json();
+
+        // Populate quarter filter options
+        populateQuarterFilter();
+
+        // Apply initial filters (none)
+        applyFilters();
+
+        // Render charts
+        renderCharts();
+
+        // Render timeline
+        renderTimeline();
+
+      } catch (error) {
+        console.error('Failed to load report data:', error);
+        showEmptyState();
+      }
+    }
+
+    function populateQuarterFilter() {
+      const select = document.getElementById('quarterFilter');
+      if (!reportData || !reportData.quarters) return;
+
+      reportData.quarters.forEach(q => {
+        const option = document.createElement('option');
+        option.value = q.quarter;
+        option.textContent = q.quarter;
+        select.appendChild(option);
+      });
+    }
+
+    function applyFilters() {
+      if (!reportData) return;
+
+      const statusFilter = document.getElementById('statusFilter').value;
+      const categoryFilter = document.getElementById('categoryFilter').value;
+      const quarterFilter = document.getElementById('quarterFilter').value;
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+
+      filteredItems = reportData.all_items.filter(item => {
+        // Status filter
+        if (statusFilter && item.status !== statusFilter) return false;
+
+        // Category filter
+        if (categoryFilter && item.category !== categoryFilter) return false;
+
+        // Quarter filter
+        if (quarterFilter && item.target_quarter !== quarterFilter) return false;
+
+        // Search filter
+        if (searchTerm) {
+          const matchesCustomer = item.customer_name.toLowerCase().includes(searchTerm);
+          const matchesTitle = item.title.toLowerCase().includes(searchTerm);
+          if (!matchesCustomer && !matchesTitle) return false;
+        }
+
+        return true;
+      });
+
+      // Update summary cards based on filtered data
+      updateSummaryCards();
+
+      // Render table
+      renderTable();
+    }
+
+    function updateSummaryCards() {
+      const items = filteredItems.length > 0 || document.getElementById('searchInput').value
+        ? filteredItems
+        : (reportData ? reportData.all_items : []);
+
+      // Calculate counts from filtered items
+      let planned = 0, inProgress = 0, completed = 0, delayed = 0;
+
+      items.forEach(item => {
+        switch(item.status) {
+          case 'planned': planned++; break;
+          case 'in_progress': inProgress++; break;
+          case 'completed': completed++; break;
+          case 'delayed': delayed++; break;
+        }
+      });
+
+      document.getElementById('totalItems').textContent = items.length;
+      document.getElementById('inProgressCount').textContent = inProgress;
+      document.getElementById('completedCount').textContent = completed;
+      document.getElementById('blockedCount').textContent = delayed;
+    }
+
+    function clearFilters() {
+      document.getElementById('statusFilter').value = '';
+      document.getElementById('categoryFilter').value = '';
+      document.getElementById('quarterFilter').value = '';
+      document.getElementById('searchInput').value = '';
+      applyFilters();
+    }
+
+    function renderCharts() {
+      if (!reportData) return;
+
+      // Status Chart (Doughnut)
+      const statusCtx = document.getElementById('statusChart').getContext('2d');
+      if (statusChart) statusChart.destroy();
+
+      statusChart = new Chart(statusCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Planned', 'In Progress', 'Completed', 'Delayed', 'Cancelled'],
+          datasets: [{
+            data: [
+              reportData.status_counts.planned,
+              reportData.status_counts.in_progress,
+              reportData.status_counts.completed,
+              reportData.status_counts.delayed,
+              reportData.status_counts.cancelled
+            ],
+            backgroundColor: [
+              '#0f62fe',  // blue - planned
+              '#f1c21b',  // yellow - in progress
+              '#24a148',  // green - completed
+              '#da1e28',  // red - delayed
+              '#8d8d8d'   // gray - cancelled
+            ],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: {
+                usePointStyle: true,
+                padding: 15,
+                font: { size: 12 }
+              }
+            }
+          },
+          cutout: '60%'
+        }
+      });
+
+      // Category Chart (Bar)
+      const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+      if (categoryChart) categoryChart.destroy();
+
+      categoryChart = new Chart(categoryCtx, {
+        type: 'bar',
+        data: {
+          labels: ['Feature', 'Enhancement', 'Integration', 'Migration', 'Optimization', 'Other'],
+          datasets: [{
+            label: 'Items',
+            data: [
+              reportData.category_counts.feature,
+              reportData.category_counts.enhancement,
+              reportData.category_counts.integration,
+              reportData.category_counts.migration,
+              reportData.category_counts.optimization,
+              reportData.category_counts.other
+            ],
+            backgroundColor: '#0f62fe',
+            borderRadius: 4,
+            barThickness: 30
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1 }
+            },
+            x: {
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    }
+
+    function renderTimeline() {
+      const container = document.getElementById('timelineQuarters');
+      if (!reportData || !reportData.quarters) {
+        container.innerHTML = '<p style="color: var(--cds-text-secondary); padding: 20px;">No quarterly data available</p>';
+        return;
+      }
+
+      // Get current quarter
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentQuarter = `Q${Math.floor(now.getMonth() / 3) + 1}`;
+      const currentQuarterFull = `${currentQuarter} ${currentYear}`;
+
+      container.innerHTML = reportData.quarters.map(q => {
+        const isCurrent = q.quarter === currentQuarterFull;
+        const sc = q.status_breakdown;
+
+        return `
+          <div class="timeline-quarter ${isCurrent ? 'timeline-quarter--current' : ''}">
+            <div class="timeline-quarter__header">
+              <span class="timeline-quarter__name">${q.quarter}</span>
+              <span class="timeline-quarter__count">${q.total_items} items</span>
+            </div>
+            <div class="timeline-quarter__stats">
+              ${sc.planned > 0 ? `<span class="timeline-stat"><span class="timeline-stat__dot timeline-stat__dot--planned"></span>${sc.planned} Planned</span>` : ''}
+              ${sc.in_progress > 0 ? `<span class="timeline-stat"><span class="timeline-stat__dot timeline-stat__dot--in-progress"></span>${sc.in_progress} In Progress</span>` : ''}
+              ${sc.completed > 0 ? `<span class="timeline-stat"><span class="timeline-stat__dot timeline-stat__dot--completed"></span>${sc.completed} Completed</span>` : ''}
+              ${sc.delayed > 0 ? `<span class="timeline-stat"><span class="timeline-stat__dot timeline-stat__dot--delayed"></span>${sc.delayed} Delayed</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tableBody');
+      const emptyState = document.getElementById('emptyState');
+      const tableContainer = document.getElementById('tableContainer');
+      const tableCount = document.getElementById('tableCount');
+
+      if (!filteredItems || filteredItems.length === 0) {
+        tableContainer.style.display = 'none';
+        emptyState.style.display = 'block';
+        tableCount.textContent = '0 items';
+        return;
+      }
+
+      tableContainer.style.display = 'block';
+      emptyState.style.display = 'none';
+      tableCount.textContent = `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''}`;
+
+      tbody.innerHTML = filteredItems.map(item => `
+        <tr>
+          <td>
+            <span class="roadmap-table__customer" onclick="navigateToCustomer(${item.customer_id})">${escapeHtml(item.customer_name)}</span>
+          </td>
+          <td>
+            <div class="roadmap-table__title">${escapeHtml(item.title)}</div>
+            ${item.description ? `<div class="roadmap-table__description">${escapeHtml(item.description)}</div>` : ''}
+          </td>
+          <td><span class="category-tag">${formatCategory(item.category)}</span></td>
+          <td><span class="status-tag status-tag--${item.status}">${formatStatus(item.status)}</span></td>
+          <td>${item.target_quarter}</td>
+          <td>
+            <div class="progress-cell">
+              <div class="progress-bar">
+                <div class="progress-bar__fill" style="width: ${item.progress_percent}%"></div>
+              </div>
+              <span class="progress-cell__value">${item.progress_percent}%</span>
+            </div>
+          </td>
+          <td>
+            ${item.depends_on_ids && item.depends_on_ids.length > 0
+              ? `<span class="dependency-badge">
+                  <svg viewBox="0 0 32 32"><path d="M8 16h4v2H8zm12 0h4v2h-4zm-6-2V8h2v6z"/><path d="M26 4H6a2 2 0 00-2 2v20a2 2 0 002 2h20a2 2 0 002-2V6a2 2 0 00-2-2zm0 22H6V6h20z"/></svg>
+                  ${item.depends_on_ids.length}
+                </span>`
+              : '-'
+            }
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function showEmptyState() {
+      document.getElementById('totalItems').textContent = '0';
+      document.getElementById('inProgressCount').textContent = '0';
+      document.getElementById('completedCount').textContent = '0';
+      document.getElementById('blockedCount').textContent = '0';
+      document.getElementById('tableContainer').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'block';
+      document.getElementById('timelineQuarters').innerHTML = '<p style="color: var(--cds-text-secondary); padding: 20px;">No quarterly data available</p>';
+    }
+
+    function navigateToCustomer(customerId) {
+      window.location.href = `../customer-detail.html?id=${customerId}`;
+    }
+
+    function formatStatus(status) {
+      const statusMap = {
+        'planned': 'Planned',
+        'in_progress': 'In Progress',
+        'completed': 'Completed',
+        'delayed': 'Delayed',
+        'cancelled': 'Cancelled'
+      };
+      return statusMap[status] || status;
+    }
+
+    function formatCategory(category) {
+      return category.charAt(0).toUpperCase() + category.slice(1);
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function exportToCSV() {
+      if (!filteredItems || filteredItems.length === 0) {
+        alert('No data to export');
+        return;
+      }
+
+      const headers = ['Customer', 'Item Title', 'Description', 'Category', 'Status', 'Quarter', 'Year', 'Progress %', 'Dependencies'];
+      const rows = filteredItems.map(item => [
+        item.customer_name,
+        item.title,
+        item.description || '',
+        item.category,
+        item.status,
+        item.target_quarter,
+        item.target_year,
+        item.progress_percent,
+        item.depends_on_ids ? item.depends_on_ids.length : 0
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `roadmap-status-report-${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+    }
+
+  </script>
+</body>
+</html>

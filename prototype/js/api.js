@@ -571,6 +571,12 @@ const AssessmentAPI = {
         }
         return response.json();
     },
+
+    // Portfolio Summary
+    async getPortfolioSummary(typeFilter = null) {
+        const params = typeFilter ? `?type_filter=${typeFilter}` : '';
+        return apiRequest(`/assessments/portfolio-summary${params}`);
+    },
 };
 
 // Lookup API - for managing configurable dropdown lists

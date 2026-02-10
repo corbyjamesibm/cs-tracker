@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment Builder - Customer Status Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=10">
+  <link rel="stylesheet" href="css/chat.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Side Navigation -->
+    <nav class="side-nav" id="sideNav">
+      <div class="side-nav__header">
+        <div class="side-nav__logo">CS</div>
+        <span class="side-nav__title">CS Tracker</span>
+      </div>
+      <ul class="side-nav__items">
+        <li class="side-nav__item">
+          <a href="index.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M16 2L2 12v18h10V18h8v12h10V12L16 2zm12 26h-6V16H10v12H4V13.21l12-9 12 9V28z"/></svg>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="customers.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M28 10h-6V6c0-1.1-.9-2-2-2h-8c-1.1 0-2 .9-2 2v4H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h24c1.1 0 2-.9 2-2V12c0-1.1-.9-2-2-2zM12 6h8v4h-8V6zm16 20H4V12h24v14z"/></svg>
+            <span>Customers</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="tasks.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M14 21.5l-5-4.96L7.59 18 14 24.35 25.41 13 24 11.59 14 21.5z"/><path d="M16 2C8.27 2 2 8.27 2 16s6.27 14 14 14 14-6.27 14-14S23.73 2 16 2zm0 26C9.38 28 4 22.62 4 16S9.38 4 16 4s12 5.38 12 12-5.38 12-12 12z"/></svg>
+            <span>Tasks</span>
+          </a>
+        </li>
+        <li class="side-nav__divider"></li>
+        <li class="side-nav__item">
+          <a href="reports.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M10 18H6v8h4v-8zm12-8h-4v16h4V10zm-6 6h-4v10h4V16z"/></svg>
+            <span>Reports</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="assessment-builder.html" class="side-nav__link active">
+            <svg viewBox="0 0 32 32"><path d="M26 2H6a2 2 0 00-2 2v24a2 2 0 002 2h14l8-8V4a2 2 0 00-2-2zm0 2v14h-6a2 2 0 00-2 2v6H6V4zM20 24v3.17L25.17 22H22a2 2 0 00-2 2z"/></svg>
+            <span>Assessment Builder</span>
+          </a>
+        </li>
+        <li class="side-nav__item">
+          <a href="admin.html" class="side-nav__link">
+            <svg viewBox="0 0 32 32"><path d="M27 16.76V16v-.77l1.92-1.68a2 2 0 00.4-2.4l-2-3.46a2 2 0 00-1.94-1 2 2 0 00-.64.1l-2.43.82a11.35 11.35 0 00-1.31-.75l-.51-2.52a2 2 0 00-2-1.61h-4a2 2 0 00-2 1.61l-.51 2.52a11.48 11.48 0 00-1.32.75l-2.38-.86a2 2 0 00-.68-.09 2 2 0 00-1.72 1l-2 3.46a2 2 0 00.4 2.4l1.92 1.68V16v.77l-1.92 1.68a2 2 0 00-.4 2.4l2 3.46a2 2 0 00 1.72 1 2 2 0 00.68-.09l2.42-.82a11.35 11.35 0 001.31.75l.51 2.52a2 2 0 002 1.61h4a2 2 0 002-1.61l.51-2.52a11.48 11.48 0 001.32-.75l2.42.82a2 2 0 00.64.09 2 2 0 001.72-1l2-3.46a2 2 0 00-.4-2.4zM16 22a6 6 0 116-6 6 6 0 01-6 6z"/></svg>
+            <span>Admin</span>
+          </a>
+        </li>
+      </ul>
+      <button class="side-nav__toggle" id="navToggleBtn" title="Collapse menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="11 17 6 12 11 7"></polyline>
+          <polyline points="18 17 13 12 18 7"></polyline>
+        </svg>
+        <span class="side-nav__toggle-text">Collapse</span>
+      </button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="header__left">
+          <button class="hamburger" onclick="toggleNav()">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <div>
+            <h1 class="header__title">Assessment Builder</h1>
+            <p class="header__subtitle">Template Editor</p>
+          </div>
+        </div>
+        <div class="builder-save-status" id="saveStatus">
+          <span class="builder-save-status__dot"></span>
+          <span id="saveStatusText">All changes saved</span>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <div class="page-content">
+
+        <!-- Framework Toolbar -->
+        <div class="builder-toolbar" id="frameworkToolbar">
+          <div class="builder-toolbar__frameworks" id="frameworkTabs">
+            <!-- Populated by JS -->
+          </div>
+          <div class="builder-toolbar__version">
+            <select id="versionSelect" onchange="window.AB.selectTemplate(this.value)">
+              <option value="">Select version...</option>
+            </select>
+            <span id="templateStatusTag"></span>
+          </div>
+          <div class="builder-toolbar__actions">
+            <button class="btn btn--tertiary" id="btnClone" onclick="window.AB.openNewDraftModal()" disabled>
+              <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M28 10V6a2 2 0 00-2-2h-4V2h-2v2h-8V2h-2v2H6a2 2 0 00-2 2v4h2V6h4v2h2V6h8v2h2V6h4v4zM6 12v14a2 2 0 002 2h16a2 2 0 002-2V12zm2 2h16v12H8z"/></svg>
+              Clone as Draft
+            </button>
+            <button class="btn btn--tertiary" id="btnHistory" onclick="window.AB.showAuditTrail()" disabled>
+              <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M16 4A12 12 0 104 16H2A14 14 0 1116 2z"/><path d="M15 9h2v8h-2z"/><path d="M20.59 22L15 16.41V9h2v6.58l5 5.01L20.59 22z"/></svg>
+              History
+            </button>
+            <button class="btn btn--primary" id="btnPromote" onclick="window.AB.promoteToActive()" style="display:none;">
+              <svg width="16" height="16" viewBox="0 0 32 32" fill="currentColor"><path d="M16 4l-7 7 1.41 1.41L15 7.83V28h2V7.83l4.59 4.58L23 11l-7-7z"/></svg>
+              Promote to Active
+            </button>
+          </div>
+        </div>
+
+        <!-- Template Metadata -->
+        <div class="builder-meta" id="templateMeta" style="display:none;">
+          <div class="builder-meta__field">
+            <label>Template Name</label>
+            <div class="builder-editable-field" id="metaName" data-field="name" onclick="window.AB.startFieldEdit(this)"></div>
+          </div>
+          <div class="builder-meta__field">
+            <label>Description</label>
+            <div class="builder-editable-field" id="metaDescription" data-field="description" onclick="window.AB.startFieldEdit(this)"></div>
+          </div>
+        </div>
+
+        <!-- Dimension Tabs + Question Cards -->
+        <div id="builderContent" style="display:none;">
+          <!-- Active Edit Warning Banner (hidden by default) -->
+          <div class="builder-active-warning" id="activeEditWarning" style="display:none;">
+            <svg viewBox="0 0 32 32"><path d="M16 2L1 29h30L16 2zm0 5l11.5 20h-23L16 7zm-1 8v6h2v-6h-2zm0 8v2h2v-2h-2z"/></svg>
+            <span>This template is active. Minor text edits take effect immediately. Structural changes (add/delete/reorder) require a draft.</span>
+          </div>
+
+          <!-- Dimension Tabs Row -->
+          <div class="builder-dimension-tabs" id="dimensionTabs">
+            <!-- Populated by JS -->
+          </div>
+
+          <!-- Dimension Info Bar -->
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 16px; background:var(--cds-layer-01); border:1px solid var(--cds-border-subtle-01); border-top:none;">
+            <div id="dimensionInfo" style="font-size:0.85rem; color:var(--cds-text-secondary);"></div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn--ghost btn--sm" id="btnEditDimension" onclick="window.AB.editCurrentDimension()" style="display:none;">Edit Dimension</button>
+              <button class="btn btn--ghost btn--sm" id="btnDeleteDimension" onclick="window.AB.deleteCurrentDimension()" style="display:none;">Delete Dimension</button>
+              <button class="btn btn--primary btn--sm" id="btnAddQuestion" onclick="window.AB.addQuestion()" style="display:none;">+ Add Question</button>
+            </div>
+          </div>
+
+          <!-- Question Cards -->
+          <div class="builder-cards" id="questionCards">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Empty State (no template selected) -->
+        <div class="builder-empty-state" id="emptyState">
+          <svg viewBox="0 0 32 32"><path d="M26 2H6a2 2 0 00-2 2v24a2 2 0 002 2h14l8-8V4a2 2 0 00-2-2zm0 2v14h-6a2 2 0 00-2 2v6H6V4zM20 24v3.17L25.17 22H22a2 2 0 00-2 2z" fill="currentColor"/></svg>
+          <h3>Assessment Template Builder</h3>
+          <p>Select a framework above to view and edit assessment templates.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- New Draft Modal -->
+  <div class="builder-modal-overlay" id="newDraftModal" style="display:none;" onclick="if(event.target===this)window.AB.closeNewDraftModal()">
+    <div class="builder-modal">
+      <div class="builder-modal__header">
+        <h3>Create New Draft</h3>
+        <button class="builder-modal__close" onclick="window.AB.closeNewDraftModal()">&times;</button>
+      </div>
+      <div class="builder-modal__body">
+        <div class="builder-form-group">
+          <label>Version Number</label>
+          <input type="text" id="draftVersion" placeholder="e.g., 2.1">
+        </div>
+        <div class="builder-version-list">
+          <label>Start From</label>
+          <select id="draftSourceSelect">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+      </div>
+      <div class="builder-modal__footer">
+        <button class="btn btn--ghost" onclick="window.AB.closeNewDraftModal()">Cancel</button>
+        <button class="btn btn--primary" onclick="window.AB.createDraftFromModal()">Create Draft</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dimension Add/Edit Modal -->
+  <div class="builder-modal-overlay" id="dimensionModal" style="display:none;" onclick="if(event.target===this)window.AB.closeDimensionModal()">
+    <div class="builder-modal">
+      <div class="builder-modal__header">
+        <h3 id="dimensionModalTitle">Add Dimension</h3>
+        <button class="builder-modal__close" onclick="window.AB.closeDimensionModal()">&times;</button>
+      </div>
+      <div class="builder-modal__body">
+        <input type="hidden" id="dimEditId">
+        <div class="builder-form-group">
+          <label>Name</label>
+          <input type="text" id="dimName" placeholder="e.g., People & Organization">
+        </div>
+        <div class="builder-form-group">
+          <label>Description</label>
+          <textarea id="dimDescription" rows="3" placeholder="Brief description of this dimension..."></textarea>
+        </div>
+        <div class="builder-form-row">
+          <div class="builder-form-group">
+            <label>Weight</label>
+            <input type="number" id="dimWeight" value="1.0" step="0.1" min="0">
+          </div>
+          <div class="builder-form-group">
+            <label>Display Order</label>
+            <input type="number" id="dimOrder" value="0" min="0">
+          </div>
+        </div>
+      </div>
+      <div class="builder-modal__footer">
+        <button class="btn btn--ghost" onclick="window.AB.closeDimensionModal()">Cancel</button>
+        <button class="btn btn--primary" onclick="window.AB.handleDimensionSubmit()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit Trail Modal -->
+  <div class="builder-modal-overlay" id="auditModal" style="display:none;" onclick="if(event.target===this)window.AB.closeAuditTrailModal()">
+    <div class="builder-modal builder-modal--wide">
+      <div class="builder-modal__header">
+        <h3>Change History</h3>
+        <button class="builder-modal__close" onclick="window.AB.closeAuditTrailModal()">&times;</button>
+      </div>
+      <div class="builder-modal__body">
+        <table class="builder-audit-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Who</th>
+              <th>Type</th>
+              <th>Field</th>
+              <th>Old Value</th>
+              <th>New Value</th>
+            </tr>
+          </thead>
+          <tbody id="auditTableBody">
+          </tbody>
+        </table>
+      </div>
+      <div class="builder-modal__footer">
+        <button class="btn btn--ghost" onclick="window.AB.closeAuditTrailModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/auth.js?v=5"></script>
+  <script src="js/api.js?v=13"></script>
+  <script src="js/chat.js?v=1"></script>
+  <script src="js/assessment-builder.js?v=1"></script>
+  <script>
+    function toggleNav() {
+      document.getElementById('sideNav').classList.toggle('open');
+    }
+
+    // Nav collapse functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const sideNav = document.getElementById('sideNav');
+      const toggleBtn = document.getElementById('navToggleBtn');
+
+      if (localStorage.getItem('navCollapsed') === 'true') {
+        sideNav.classList.add('collapsed');
+      }
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+          sideNav.classList.toggle('collapsed');
+          localStorage.setItem('navCollapsed', sideNav.classList.contains('collapsed'));
+        });
+      }
+    });
+  </script>
+</body>
+</html>
