@@ -15,6 +15,7 @@ from app.schemas.mapping import (
     RoadmapRecommendationListResponse,
     GenerateRecommendationsRequest,
     AcceptRecommendationRequest,
+    UpdateRecommendationRequest,
     RecommendationActionResponse,
 )
 
@@ -206,6 +207,7 @@ async def accept_recommendation(
         target_quarter=request.target_quarter,
         target_year=request.target_year,
         notes=request.notes,
+        tools=request.tools,
     )
     db.add(roadmap_item)
     await db.flush()
@@ -271,3 +273,47 @@ async def restore_recommendation(
         message="Recommendation restored",
         recommendation_id=recommendation.id
     )
+
+
+@router.patch("/{recommendation_id}", response_model=RoadmapRecommendationResponse)
+async def update_recommendation(
+    recommendation_id: int,
+    request: UpdateRecommendationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update an AI-generated recommendation.
+    Allows editing title, description, priority score, and dimension name.
+    """
+    # Eager load relationships for response
+    result = await db.execute(
+        select(RoadmapRecommendation)
+        .options(
+            selectinload(RoadmapRecommendation.use_case),
+            selectinload(RoadmapRecommendation.tp_feature_mapping)
+        )
+        .where(RoadmapRecommendation.id == recommendation_id)
+    )
+    recommendation = result.scalar_one_or_none()
+
+    if not recommendation:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+
+    # Update fields if provided
+    if request.title is not None:
+        recommendation.title = request.title
+    if request.description is not None:
+        recommendation.description = request.description
+    if request.priority_score is not None:
+        recommendation.priority_score = request.priority_score
+    if request.dimension_name is not None:
+        recommendation.dimension_name = request.dimension_name
+    if request.category is not None:
+        recommendation.category = request.category
+    if request.tools is not None:
+        recommendation.tools = request.tools
+
+    recommendation.updated_at = datetime.utcnow()
+    await db.flush()
+
+    return build_recommendation_response(recommendation)

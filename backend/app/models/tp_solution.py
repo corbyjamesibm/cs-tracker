@@ -22,6 +22,13 @@ class TPSolutionCategory(str, enum.Enum):
     INTEGRATIONS = "integrations"
 
 
+class ProductType(str, enum.Enum):
+    """Product types for solutions - maps to assessment frameworks."""
+    TARGETPROCESS = "targetprocess"  # SPM - TargetProcess solutions
+    APPTIO1 = "apptio1"  # TBM - Apptio 1 features
+    APPTIO_CLOUDABILITY = "apptio_cloudability"  # FinOps - Cloudability features
+
+
 class TPSolution(Base):
     """
     TargetProcess Solution - represents a solution/feature available in TargetProcess.
@@ -41,6 +48,11 @@ class TPSolution(Base):
     category: Mapped[TPSolutionCategory] = mapped_column(
         SQLEnum(TPSolutionCategory, values_callable=lambda x: [e.value for e in x]),
         index=True
+    )
+
+    # Product type - which product/framework this solution belongs to
+    product_type: Mapped[str] = mapped_column(
+        String(50), default="targetprocess", index=True
     )
 
     # Description and documentation

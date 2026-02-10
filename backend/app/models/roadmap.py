@@ -89,6 +89,13 @@ class RoadmapItem(Base):
     # Dependencies (stores IDs of other roadmap items as JSON array)
     depends_on_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
 
+    # Dependency anchor points for manual routing
+    # Format: {"<dep_id>": {"from": "right|left|top|bottom", "to": "right|left|top|bottom"}}
+    dependency_anchors: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, default=dict)
+
+    # Tools associated with this roadmap item (e.g., ["Targetprocess", "Costing"])
+    tools: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
+
     # Notes and updates
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     last_update: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Latest quarterly update

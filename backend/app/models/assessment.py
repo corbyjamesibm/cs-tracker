@@ -9,6 +9,12 @@ import enum
 from app.core.database import Base
 
 
+class TemplateStatus(str, enum.Enum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
 class AssessmentStatus(str, enum.Enum):
     DRAFT = "draft"
     IN_PROGRESS = "in_progress"
@@ -24,6 +30,7 @@ class AssessmentTemplate(Base):
     version: Mapped[str] = mapped_column(String(50))  # "2.0"
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)  # Only one active at a time per type
+    status: Mapped[str] = mapped_column(String(20), default="active")
 
     # Assessment type linkage
     assessment_type_id: Mapped[Optional[int]] = mapped_column(
@@ -240,6 +247,28 @@ class AssessmentResponseAudit(Base):
 
     def __repr__(self) -> str:
         return f"<AssessmentResponseAudit {self.id} - {self.field_changed}>"
+
+
+class TemplateChangeAudit(Base):
+    """Audit trail for changes to assessment templates, dimensions, and questions."""
+    __tablename__ = "template_change_audit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("assessment_templates.id", ondelete="CASCADE"))
+    entity_type: Mapped[str] = mapped_column(String(50))  # 'template', 'dimension', 'question'
+    entity_id: Mapped[int] = mapped_column(Integer)
+    field_name: Mapped[str] = mapped_column(String(100))
+    old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    changed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    template: Mapped["AssessmentTemplate"] = relationship()
+    changed_by: Mapped[Optional["User"]] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<TemplateChangeAudit {self.id} - {self.entity_type}.{self.field_name}>"
 
 
 class CustomerAssessmentTarget(Base):

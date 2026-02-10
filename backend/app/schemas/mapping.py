@@ -120,6 +120,8 @@ class RoadmapRecommendationBase(BaseModel):
     dimension_score: float
     priority_score: float
     improvement_potential: float
+    category: Optional[str] = None  # e.g., Process, Technology, People
+    tools: Optional[List[str]] = None  # e.g., ["Targetprocess", "Costing"]
 
 
 class RoadmapRecommendationResponse(RoadmapRecommendationBase):
@@ -163,6 +165,17 @@ class AcceptRecommendationRequest(BaseModel):
     target_quarter: str  # e.g., "Q2"
     target_year: int  # e.g., 2026
     notes: Optional[str] = None
+    tools: Optional[List[str]] = None  # e.g., ["Targetprocess", "Costing"]
+
+
+class UpdateRecommendationRequest(BaseModel):
+    """Schema for editing an AI-generated recommendation"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    priority_score: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    dimension_name: Optional[str] = None
+    category: Optional[str] = None  # e.g., Process, Technology, People
+    tools: Optional[List[str]] = None  # e.g., ["Targetprocess", "Costing"]
 
 
 class RecommendationActionResponse(BaseModel):

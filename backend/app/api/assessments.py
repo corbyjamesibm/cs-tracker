@@ -16,12 +16,13 @@ from app.models.assessment import (
     AssessmentTemplate, AssessmentDimension, AssessmentQuestion,
     CustomerAssessment, AssessmentResponse, AssessmentStatus,
     AssessmentResponseAudit, CustomerAssessmentTarget, AssessmentRecommendation,
-    CustomerRecommendation, RecommendationStatus
+    CustomerRecommendation, RecommendationStatus, TemplateChangeAudit
 )
 from app.models.mapping import RoadmapRecommendation
 from app.schemas.assessment import (
     AssessmentTemplateCreate, AssessmentTemplateUpdate, AssessmentTemplateResponse,
     AssessmentTemplateDetailResponse, AssessmentTemplateListResponse,
+    AssessmentDimensionResponse, AssessmentQuestionResponse,
     CustomerAssessmentCreate, CustomerAssessmentUpdate, CustomerAssessmentResponse,
     CustomerAssessmentDetailResponse, CustomerAssessmentListResponse,
     AssessmentAnswerCreate, AssessmentAnswerResponse, AssessmentAnswerWithQuestion,
@@ -34,7 +35,11 @@ from app.schemas.assessment import (
     AssessmentRecommendationCreate, AssessmentRecommendationUpdate,
     AssessmentRecommendationResponse, AssessmentRecommendationListResponse,
     CustomerRecommendationCreate, CustomerRecommendationUpdate,
-    CustomerRecommendationResponse, CustomerRecommendationListResponse
+    CustomerRecommendationResponse, CustomerRecommendationListResponse,
+    BuilderDimensionCreate, BuilderDimensionUpdate,
+    BuilderQuestionCreate, BuilderQuestionUpdate, BuilderQuestionScoreUpdate, BuilderQuestionMinorUpdate,
+    BulkReorderRequest, TemplateCloneRequest, TemplateCloneResponse,
+    TemplateChangeAuditEntry, TemplateChangeAuditListResponse
 )
 
 router = APIRouter()
@@ -259,12 +264,15 @@ async def update_template_ratings(
     except ValueError as e:
         return ExcelUploadResult(success=False, errors=[f"Missing required column: {str(e)}"])
 
-    # Check for rating description and evidence columns
+    # Check for rating description and evidence columns (accept alternate names)
     description_idx = header.index('rating description') if 'rating description' in header else -1
-    evidence_idx = header.index('evidence required') if 'evidence required' in header else -1
+    evidence_idx = next(
+        (header.index(col) for col in ['evidence required', 'evidence at this level'] if col in header),
+        -1
+    )
 
     if description_idx == -1 and evidence_idx == -1:
-        return ExcelUploadResult(success=False, errors=["No 'Rating Description' or 'Evidence Required' columns found in file"])
+        return ExcelUploadResult(success=False, errors=["No 'Rating Description' or 'Evidence Required' / 'Evidence at this Level' columns found in file"])
 
     # Build lookup of new data: {normalized_question_text: {rating: {description, evidence}}}
     update_data = {}
@@ -380,9 +388,12 @@ async def parse_spm_maturity_csv(
     except ValueError as e:
         return ExcelUploadResult(success=False, errors=[f"Missing required column: {str(e)}"])
 
-    # Optional columns for rating description and evidence
+    # Optional columns for rating description and evidence (accept alternate names)
     description_idx = header.index('rating description') if 'rating description' in header else -1
-    evidence_idx = header.index('evidence required') if 'evidence required' in header else -1
+    evidence_idx = next(
+        (header.index(col) for col in ['evidence required', 'evidence at this level'] if col in header),
+        -1
+    )
 
     # Create template
     template = AssessmentTemplate(name=name, version=version, description=description)
@@ -686,6 +697,8 @@ async def activate_template(template_id: int, db: AsyncSession = Depends(get_db)
     all_templates = await db.execute(select(AssessmentTemplate))
     for t in all_templates.scalars():
         t.is_active = False
+        if t.status == "active":
+            t.status = "archived"
 
     # Activate the specified one
     query = select(AssessmentTemplate).where(AssessmentTemplate.id == template_id)
@@ -696,8 +709,16 @@ async def activate_template(template_id: int, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=404, detail="Template not found")
 
     template.is_active = True
+    template.status = "active"
     await db.flush()
-    await db.refresh(template)
+
+    # Re-query with eager loading
+    query = select(AssessmentTemplate).options(
+        selectinload(AssessmentTemplate.assessment_type),
+        selectinload(AssessmentTemplate.created_by),
+    ).where(AssessmentTemplate.id == template_id)
+    result = await db.execute(query)
+    template = result.scalar_one()
 
     return AssessmentTemplateResponse.model_validate(template)
 
@@ -726,6 +747,149 @@ async def delete_template(template_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Template not found")
 
     await db.delete(template)
+
+
+# ============================================================
+# PORTFOLIO SUMMARY ENDPOINT
+# ============================================================
+
+@router.get("/portfolio-summary")
+async def get_portfolio_assessment_summary(
+    db: AsyncSession = Depends(get_db),
+    type_filter: Optional[str] = Query(None, description="Filter by assessment type (spm, tbm, finops, all)"),
+):
+    """
+    Get portfolio-wide assessment summary across all customers and frameworks.
+    Returns aggregated metrics, dimension scores, and per-customer assessment data.
+    """
+    from app.models.assessment_type import AssessmentType
+    from app.models.customer import Customer
+    from app.schemas.assessment import (
+        PortfolioAssessmentSummary, CustomerAssessmentBrief, DimensionAggregateScore
+    )
+
+    # Get all customers
+    customers_query = select(Customer)
+    customers_result = await db.execute(customers_query)
+    all_customers = customers_result.scalars().all()
+    total_customers = len(all_customers)
+
+    # Get assessment types
+    types_query = select(AssessmentType).where(AssessmentType.is_active == True)
+    types_result = await db.execute(types_query)
+    assessment_types = {t.code: t for t in types_result.scalars().all()}
+
+    # Get latest completed assessments for each customer and type
+    # We'll use a subquery approach to get the latest assessment per customer per type
+    customer_assessments = {}
+    dimension_aggregates = {}  # {(dim_name, type_code): [scores]}
+
+    for customer in all_customers:
+        customer_data = {
+            'id': customer.id,
+            'customer_id': customer.id,
+            'customer_name': customer.name,
+            'spm_score': None,
+            'spm_date': None,
+            'tbm_score': None,
+            'tbm_date': None,
+            'finops_score': None,
+            'finops_date': None,
+        }
+
+        # Get latest assessment for each type
+        for type_code, atype in assessment_types.items():
+            assessment_query = select(CustomerAssessment).where(
+                CustomerAssessment.customer_id == customer.id,
+                CustomerAssessment.assessment_type_id == atype.id,
+                CustomerAssessment.status == AssessmentStatus.COMPLETED
+            ).order_by(CustomerAssessment.completed_at.desc()).limit(1)
+
+            assessment_result = await db.execute(assessment_query)
+            assessment = assessment_result.scalar_one_or_none()
+
+            if assessment and assessment.overall_score is not None:
+                if type_code == 'spm':
+                    customer_data['spm_score'] = round(assessment.overall_score, 2)
+                    customer_data['spm_date'] = assessment.completed_at
+                elif type_code == 'tbm':
+                    customer_data['tbm_score'] = round(assessment.overall_score, 2)
+                    customer_data['tbm_date'] = assessment.completed_at
+                elif type_code == 'finops':
+                    customer_data['finops_score'] = round(assessment.overall_score, 2)
+                    customer_data['finops_date'] = assessment.completed_at
+
+                # Aggregate dimension scores
+                if assessment.dimension_scores:
+                    for dim_name, score in assessment.dimension_scores.items():
+                        key = (dim_name, type_code)
+                        if key not in dimension_aggregates:
+                            dimension_aggregates[key] = []
+                        dimension_aggregates[key].append(score)
+
+        # Calculate average score across all types for this customer
+        scores = [s for s in [
+            customer_data['spm_score'],
+            customer_data['tbm_score'],
+            customer_data['finops_score']
+        ] if s is not None]
+        customer_data['avg_score'] = round(sum(scores) / len(scores), 2) if scores else None
+
+        customer_assessments[customer.id] = customer_data
+
+    # Build dimension aggregate scores
+    dimension_scores = []
+    for (dim_name, type_code), scores in dimension_aggregates.items():
+        atype = assessment_types.get(type_code)
+        if atype and scores:
+            dimension_scores.append(DimensionAggregateScore(
+                dimension_name=dim_name,
+                assessment_type=type_code.upper(),
+                assessment_type_color=atype.color,
+                avg_score=round(sum(scores) / len(scores), 2),
+                min_score=round(min(scores), 2),
+                max_score=round(max(scores), 2),
+                customer_count=len(scores)
+            ))
+
+    # Sort dimension scores by type then by name
+    dimension_scores.sort(key=lambda d: (d.assessment_type, d.dimension_name))
+
+    # Calculate summary metrics
+    customers_list = list(customer_assessments.values())
+    customers_with_spm = sum(1 for c in customers_list if c['spm_score'] is not None)
+    customers_with_tbm = sum(1 for c in customers_list if c['tbm_score'] is not None)
+    customers_with_finops = sum(1 for c in customers_list if c['finops_score'] is not None)
+    customers_assessed = sum(1 for c in customers_list if c['avg_score'] is not None)
+
+    spm_scores = [c['spm_score'] for c in customers_list if c['spm_score'] is not None]
+    tbm_scores = [c['tbm_score'] for c in customers_list if c['tbm_score'] is not None]
+    finops_scores = [c['finops_score'] for c in customers_list if c['finops_score'] is not None]
+
+    # Apply type filter to customers list if specified
+    if type_filter and type_filter != 'all':
+        if type_filter.lower() == 'spm':
+            customers_list = [c for c in customers_list if c['spm_score'] is not None]
+        elif type_filter.lower() == 'tbm':
+            customers_list = [c for c in customers_list if c['tbm_score'] is not None]
+        elif type_filter.lower() == 'finops':
+            customers_list = [c for c in customers_list if c['finops_score'] is not None]
+
+    # Sort customers by avg_score descending
+    customers_list.sort(key=lambda c: c['avg_score'] or 0, reverse=True)
+
+    return PortfolioAssessmentSummary(
+        total_customers=total_customers,
+        customers_assessed=customers_assessed,
+        customers_with_spm=customers_with_spm,
+        customers_with_tbm=customers_with_tbm,
+        customers_with_finops=customers_with_finops,
+        avg_spm_score=round(sum(spm_scores) / len(spm_scores), 2) if spm_scores else None,
+        avg_tbm_score=round(sum(tbm_scores) / len(tbm_scores), 2) if tbm_scores else None,
+        avg_finops_score=round(sum(finops_scores) / len(finops_scores), 2) if finops_scores else None,
+        dimension_scores=dimension_scores,
+        customers=[CustomerAssessmentBrief(**c) for c in customers_list]
+    )
 
 
 # ============================================================
@@ -1413,6 +1577,198 @@ async def export_assessment_excel(assessment_id: int, db: AsyncSession = Depends
     )
 
 
+@router.get("/{assessment_id}/export/fillable-pdf")
+async def export_assessment_fillable_pdf(assessment_id: int, db: AsyncSession = Depends(get_db)):
+    """Export assessment as a fillable PDF with radio buttons for all rating options."""
+    from app.services.pdf_generator import generate_fillable_assessment_pdf
+
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.id == assessment_id
+    ).options(
+        selectinload(CustomerAssessment.customer),
+        selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.dimensions),
+        selectinload(CustomerAssessment.template).selectinload(AssessmentTemplate.questions).selectinload(AssessmentQuestion.dimension),
+        selectinload(CustomerAssessment.completed_by),
+        selectinload(CustomerAssessment.responses).selectinload(AssessmentResponse.question).selectinload(AssessmentQuestion.dimension)
+    )
+
+    result = await db.execute(query)
+    assessment = result.scalar_one_or_none()
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Build response lookup
+    response_lookup = {r.question_id: r for r in assessment.responses}
+
+    # Build report data grouped by dimension
+    questions_by_dimension = {}
+
+    for question in assessment.template.questions if assessment.template else []:
+        dim_name = question.dimension.name if question.dimension else "General"
+        if dim_name not in questions_by_dimension:
+            questions_by_dimension[dim_name] = {
+                "dimension_id": question.dimension.id if question.dimension else None,
+                "dimension_name": dim_name,
+                "display_order": question.dimension.display_order if question.dimension else 999,
+                "questions": []
+            }
+
+        response = response_lookup.get(question.id)
+
+        questions_by_dimension[dim_name]["questions"].append({
+            "question_id": question.id,
+            "question_number": question.question_number,
+            "question_text": question.question_text,
+            "score": response.score if response else None,
+            "notes": response.notes if response else None,
+            "min_score": question.min_score,
+            "max_score": question.max_score,
+            "all_score_labels": question.score_labels or {},
+            "all_score_descriptions": question.score_descriptions or {},
+            "all_score_evidence": question.score_evidence or {},
+        })
+
+    dimensions_data = sorted(questions_by_dimension.values(), key=lambda d: d["display_order"])
+    for dim in dimensions_data:
+        dim["questions"].sort(key=lambda q: q["question_number"])
+
+    report_data = {
+        "assessment_id": assessment.id,
+        "customer": {
+            "id": assessment.customer.id if assessment.customer else None,
+            "name": assessment.customer.name if assessment.customer else "N/A"
+        },
+        "template": {
+            "id": assessment.template.id if assessment.template else None,
+            "name": assessment.template.name if assessment.template else "N/A",
+        },
+        "assessment_date": assessment.assessment_date.isoformat() if assessment.assessment_date else None,
+        "status": assessment.status.value if assessment.status else None,
+        "overall_score": assessment.overall_score,
+        "dimension_scores": assessment.dimension_scores or {},
+        "dimensions": dimensions_data,
+        "total_questions": len(assessment.template.questions) if assessment.template else 0,
+        "answered_questions": len(assessment.responses)
+    }
+
+    buffer = generate_fillable_assessment_pdf(report_data)
+
+    customer_name = assessment.customer.name.replace(" ", "_") if assessment.customer else "assessment"
+    filename = f"{customer_name}_fillable_assessment_{assessment.assessment_date or 'draft'}.pdf"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.post("/{assessment_id}/import/fillable-pdf")
+async def import_assessment_fillable_pdf(
+    assessment_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Import ratings from a filled PDF back into the assessment."""
+    from pypdf import PdfReader
+
+    # Verify assessment exists
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.id == assessment_id
+    ).options(
+        selectinload(CustomerAssessment.responses)
+    )
+    result = await db.execute(query)
+    assessment = result.scalar_one_or_none()
+
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Read and parse PDF form fields
+    content = await file.read()
+    pdf_buffer = io.BytesIO(content)
+
+    try:
+        reader = PdfReader(pdf_buffer)
+        fields = reader.get_fields()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {str(e)}")
+
+    if not fields:
+        raise HTTPException(status_code=400, detail="No form fields found in PDF")
+
+    # Parse question responses and notes from fields
+    parsed_responses = {}
+    parsed_notes = {}
+
+    for field_name, field_data in fields.items():
+        if field_name.startswith("q_"):
+            question_id_str = field_name[2:]
+            try:
+                question_id = int(question_id_str)
+                value = field_data.get("/V") if isinstance(field_data, dict) else getattr(field_data, "value", None)
+                if value and str(value).strip("/").isdigit():
+                    parsed_responses[question_id] = int(str(value).strip("/"))
+            except (ValueError, TypeError):
+                continue
+        elif field_name.startswith("notes_"):
+            question_id_str = field_name[6:]
+            try:
+                question_id = int(question_id_str)
+                value = field_data.get("/V") if isinstance(field_data, dict) else getattr(field_data, "value", None)
+                if value and str(value).strip():
+                    parsed_notes[question_id] = str(value).strip()
+            except (ValueError, TypeError):
+                continue
+
+    if not parsed_responses:
+        raise HTTPException(status_code=400, detail="No rating responses found in PDF")
+
+    # Build existing response lookup
+    response_lookup = {r.question_id: r for r in assessment.responses}
+
+    questions_updated = 0
+
+    for question_id, score in parsed_responses.items():
+        existing = response_lookup.get(question_id)
+        notes = parsed_notes.get(question_id)
+
+        if existing:
+            # Update existing response
+            if existing.score != score or (notes and existing.notes != notes):
+                existing.score = score
+                if notes:
+                    existing.notes = notes
+                existing.last_edited_at = datetime.utcnow()
+                questions_updated += 1
+        else:
+            # Create new response
+            new_response = AssessmentResponse(
+                customer_assessment_id=assessment_id,
+                question_id=question_id,
+                score=score,
+                notes=notes or None
+            )
+            db.add(new_response)
+            questions_updated += 1
+
+    await db.flush()
+
+    # Recalculate scores
+    await recalculate_assessment_scores(assessment_id, db)
+
+    # Refresh to get updated scores
+    await db.refresh(assessment)
+    await db.commit()
+
+    return {
+        "success": True,
+        "questions_updated": questions_updated,
+        "overall_score": assessment.overall_score
+    }
+
+
 @router.get("/{assessment_id}/report")
 async def get_assessment_report(assessment_id: int, db: AsyncSession = Depends(get_db)):
     """Get assessment report data for display."""
@@ -2074,13 +2430,28 @@ async def get_flow_visualization(
         )
 
     # 6. Get TP solutions for candidate use cases
+    # Filter solutions by product_type based on assessment type
+    product_type_map = {
+        'spm': 'targetprocess',
+        'tbm': 'apptio1',
+        'finops': 'apptio_cloudability'
+    }
+    target_product_type = product_type_map.get(type.lower() if type else 'spm', 'targetprocess')
+
     use_case_ids = list(set(m.use_case_id for m in candidate_mappings))
 
-    tp_solution_query = select(UseCaseTPSolutionMapping).where(
-        UseCaseTPSolutionMapping.use_case_id.in_(use_case_ids)
-    ).options(
-        selectinload(UseCaseTPSolutionMapping.use_case),
-        selectinload(UseCaseTPSolutionMapping.tp_solution)
+    # Query with join to filter by product_type
+    tp_solution_query = (
+        select(UseCaseTPSolutionMapping)
+        .join(TPSolution, UseCaseTPSolutionMapping.tp_solution_id == TPSolution.id)
+        .where(
+            UseCaseTPSolutionMapping.use_case_id.in_(use_case_ids),
+            TPSolution.product_type == target_product_type
+        )
+        .options(
+            selectinload(UseCaseTPSolutionMapping.use_case),
+            selectinload(UseCaseTPSolutionMapping.tp_solution)
+        )
     )
 
     result = await db.execute(tp_solution_query)
@@ -2473,3 +2844,639 @@ async def delete_customer_recommendation(
         raise HTTPException(status_code=404, detail="Recommendation not found")
 
     await db.delete(recommendation)
+
+
+# ============================================================
+# PORTFOLIO COMPARISON ENDPOINTS
+# ============================================================
+
+@router.get("/comparison/portfolio")
+async def get_portfolio_comparison(
+    db: AsyncSession = Depends(get_db),
+    assessment_type: Optional[str] = Query(None, description="Filter by assessment type code (spm, tbm, finops)"),
+):
+    """
+    Get portfolio-wide maturity comparison across all customers.
+    Returns customer scores for ranking, dimension breakdowns, and aggregate analysis.
+    """
+    from app.models.customer import Customer
+    from app.models.assessment_type import AssessmentType
+
+    # Get the assessment type ID if specified
+    type_id = None
+    assessment_type_info = None
+    if assessment_type:
+        type_query = select(AssessmentType).where(AssessmentType.code == assessment_type.lower())
+        type_result = await db.execute(type_query)
+        assessment_type_obj = type_result.scalar_one_or_none()
+        if assessment_type_obj:
+            type_id = assessment_type_obj.id
+            assessment_type_info = {
+                "id": assessment_type_obj.id,
+                "code": assessment_type_obj.code,
+                "name": assessment_type_obj.name,
+                "short_name": assessment_type_obj.short_name,
+                "color": assessment_type_obj.color
+            }
+
+    # Build query for completed assessments
+    query = select(CustomerAssessment).where(
+        CustomerAssessment.status == AssessmentStatus.COMPLETED,
+        CustomerAssessment.overall_score.isnot(None)
+    ).options(
+        selectinload(CustomerAssessment.customer),
+        selectinload(CustomerAssessment.template),
+        selectinload(CustomerAssessment.assessment_type)
+    )
+
+    if type_id:
+        query = query.where(CustomerAssessment.assessment_type_id == type_id)
+
+    # Order by most recent assessment date per customer
+    query = query.order_by(CustomerAssessment.assessment_date.desc())
+
+    result = await db.execute(query)
+    all_assessments = result.scalars().all()
+
+    # Group by customer, keeping only the most recent assessment per customer
+    customer_latest = {}
+    for assessment in all_assessments:
+        customer_id = assessment.customer_id
+        if customer_id not in customer_latest:
+            customer_latest[customer_id] = assessment
+
+    # Build customer comparison data
+    customer_data = []
+    all_dimension_scores = {}  # Track all dimension scores for gap analysis
+
+    for customer_id, assessment in customer_latest.items():
+        dim_scores = assessment.dimension_scores or {}
+
+        # Track dimension scores for gap analysis
+        for dim_name, score in dim_scores.items():
+            if dim_name not in all_dimension_scores:
+                all_dimension_scores[dim_name] = []
+            all_dimension_scores[dim_name].append(score)
+
+        customer_data.append({
+            "customer_id": customer_id,
+            "customer_name": assessment.customer.name if assessment.customer else "Unknown",
+            "overall_score": round(assessment.overall_score, 2) if assessment.overall_score else 0,
+            "dimension_scores": {k: round(v, 2) for k, v in dim_scores.items()},
+            "assessment_date": assessment.assessment_date.isoformat() if assessment.assessment_date else None,
+            "assessment_id": assessment.id,
+            "assessment_type": {
+                "id": assessment.assessment_type.id,
+                "code": assessment.assessment_type.code,
+                "short_name": assessment.assessment_type.short_name,
+                "color": assessment.assessment_type.color
+            } if assessment.assessment_type else None
+        })
+
+    # Sort by overall score (highest first)
+    customer_data.sort(key=lambda x: x["overall_score"], reverse=True)
+
+    # Identify leaders (top 5) and laggards (bottom 5)
+    leaders = customer_data[:5] if len(customer_data) >= 5 else customer_data
+    needs_attention = customer_data[-5:][::-1] if len(customer_data) >= 5 else customer_data[::-1]
+
+    # Calculate common gaps (dimensions where most customers score low)
+    common_gaps = []
+    LOW_SCORE_THRESHOLD = 2.5  # Scores below this are considered "low"
+
+    for dim_name, scores in all_dimension_scores.items():
+        if not scores:
+            continue
+        avg_score = sum(scores) / len(scores)
+        low_count = sum(1 for s in scores if s < LOW_SCORE_THRESHOLD)
+        pct_low = (low_count / len(scores)) * 100 if scores else 0
+
+        common_gaps.append({
+            "dimension_name": dim_name,
+            "average_score": round(avg_score, 2),
+            "min_score": round(min(scores), 2),
+            "max_score": round(max(scores), 2),
+            "customers_below_threshold": low_count,
+            "percentage_below_threshold": round(pct_low, 1),
+            "total_customers": len(scores)
+        })
+
+    # Sort gaps by percentage below threshold (most common gaps first)
+    common_gaps.sort(key=lambda x: x["percentage_below_threshold"], reverse=True)
+
+    # Calculate portfolio-wide statistics
+    all_scores = [c["overall_score"] for c in customer_data if c["overall_score"]]
+    portfolio_stats = {
+        "total_customers": len(customer_data),
+        "average_score": round(sum(all_scores) / len(all_scores), 2) if all_scores else 0,
+        "min_score": round(min(all_scores), 2) if all_scores else 0,
+        "max_score": round(max(all_scores), 2) if all_scores else 0,
+        "score_distribution": {
+            "low": sum(1 for s in all_scores if s < 2.5),  # < 2.5
+            "medium": sum(1 for s in all_scores if 2.5 <= s < 3.5),  # 2.5 - 3.5
+            "high": sum(1 for s in all_scores if s >= 3.5)  # >= 3.5
+        }
+    }
+
+    return {
+        "assessment_type": assessment_type_info,
+        "portfolio_stats": portfolio_stats,
+        "customers": customer_data,
+        "leaders": leaders,
+        "needs_attention": needs_attention,
+        "common_gaps": common_gaps,
+        "all_dimensions": list(all_dimension_scores.keys())
+    }
+
+
+# ============================================================
+# ASSESSMENT BUILDER ENDPOINTS
+# ============================================================
+
+async def _get_template_or_404(template_id: int, db: AsyncSession) -> AssessmentTemplate:
+    """Helper to get a template or raise 404."""
+    template = await db.get(AssessmentTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return template
+
+
+def _require_draft(template: AssessmentTemplate):
+    """Require that the template is in draft status for editing."""
+    if template.status != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Template must be in 'draft' status to edit (current: {template.status})"
+        )
+
+
+async def _log_audit(
+    db: AsyncSession, template_id: int, entity_type: str,
+    entity_id: int, field_name: str, old_value, new_value,
+    changed_by_id: Optional[int] = None
+):
+    """Create an audit log entry for a template change."""
+    import json
+    old_str = json.dumps(old_value) if isinstance(old_value, (dict, list)) else (str(old_value) if old_value is not None else None)
+    new_str = json.dumps(new_value) if isinstance(new_value, (dict, list)) else (str(new_value) if new_value is not None else None)
+    audit = TemplateChangeAudit(
+        template_id=template_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        field_name=field_name,
+        old_value=old_str,
+        new_value=new_str,
+        changed_by_id=changed_by_id,
+    )
+    db.add(audit)
+
+
+# --- Dimension CRUD ---
+
+@router.post("/templates/{template_id}/dimensions", response_model=AssessmentDimensionResponse, status_code=201)
+async def create_dimension(
+    template_id: int,
+    dim_in: BuilderDimensionCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a new dimension to a draft template."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    dimension = AssessmentDimension(
+        template_id=template_id,
+        name=dim_in.name,
+        description=dim_in.description,
+        display_order=dim_in.display_order,
+        weight=dim_in.weight,
+    )
+    db.add(dimension)
+    await db.flush()
+
+    await _log_audit(db, template_id, "dimension", dimension.id, "created", None, dim_in.name)
+    await db.commit()
+
+    return AssessmentDimensionResponse.model_validate(dimension)
+
+
+@router.patch("/templates/{template_id}/dimensions/{dimension_id}", response_model=AssessmentDimensionResponse)
+async def update_dimension(
+    template_id: int,
+    dimension_id: int,
+    dim_in: BuilderDimensionUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a dimension in a draft template."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    dimension = await db.get(AssessmentDimension, dimension_id)
+    if not dimension or dimension.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Dimension not found in this template")
+
+    update_data = dim_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        old_value = getattr(dimension, field)
+        if old_value != value:
+            await _log_audit(db, template_id, "dimension", dimension_id, field, old_value, value)
+            setattr(dimension, field, value)
+
+    await db.commit()
+    return AssessmentDimensionResponse.model_validate(dimension)
+
+
+@router.delete("/templates/{template_id}/dimensions/{dimension_id}", status_code=204)
+async def delete_dimension(
+    template_id: int,
+    dimension_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a dimension and its questions from a draft template."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    dimension = await db.get(AssessmentDimension, dimension_id)
+    if not dimension or dimension.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Dimension not found in this template")
+
+    await _log_audit(db, template_id, "dimension", dimension_id, "deleted", dimension.name, None)
+
+    # Delete questions in this dimension
+    from sqlalchemy import delete as sql_delete
+    await db.execute(
+        sql_delete(AssessmentQuestion).where(
+            AssessmentQuestion.dimension_id == dimension_id,
+            AssessmentQuestion.template_id == template_id,
+        )
+    )
+    await db.delete(dimension)
+    await db.commit()
+
+
+@router.post("/templates/{template_id}/dimensions/reorder", status_code=200)
+async def reorder_dimensions(
+    template_id: int,
+    reorder: BulkReorderRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk-update display_order for dimensions."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    for item in reorder.items:
+        dim = await db.get(AssessmentDimension, item.id)
+        if dim and dim.template_id == template_id:
+            dim.display_order = item.display_order
+
+    await db.commit()
+    return {"status": "ok"}
+
+
+# --- Question CRUD ---
+
+@router.post("/templates/{template_id}/questions", response_model=AssessmentQuestionResponse, status_code=201)
+async def create_question(
+    template_id: int,
+    q_in: BuilderQuestionCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a new question to a draft template."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    # Verify dimension belongs to this template
+    dim = await db.get(AssessmentDimension, q_in.dimension_id)
+    if not dim or dim.template_id != template_id:
+        raise HTTPException(status_code=400, detail="Dimension does not belong to this template")
+
+    question = AssessmentQuestion(
+        template_id=template_id,
+        dimension_id=q_in.dimension_id,
+        question_text=q_in.question_text,
+        question_number=q_in.question_number,
+        min_score=q_in.min_score,
+        max_score=q_in.max_score,
+        score_labels=q_in.score_labels or {},
+        score_descriptions=q_in.score_descriptions or {},
+        score_evidence=q_in.score_evidence or {},
+        display_order=q_in.display_order,
+        is_required=q_in.is_required,
+    )
+    db.add(question)
+    await db.flush()
+
+    await _log_audit(db, template_id, "question", question.id, "created", None, q_in.question_text)
+    await db.commit()
+
+    # Reload with dimension relationship
+    query = select(AssessmentQuestion).where(
+        AssessmentQuestion.id == question.id
+    ).options(selectinload(AssessmentQuestion.dimension))
+    result = await db.execute(query)
+    question = result.scalar_one()
+
+    return AssessmentQuestionResponse.model_validate(question)
+
+
+@router.patch("/templates/{template_id}/questions/{question_id}", response_model=AssessmentQuestionResponse)
+async def update_question(
+    template_id: int,
+    question_id: int,
+    q_in: BuilderQuestionUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a question in a draft template."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    query = select(AssessmentQuestion).where(
+        AssessmentQuestion.id == question_id
+    ).options(selectinload(AssessmentQuestion.dimension))
+    result = await db.execute(query)
+    question = result.scalar_one_or_none()
+
+    if not question or question.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Question not found in this template")
+
+    update_data = q_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        old_value = getattr(question, field)
+        if old_value != value:
+            await _log_audit(db, template_id, "question", question_id, field, old_value, value)
+            setattr(question, field, value)
+
+    await db.commit()
+    return AssessmentQuestionResponse.model_validate(question)
+
+
+@router.patch("/templates/{template_id}/questions/{question_id}/scores", response_model=AssessmentQuestionResponse)
+async def update_question_scores(
+    template_id: int,
+    question_id: int,
+    q_in: BuilderQuestionScoreUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update score labels, descriptions, and evidence for a question.
+
+    Unlike the general question update endpoint, this does NOT require
+    the template to be in draft status — score metadata can be refined
+    on any template.
+    """
+    template = await _get_template_or_404(template_id, db)
+
+    query = select(AssessmentQuestion).where(
+        AssessmentQuestion.id == question_id
+    ).options(selectinload(AssessmentQuestion.dimension))
+    result = await db.execute(query)
+    question = result.scalar_one_or_none()
+
+    if not question or question.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Question not found in this template")
+
+    update_data = q_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        old_value = getattr(question, field)
+        if old_value != value:
+            await _log_audit(db, template_id, "question", question_id, field, old_value, value)
+            setattr(question, field, value)
+
+    await db.commit()
+    return AssessmentQuestionResponse.model_validate(question)
+
+
+@router.patch("/templates/{template_id}/questions/{question_id}/minor", response_model=AssessmentQuestionResponse)
+async def update_question_minor(
+    template_id: int,
+    question_id: int,
+    q_in: BuilderQuestionMinorUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Minor text/number updates on any template status (no draft required).
+
+    Only allows question_text and question_number changes. Structural changes
+    (add/delete/reorder) remain draft-only.
+    """
+    template = await _get_template_or_404(template_id, db)
+
+    query = select(AssessmentQuestion).where(
+        AssessmentQuestion.id == question_id
+    ).options(selectinload(AssessmentQuestion.dimension))
+    result = await db.execute(query)
+    question = result.scalar_one_or_none()
+
+    if not question or question.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Question not found in this template")
+
+    update_data = q_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        old_value = getattr(question, field)
+        if old_value != value:
+            await _log_audit(db, template_id, "question", question_id, field, old_value, value)
+            setattr(question, field, value)
+
+    await db.commit()
+    return AssessmentQuestionResponse.model_validate(question)
+
+
+@router.delete("/templates/{template_id}/questions/{question_id}", status_code=204)
+async def delete_question(
+    template_id: int,
+    question_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a question from a draft template."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    question = await db.get(AssessmentQuestion, question_id)
+    if not question or question.template_id != template_id:
+        raise HTTPException(status_code=404, detail="Question not found in this template")
+
+    await _log_audit(db, template_id, "question", question_id, "deleted", question.question_text, None)
+    await db.delete(question)
+    await db.commit()
+
+
+@router.post("/templates/{template_id}/questions/reorder", status_code=200)
+async def reorder_questions(
+    template_id: int,
+    reorder: BulkReorderRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk-update display_order for questions."""
+    template = await _get_template_or_404(template_id, db)
+    _require_draft(template)
+
+    for item in reorder.items:
+        q = await db.get(AssessmentQuestion, item.id)
+        if q and q.template_id == template_id:
+            q.display_order = item.display_order
+
+    await db.commit()
+    return {"status": "ok"}
+
+
+# --- Version Control ---
+
+@router.post("/templates/{template_id}/clone", response_model=TemplateCloneResponse, status_code=201)
+async def clone_template(
+    template_id: int,
+    clone_in: TemplateCloneRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Deep-clone a template (with dimensions and questions) as a new draft."""
+    # Load source template with all relationships
+    query = select(AssessmentTemplate).where(
+        AssessmentTemplate.id == template_id
+    ).options(
+        selectinload(AssessmentTemplate.dimensions),
+        selectinload(AssessmentTemplate.questions),
+    )
+    result = await db.execute(query)
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # Create new template
+    new_template = AssessmentTemplate(
+        name=clone_in.new_name or source.name,
+        version=clone_in.new_version,
+        description=source.description,
+        is_active=False,
+        status="draft",
+        assessment_type_id=source.assessment_type_id,
+        created_by_id=source.created_by_id,
+    )
+    db.add(new_template)
+    await db.flush()
+
+    # Clone dimensions, mapping old IDs to new IDs
+    dim_id_map = {}
+    for dim in source.dimensions:
+        new_dim = AssessmentDimension(
+            template_id=new_template.id,
+            name=dim.name,
+            description=dim.description,
+            display_order=dim.display_order,
+            weight=dim.weight,
+        )
+        db.add(new_dim)
+        await db.flush()
+        dim_id_map[dim.id] = new_dim.id
+
+    # Clone questions with mapped dimension IDs
+    for q in source.questions:
+        new_q = AssessmentQuestion(
+            template_id=new_template.id,
+            dimension_id=dim_id_map.get(q.dimension_id, q.dimension_id),
+            question_text=q.question_text,
+            question_number=q.question_number,
+            min_score=q.min_score,
+            max_score=q.max_score,
+            score_labels=dict(q.score_labels) if q.score_labels else {},
+            score_descriptions=dict(q.score_descriptions) if q.score_descriptions else {},
+            score_evidence=dict(q.score_evidence) if q.score_evidence else {},
+            display_order=q.display_order,
+            is_required=q.is_required,
+        )
+        db.add(new_q)
+
+    await _log_audit(db, new_template.id, "template", new_template.id, "cloned_from", None, str(template_id))
+    await db.commit()
+
+    return TemplateCloneResponse(
+        id=new_template.id,
+        name=new_template.name,
+        version=new_template.version,
+        status=new_template.status,
+    )
+
+
+@router.post("/templates/{template_id}/promote", response_model=AssessmentTemplateResponse)
+async def promote_template(
+    template_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Promote a draft template to active, deactivating others of the same assessment type."""
+    query = select(AssessmentTemplate).where(
+        AssessmentTemplate.id == template_id
+    ).options(
+        selectinload(AssessmentTemplate.assessment_type),
+        selectinload(AssessmentTemplate.created_by),
+    )
+    result = await db.execute(query)
+    template = result.scalar_one_or_none()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if template.status != "draft":
+        raise HTTPException(status_code=400, detail="Only draft templates can be promoted")
+
+    # Deactivate other templates of the same assessment type
+    if template.assessment_type_id:
+        others = await db.execute(
+            select(AssessmentTemplate).where(
+                AssessmentTemplate.assessment_type_id == template.assessment_type_id,
+                AssessmentTemplate.id != template_id,
+                AssessmentTemplate.status == "active",
+            )
+        )
+        for other in others.scalars():
+            other.is_active = False
+            other.status = "archived"
+
+    # Promote this template
+    template.status = "active"
+    template.is_active = True
+
+    await _log_audit(db, template_id, "template", template_id, "status", "draft", "active")
+    await db.commit()
+
+    # Re-query with eager loading to avoid MissingGreenlet on serialization
+    query = select(AssessmentTemplate).options(
+        selectinload(AssessmentTemplate.assessment_type),
+        selectinload(AssessmentTemplate.created_by),
+    ).where(AssessmentTemplate.id == template_id)
+    result = await db.execute(query)
+    template = result.scalar_one()
+
+    return AssessmentTemplateResponse.model_validate(template)
+
+
+# --- Audit Trail ---
+
+@router.get("/templates/{template_id}/audit", response_model=TemplateChangeAuditListResponse)
+async def get_template_audit(
+    template_id: int,
+    db: AsyncSession = Depends(get_db),
+    entity_type: Optional[str] = Query(None, description="Filter by entity type (template/dimension/question)"),
+    entity_id: Optional[int] = Query(None, description="Filter by entity ID"),
+    limit: int = Query(50, le=200),
+    offset: int = Query(0),
+):
+    """Get paginated audit trail for a template."""
+    await _get_template_or_404(template_id, db)
+
+    query = select(TemplateChangeAudit).where(
+        TemplateChangeAudit.template_id == template_id
+    )
+    if entity_type:
+        query = query.where(TemplateChangeAudit.entity_type == entity_type)
+    if entity_id:
+        query = query.where(TemplateChangeAudit.entity_id == entity_id)
+
+    # Count total
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
+
+    # Fetch page
+    query = query.order_by(TemplateChangeAudit.changed_at.desc())
+    query = query.options(selectinload(TemplateChangeAudit.changed_by))
+    query = query.offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    entries = result.scalars().all()
+
+    return TemplateChangeAuditListResponse(
+        items=[TemplateChangeAuditEntry.model_validate(e) for e in entries],
+        total=total or 0,
+    )

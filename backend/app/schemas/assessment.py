@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Any
 from datetime import datetime, date
 
-from app.models.assessment import AssessmentStatus, RecommendationPriority, RecommendationStatus
+from app.models.assessment import AssessmentStatus, RecommendationPriority, RecommendationStatus, TemplateStatus
 
 
 # === Minimal Info Classes ===
@@ -114,6 +114,7 @@ class AssessmentTemplateResponse(AssessmentTemplateBase):
 
     id: int
     is_active: bool
+    status: str = "active"
     assessment_type_id: Optional[int] = None
     assessment_type: Optional[AssessmentTypeInfo] = None
     created_by_id: Optional[int] = None
@@ -503,4 +504,154 @@ class CustomerRecommendationResponse(CustomerRecommendationBase):
 class CustomerRecommendationListResponse(BaseModel):
     """List of customer recommendations"""
     items: List[CustomerRecommendationResponse]
+    total: int
+
+
+# === Portfolio Summary Schemas ===
+
+class CustomerAssessmentBrief(BaseModel):
+    """Brief customer assessment info for portfolio summary"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    customer_id: int
+    customer_name: str
+    spm_score: Optional[float] = None
+    spm_date: Optional[datetime] = None
+    tbm_score: Optional[float] = None
+    tbm_date: Optional[datetime] = None
+    finops_score: Optional[float] = None
+    finops_date: Optional[datetime] = None
+    avg_score: Optional[float] = None
+
+
+class DimensionAggregateScore(BaseModel):
+    """Aggregated score for a dimension across all customers"""
+    dimension_name: str
+    assessment_type: str
+    assessment_type_color: str
+    avg_score: float
+    min_score: float
+    max_score: float
+    customer_count: int
+
+
+class PortfolioAssessmentSummary(BaseModel):
+    """Portfolio-wide assessment summary"""
+    total_customers: int
+    customers_assessed: int
+    customers_with_spm: int
+    customers_with_tbm: int
+    customers_with_finops: int
+    avg_spm_score: Optional[float] = None
+    avg_tbm_score: Optional[float] = None
+    avg_finops_score: Optional[float] = None
+    dimension_scores: List[DimensionAggregateScore]
+    customers: List[CustomerAssessmentBrief]
+
+
+# === Assessment Builder Schemas ===
+
+class BuilderDimensionCreate(BaseModel):
+    """Create a new dimension in a template"""
+    name: str
+    description: Optional[str] = None
+    display_order: int = 0
+    weight: float = 1.0
+
+
+class BuilderDimensionUpdate(BaseModel):
+    """Update an existing dimension"""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    display_order: Optional[int] = None
+    weight: Optional[float] = None
+
+
+class BuilderQuestionCreate(BaseModel):
+    """Create a new question in a template"""
+    dimension_id: int
+    question_text: str
+    question_number: str = ""
+    min_score: int = 1
+    max_score: int = 5
+    score_labels: Optional[dict[str, Any]] = None
+    score_descriptions: Optional[dict[str, Any]] = None
+    score_evidence: Optional[dict[str, Any]] = None
+    display_order: int = 0
+    is_required: bool = True
+
+
+class BuilderQuestionUpdate(BaseModel):
+    """Update an existing question"""
+    question_text: Optional[str] = None
+    question_number: Optional[str] = None
+    dimension_id: Optional[int] = None
+    min_score: Optional[int] = None
+    max_score: Optional[int] = None
+    score_labels: Optional[dict[str, Any]] = None
+    score_descriptions: Optional[dict[str, Any]] = None
+    score_evidence: Optional[dict[str, Any]] = None
+    display_order: Optional[int] = None
+    is_required: Optional[bool] = None
+
+
+class BuilderQuestionScoreUpdate(BaseModel):
+    """Update score labels, descriptions, and evidence only (no draft required)."""
+    score_labels: Optional[dict[str, Any]] = None
+    score_descriptions: Optional[dict[str, Any]] = None
+    score_evidence: Optional[dict[str, Any]] = None
+
+
+class BuilderQuestionMinorUpdate(BaseModel):
+    """Minor text/number updates allowed on any template status (no draft required)."""
+    question_text: Optional[str] = None
+    question_number: Optional[str] = None
+
+
+class BulkReorderItem(BaseModel):
+    """Single item in a reorder request"""
+    id: int
+    display_order: int
+
+
+class BulkReorderRequest(BaseModel):
+    """Bulk reorder dimensions or questions"""
+    items: List[BulkReorderItem]
+
+
+class TemplateCloneRequest(BaseModel):
+    """Clone a template as a new draft version"""
+    new_version: str
+    new_name: Optional[str] = None
+
+
+class TemplateCloneResponse(BaseModel):
+    """Response after cloning a template"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    version: str
+    status: str
+
+
+class TemplateChangeAuditEntry(BaseModel):
+    """Single audit trail entry for template changes"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    template_id: int
+    entity_type: str
+    entity_id: int
+    field_name: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    changed_by: Optional[UserInfo] = None
+    changed_at: datetime
+
+
+class TemplateChangeAuditListResponse(BaseModel):
+    """Paginated list of template audit entries"""
+    items: List[TemplateChangeAuditEntry]
     total: int

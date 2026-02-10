@@ -104,6 +104,8 @@ class RoadmapRecommendation(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     dimension_name: Mapped[str] = mapped_column(String(100))  # Which dimension this improves
     dimension_score: Mapped[float] = mapped_column(Float)  # Customer's score for that dimension
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g., Process, Technology, People
+    tools: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)  # e.g., ["Targetprocess", "Costing"]
 
     # Scoring
     priority_score: Mapped[float] = mapped_column(Float, default=0.0)  # Calculated priority
